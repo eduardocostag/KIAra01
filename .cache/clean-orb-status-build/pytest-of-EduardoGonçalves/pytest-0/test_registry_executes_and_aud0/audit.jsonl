@@ -1,0 +1,1 @@
+{"timestamp": "2026-08-24T16:51:49.727307+00:00", "action_id": "c69036dd-0f29-49b3-a5e8-94c900645dfb", "agent": "AgentCore", "tool": "echo", "intent": "echo", "parameters_safe": {"value": "[REDACTED]"}, "result": true, "error": null, "duration_ms": 0.02, "permission": "read_only", "user_confirmation": false}

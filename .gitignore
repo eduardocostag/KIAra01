@@ -1,0 +1,28 @@
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Builds / executaveis
+build/
+dist/
+*.spec.bak
+
+# Variaveis e segredos
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# Sistema
+Thumbs.db
+.DS_Store

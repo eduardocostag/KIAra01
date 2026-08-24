@@ -1,0 +1,1 @@
+{"timestamp": "2026-08-24T16:43:47.014555+00:00", "action_id": "527ebd4a-a7ef-4b89-9d7d-218f9b5dcc1f", "agent": "AgentCore", "tool": "missing", "intent": "missing", "parameters_safe": {"token": "[REDACTED]"}, "result": false, "error": "Ferramenta desconhecida: missing"}

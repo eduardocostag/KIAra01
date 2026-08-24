@@ -1,0 +1,1 @@
+{"timestamp": "2026-08-24T15:44:51.772766+00:00", "action_id": "fda4761c-a61f-4a17-8c45-cb03a91836d4", "agent": "AgentCore", "tool": "schema_action", "intent": "schema_action", "parameters_safe": {"value": "[REDACTED]"}, "result": true, "error": null, "duration_ms": 0.02, "permission": "safe_action", "user_confirmation": false}

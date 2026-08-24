@@ -1,0 +1,1 @@
+{"timestamp": "2026-08-24T17:00:58.099340+00:00", "action_id": "88292e70-e39b-415e-b27f-59082a45ca07", "agent": "AgentCore", "tool": "open_application", "intent": "open_application", "parameters_safe": {"application": "notepad"}, "result": true, "error": null, "duration_ms": 55.67, "permission": "safe_action", "user_confirmation": false}

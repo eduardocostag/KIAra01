@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QApplication
+
+KIARA_STYLESHEET = r"""
+QMainWindow, QWidget#kiaraRoot { background: #050b10; color: #d9e7ef; }
+QWidget { color: #c5d3dc; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 13px; }
+QFrame#topBar { background: #0b1a28; border: 1px solid #1c3546; border-radius: 14px; }
+QLabel#brandMark { color: #67f5ff; font-size: 24px; font-weight: 700; }
+QLabel#brandName { color: #e6f6fb; font-size: 18px; font-weight: 650; }
+QLabel#eyebrow { color: #55eaf3; font-size: 11px; font-weight: 600; }
+QLabel#heroTitle { color: #5df1fb; font-size: 20px; font-weight: 650; }
+QLabel#muted, QLabel#status { color: #8298a7; }
+QFrame#contentShell, QFrame#sideCard, QTextBrowser, QListWidget {
+  background: #0c1b29; border: 1px solid #1b3445; border-radius: 12px;
+}
+QFrame#sideCard { background: #0b1926; }
+QFrame#voiceCard { background: #0a2530; border: 1px solid #168795; border-radius: 12px; }
+QFrame#navigationSidebar { background: #080e13; border: 1px solid #1b2d34; border-radius: 14px; }
+QLabel#sideBrand { color: #e6f8f8; font-size: 18px; font-weight: 650; padding: 4px 8px; }
+QPushButton#navButton { background: transparent; border: 0; border-radius: 9px; color: #aebdc3; text-align: left; padding: 11px 12px; }
+QPushButton#navButton:hover { background: #0c201f; color: #eaffff; }
+QPushButton#navButton:focus { border: 2px solid #e8fbff; padding: 9px 10px; color: #ffffff; }
+QPushButton#navButton:checked { background: #10302e; color: #69f4df; border-right: 2px solid #4ef1d4; }
+QFrame#profileCard { background: #0b1218; border: 1px solid #1e3038; border-radius: 10px; }
+QLabel#presenceOrb { color: #50f5e1; font-size: 24px; }
+QLabel#cardTitle { color: #d8eaf1; font-weight: 600; }
+QLabel#cyan { color: #57edf7; }
+QLabel#success { color: #44de8b; }
+QTabWidget::pane { border: 0; background: transparent; top: -1px; }
+QTabBar::tab { background: transparent; color: #9cafba; padding: 12px 10px; border: 0; }
+QTabBar::tab:selected { color: #5df3fc; background: #0d2732; border-bottom: 2px solid #52edf7; }
+QTabBar::tab:selected:focus { border: 2px solid #e8fbff; border-bottom: 3px solid #52edf7; }
+QTabBar::tab:hover { color: #e7f7fa; background: #102331; }
+QTextBrowser#transcript { padding: 15px; selection-background-color: #167c8b; }
+QLineEdit, QComboBox { background: #0e171d; color: #e1ecef; border: 1px solid #2a3b42; border-radius: 12px; padding: 13px 14px; min-height: 24px; }
+QLineEdit:focus, QComboBox:focus, QTextBrowser:focus, QListWidget:focus { border: 2px solid #e8fbff; }
+QPushButton { background: #122736; border: 1px solid #294555; border-radius: 9px; padding: 9px 14px; color: #d8e6ec; }
+QPushButton:hover { background: #173748; border-color: #3fb8c5; }
+QPushButton:focus { border: 2px solid #5debf4; padding: 8px 13px; }
+QPushButton:disabled { color: #60727e; background: #0d1b26; }
+QPushButton#sendButton { color: #eafffb; border-color: #1bb49e; background: #0e6d62; font-size: 15px; min-width: 42px; }
+QPushButton#talkButton, QPushButton#attachButton { color: #67f3e3; border-color: #286f68; font-size: 15px; }
+QLabel#composerHint { color: #61747c; font-size: 10px; padding-left: 54px; }
+QPushButton#stopButton { color: #ffb3b3; border-color: #70444a; background: #281923; }
+QCheckBox { spacing: 8px; color: #9fb2bd; }
+QCheckBox::indicator { width: 34px; height: 18px; border-radius: 9px; background: #243847; border: 1px solid #395161; }
+QCheckBox::indicator:checked { background: #25cde0; border-color: #57edf7; }
+QCheckBox:focus { color: #ffffff; border: 2px solid #e8fbff; border-radius: 6px; }
+QScrollBar:vertical { width: 8px; background: transparent; }
+QScrollBar::handle:vertical { background: #294858; border-radius: 4px; min-height: 28px; }
+QToolTip { background: #102635; color: #e3f3f7; border: 1px solid #2d7180; padding: 5px; }
+"""
+
+
+def apply_kiara_theme(app: QApplication) -> None:
+    app.setStyle("Fusion")
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#07131f"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#d9e7ef"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#0c1b29"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#d9e7ef"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#168795"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(palette)
+    app.setStyleSheet(KIARA_STYLESHEET)

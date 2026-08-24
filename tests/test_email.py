@@ -1,0 +1,23 @@
+import pytest
+
+from app.integrations.email import DraftStore, EmailService
+
+
+class FakeProvider:
+    async def send(self, draft):
+        return f"sent:{draft.id}"
+
+
+@pytest.mark.asyncio
+async def test_email_requires_draft_and_cannot_replay(tmp_path):
+    service = EmailService(DraftStore(tmp_path / "email.db"), FakeProvider())
+    draft = service.draft("user@example.com", "Teste", "Corpo")
+    assert (await service.send(draft.id)).startswith("sent:")
+    with pytest.raises(ValueError):
+        await service.send(draft.id)
+
+
+def test_email_validates_recipient(tmp_path):
+    service = EmailService(DraftStore(tmp_path / "email.db"))
+    with pytest.raises(ValueError):
+        service.draft("invalid", "subject", "body")
