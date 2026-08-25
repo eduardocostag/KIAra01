@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any
 
 from app.knowledge import KnowledgeStore
@@ -83,12 +84,14 @@ class ContextManager:
         knowledge: KnowledgeStore | None = None,
         conversation: ConversationSession | None = None,
         knowledge_max_chars: int = 6_000,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._screen_reader = screen_reader
         self._memory = memory
         self._knowledge = knowledge
         self._conversation = conversation or ConversationSession()
         self._knowledge_max_chars = max(500, knowledge_max_chars)
+        self._clock = clock or (lambda: datetime.now().astimezone())
         self._recent_actions: list[dict[str, Any]] = []
         self._live_screen_understanding: dict[str, Any] | None = None
         self._live_screen_lock = threading.Lock()
@@ -155,6 +158,7 @@ class ContextManager:
         )
 
     def assemble(self, user_message: str) -> dict[str, Any]:
+        current_screen = self.screen()
         relevant = []
         if self._memory is not None:
             relevant = [asdict(item) for item in self._memory.search(user_message)]
@@ -172,7 +176,11 @@ class ContextManager:
                 remaining -= len(content)
         assembled = {
             "user_message": user_message,
-            "active_screen": asdict(self.screen()),
+            "runtime_facts": {
+                "local_datetime": self._clock().isoformat(timespec="seconds"),
+                "source": "trusted_system_clock",
+            },
+            "active_screen": asdict(current_screen),
             "recent_actions": list(self._recent_actions),
             "relevant_memories": relevant,
             "relevant_knowledge": knowledge,
@@ -182,6 +190,13 @@ class ContextManager:
         if conversation["summary"]:
             assembled["conversation_summary"] = conversation["summary"]
         live_screen = self.live_screen_understanding()
-        if live_screen is not None:
+        if live_screen is not None and self._matches_current_screen(live_screen, current_screen):
             assembled["live_screen_understanding"] = live_screen
         return assembled
+
+    @staticmethod
+    def _matches_current_screen(understanding: dict[str, Any], screen: ScreenContext) -> bool:
+        return (
+            understanding.get("application") == screen.active_application
+            and understanding.get("window_title") == screen.window_title
+        )

@@ -16,6 +16,8 @@ integrations:
     max_file_bytes: 2000000
     sync_interval_seconds: 10
     write_enabled: true
+    feedback_learning_enabled: true
+    feedback_prompt: Te auxiliei?
 ```
 
 Na inicialização, arquivos Markdown novos ou modificados são indexados na base de
@@ -44,6 +46,16 @@ Todo o diretório `90 - Privado` é excluído mesmo sem frontmatter.
 A sincronização também ocorre automaticamente no intervalo configurado. Salvar uma nota
 é uma ação sensível e sempre passa pelo gate de confirmação da Kiara. Novas notas são
 criadas em `00 - Caixa de entrada` por meio de escrita atômica.
+
+## Aprendizado por feedback
+
+Quando `feedback_learning_enabled` está ativo, toda resposta normal termina com
+`Te auxiliei?`. A resposta `sim` aprova apenas a última troca e cria uma nota em
+`30 - Conhecimento/Aprendizados Kiara`. A resposta `não` descarta a troca. Se o usuário fizer
+uma nova pergunta sem responder, a aprovação anterior também é descartada.
+
+As notas aprovadas contêm a solicitação e a resposta/processo validado. Padrões conhecidos
+de senhas, tokens e chaves de API são redigidos antes da escrita.
 
 ## Privacidade
 

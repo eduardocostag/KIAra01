@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 from app.core.context import ContextManager, ConversationSession
 from app.memory import MemoryEngine, MemoryKind
@@ -75,6 +75,34 @@ def test_context_manager_remembers_desktop_screen_context_for_session_memory(tmp
     assert all("Relatório de vendas" not in record.content for record in records)
     assert all("visible_text" not in record.metadata for record in records)
     assert records[0].metadata["visible_text_available"] is True
+
+
+def test_context_drops_live_understanding_after_active_window_changes() -> None:
+    current = ScreenContext(active_application="Editor", window_title="Arquivo")
+    context = ContextManager(lambda: current)
+    context.update_live_screen_understanding(
+        {
+            "application": "Editor",
+            "window_title": "Arquivo",
+            "summary": "Erro visível",
+        }
+    )
+
+    assert "live_screen_understanding" in context.assemble("ajude")
+    current.window_title = "Outra janela"
+    assert "live_screen_understanding" not in context.assemble("continue")
+
+
+def test_context_includes_trusted_current_local_datetime() -> None:
+    fixed = datetime(2026, 8, 25, 14, 30, tzinfo=timezone(timedelta(hours=-3)))
+    context = ContextManager(lambda: ScreenContext(), clock=lambda: fixed)
+
+    runtime = context.assemble("que dia é hoje")["runtime_facts"]
+
+    assert runtime == {
+        "local_datetime": "2026-08-25T14:30:00-03:00",
+        "source": "trusted_system_clock",
+    }
 
 
 def test_configurable_working_ttl_and_default_retrieval_limit(tmp_path) -> None:

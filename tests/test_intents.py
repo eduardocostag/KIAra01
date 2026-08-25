@@ -53,6 +53,22 @@ def test_routes_common_screen_description_variants():
     assert router.route("analise o que está na tela").name == "screen_context"
 
 
+def test_routes_helpdesk_diagnostic_and_verification() -> None:
+    router = IntentRouter()
+    diagnostic = router.route("faça um diagnóstico dos drivers")
+    assert diagnostic.name == "helpdesk_diagnostic"
+    assert diagnostic.parameters["category"] in {"driver", "drivers"}
+    assert router.route("faça um diagnóstico do computador").name == "helpdesk_diagnostic"
+    assert router.route("verifique se resolveu").name == "helpdesk_verify"
+
+
+def test_routes_current_date_and_time_without_model_guessing() -> None:
+    router = IntentRouter()
+    assert router.route("que dia é hoje?").name == "current_datetime"
+    assert router.route("qual é a data de hoje?").name == "current_datetime"
+    assert router.route("que horas são?").name == "current_datetime"
+
+
 def test_desktop_assistant_response_has_summary_observation_risk_and_next_steps():
     core = AgentCore(
         _DummyTools(),

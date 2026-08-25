@@ -30,6 +30,7 @@ class PatternMatcher:
         parameters = {
             key: value.strip().rstrip(".!?")
             for key, value in zip(self.parameter_names, matched.groups(), strict=True)
+            if value is not None
         }
         return Intent(self.name, self.confidence, parameters)
 
@@ -49,6 +50,33 @@ class IntentRouter:
 def default_matchers() -> list[IntentMatcher]:
     flags = re.IGNORECASE
     return [
+        PatternMatcher(
+            "current_datetime",
+            re.compile(
+                r"(?:que\s+dia\s+(?:é|e)\s+hoje|qual\s+(?:é|e)\s+a\s+data(?:\s+de\s+hoje)?|"
+                r"data\s+de\s+hoje|qual\s+(?:é|e)\s+(?:a\s+)?hora|que\s+horas\s+são)",
+                flags,
+            ),
+        ),
+        PatternMatcher(
+            "helpdesk_verify",
+            re.compile(
+                r"(?:verifique|confira|teste).{0,30}(?:se|que).{0,12}(?:resolveu|melhorou|funcionou)"
+                r"(?:.{0,20}(driver|drivers|rede|network|internet|bateria|battery|evento|eventos|logs))?",
+                flags,
+            ),
+            ("category",),
+        ),
+        PatternMatcher(
+            "helpdesk_diagnostic",
+            re.compile(
+                r"(?:faça|faca|rode|execute|realize|colete).{0,25}(?:um\s+)?"
+                r"(?:diagnóstico|diagnostico|checagem|verificação|verificacao)"
+                r"(?:.{0,30}(driver|drivers|rede|network|internet|bateria|battery|evento|eventos|logs))?",
+                flags,
+            ),
+            ("category",),
+        ),
         PatternMatcher(
             "sync_obsidian", re.compile(r"(?:sincronize|atualize).{0,20}obsidian", flags)
         ),

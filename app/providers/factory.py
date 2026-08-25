@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from urllib.parse import urlsplit
 
 from app.config import Settings
+from app.providers.guarded import GuardedRemoteProvider
 from app.providers.llm import FallbackProvider, LLMProvider, LocalFallbackProvider
 from app.providers.remote import (
     OllamaProvider,
@@ -11,6 +13,7 @@ from app.providers.remote import (
     OpenAIProvider,
     ProviderConfigurationError,
 )
+from app.providers.router import LocalProfilePolicy, ModelRouter
 
 
 def build_llm_provider(
@@ -22,6 +25,29 @@ def build_llm_provider(
     timeout = float(settings.get("llm.timeout_seconds", 30))
     model = env.get("KIARA_LLM_MODEL", str(settings.get("llm.model") or ""))
     primary = _build_provider(provider, settings, env, timeout, model)
+    routing_mode = str(settings.get("llm.routing.mode", "local")).casefold()
+    if provider == "ollama" and bool(settings.get("llm.routing.enabled", False)):
+        fast_model = env.get(
+            "KIARA_LLM_FAST_MODEL", str(settings.get("llm.routing.fast_model") or model)
+        )
+        reasoning_model = env.get(
+            "KIARA_LLM_REASONING_MODEL",
+            str(settings.get("llm.routing.reasoning_model") or model),
+        )
+        profiles: dict[str, LLMProvider] = {
+            "fast": _build_provider("ollama", settings, env, timeout, fast_model),
+            "reasoning": _build_provider("ollama", settings, env, timeout, reasoning_model),
+        }
+        if bool(settings.get("llm.vision_enabled", False)):
+            profiles["vision"] = primary
+        primary = ModelRouter(
+            profiles,
+            policy=LocalProfilePolicy(
+                reasoning_chars=int(settings.get("llm.routing.reasoning_chars", 1_200))
+            ),
+        )
+        if routing_mode == "hybrid":
+            primary = _build_hybrid_router(settings, env, timeout, primary)
     fallback_name = env.get("KIARA_LLM_FALLBACK_PROVIDER", "").casefold()
     if not fallback_name:
         return primary
@@ -91,13 +117,68 @@ def _build_provider(
             api_key = env.get("OPENROUTER_API_KEY", "")
         if not api_key and provider == "gemini":
             api_key = env.get("GEMINI_API_KEY", "")
+        selected_base_url = env.get(
+            f"{prefix}BASE_URL",
+            str(settings.get("llm.remote_base_url") or base_url),
+        )
+        if provider in {"groq", "gemini"}:
+            expected_host = {
+                "groq": "api.groq.com",
+                "gemini": "generativelanguage.googleapis.com",
+            }[provider]
+            parsed = urlsplit(selected_base_url)
+            if parsed.scheme != "https" or parsed.hostname != expected_host:
+                raise ProviderConfigurationError(
+                    f"Endpoint não autorizado para {provider}: use HTTPS no host oficial."
+                )
         return OpenAICompatibleProvider(
             selected_model,
             api_key,
-            env.get(
-                f"{prefix}BASE_URL",
-                str(settings.get("llm.remote_base_url") or base_url),
-            ),
+            selected_base_url,
             timeout,
+            vision_enabled=provider == "gemini",
         )
     raise ProviderConfigurationError(f"Provider de IA desconhecido: {provider}")
+
+
+def _build_hybrid_router(
+    settings: Settings,
+    env: Mapping[str, str],
+    timeout: float,
+    local_router: LLMProvider,
+) -> LLMProvider:
+    if not isinstance(local_router, ModelRouter):
+        return local_router
+    ledger = settings.root / str(
+        settings.get("llm.routing.usage_ledger", "data/cloud-usage.json")
+    )
+    daily_limit = int(settings.get("llm.routing.daily_cloud_request_limit", 500))
+    failure_threshold = int(settings.get("llm.routing.failure_threshold", 3))
+    cooldown = float(settings.get("llm.routing.cooldown_seconds", 60))
+
+    def remote_profile(profile: str, local: LLMProvider) -> LLMProvider:
+        provider_name = str(settings.get(f"llm.routing.{profile}.provider", "groq")).casefold()
+        model = str(settings.get(f"llm.routing.{profile}.model", "")).strip()
+        if provider_name in {"", "local", "ollama"} or not model:
+            return local
+        try:
+            remote = _build_provider(provider_name, settings, env, timeout, model)
+        except ProviderConfigurationError:
+            return local
+        guarded = GuardedRemoteProvider(
+            remote,
+            name=f"{provider_name}:{model}",
+            ledger_path=ledger,
+            daily_request_limit=daily_limit,
+            failure_threshold=failure_threshold,
+            cooldown_seconds=cooldown,
+        )
+        return FallbackProvider([guarded, local])
+
+    profiles = {
+        "fast": remote_profile("fast", local_router.profiles["fast"]),
+        "reasoning": remote_profile("reasoning", local_router.profiles["reasoning"]),
+    }
+    if "vision" in local_router.profiles:
+        profiles["vision"] = local_router.profiles["vision"]
+    return ModelRouter(profiles, policy=local_router.policy, metrics=local_router.metrics)

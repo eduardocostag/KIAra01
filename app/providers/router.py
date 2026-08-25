@@ -21,7 +21,9 @@ class LocalProfilePolicy:
 
     _REASONING_MARKERS = re.compile(
         r"\b(analise|arquitetura|compare|diagnostique|estrategia|planeje|"
-        r"explique por que|passo a passo|trade-?off|debug|investigue)\b",
+        r"explique(?: por que)?|por que|como (?:posso|funciona|resolver)|qual (?:é|e) a diferença|"
+        r"o que devo|me ensine|me ajude a|resolva|calcule|avalie|demonstre|vantagens|"
+        r"desvantagens|passo a passo|trade-?off|debug|investigue)\b",
         re.IGNORECASE,
     )
     _CODE_MARKERS = re.compile(

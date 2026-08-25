@@ -32,20 +32,21 @@ screen:
   continuous_understanding_enabled: true
   understanding_interval_seconds: 8.0
   poll_interval_seconds: 1.0
-  ui_automation_enabled: false
+  ui_automation_enabled: true
   ocr_enabled: false
   # Amostragem efêmera da janela ativa; nenhum pixel é persistido.
   content_change_enabled: true
   content_change_threshold: 0.18
   content_change_cooldown_seconds: 5.0
-  error_detection_enabled: false
+  error_detection_enabled: true
   # Limita custo de VRAM sem recortar o desktop; preserva a proporção completa.
   vision_max_edge: 896
 computer_use:
-  enabled: false
+  # UI Automation sem coordenadas: toda alteração exige confirmação humana.
+  enabled: true
   vision_fallback_enabled: false
   # Compara apenas assinaturas perceptuais efêmeras antes/depois; não persiste pixels.
-  visual_validation_enabled: false
+  visual_validation_enabled: true
   operation_timeout_seconds: 5.0
 autonomy:
   mode: execute_with_confirmation
@@ -70,6 +71,25 @@ llm:
   vision_model: qwen2.5vl:3b
   vision_num_gpu: 0
   ollama_base_url: http://127.0.0.1:11434
+  routing:
+    enabled: true
+    mode: hybrid
+    # Mantém conversas comuns leves e reserva o modelo maior para análise e diagnóstico.
+    fast_model: kiara-stable:latest
+    reasoning_model: kiara-fast:latest
+    reasoning_chars: 500
+    daily_cloud_request_limit: 500
+    failure_threshold: 3
+    cooldown_seconds: 60
+    usage_ledger: data/cloud-usage.json
+    fast:
+      provider: openai
+      model: gpt-5.4-nano
+    reasoning:
+      provider: openai
+      model: gpt-5.4-mini
+    # Visão permanece local. Nuvem visual exigirá confirmação explícita por captura.
+    cloud_vision_enabled: false
 browser:
   enabled: false
   headless: false
@@ -78,7 +98,8 @@ browser:
 proactivity:
   level: low
 planning:
-  enabled: false
+  # Só é acionado por pedidos explícitos como "planeje e execute".
+  enabled: true
   database: data/planning.db
   max_steps: 5
   max_safe_retries: 1
@@ -91,6 +112,8 @@ integrations:
     max_file_bytes: 2000000
     sync_interval_seconds: 10
     write_enabled: true
+    feedback_learning_enabled: true
+    feedback_prompt: Te auxiliei?
   email:
     provider: none
   graph:
@@ -112,5 +135,10 @@ memory:
   database: data/kiara-memory.sqlite3
   working_ttl_hours: 24
   retrieval_limit: 5
-  embeddings_enabled: false
+  # Busca semântica local compartilhada pela memória e pelo conhecimento do Obsidian.
+  embeddings_enabled: true
+  embedding_provider: ollama
+  embedding_model: embeddinggemma
+  embedding_timeout_seconds: 30
+  embedding_batch_size: 16
   embedding_dimensions: 384

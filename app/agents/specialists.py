@@ -64,6 +64,10 @@ class HelpdeskSpecialist(Specialist):
             "áudio",
             "hardware",
             "software",
+            "diagnóstico",
+            "diagnostico",
+            "computador",
+            "resolveu",
             "cpu",
             "memória ram",
             "disco",
@@ -89,6 +93,8 @@ class HelpdeskSpecialist(Specialist):
             "active_screen",
             "screen_context_summary",
             "live_screen_understanding",
+            "diagnostic_snapshot",
+            "diagnostic_comparison",
         }
     )
 
@@ -99,7 +105,9 @@ class HelpdeskSpecialist(Specialist):
             "curtos com critério de sucesso. Para hardware, nunca afirme enxergar componentes "
             "físicos sem dados de sensores, foto ou confirmação do usuário; antes de abrir o "
             "equipamento, desligar proteções, atualizar BIOS/firmware ou manipular energia, "
-            "explique riscos e solicite confirmação."
+            "explique riscos e solicite confirmação. Considere snapshots de diagnóstico como "
+            "evidência somente leitura. Só declare resolução quando um critério específico for "
+            "comparado antes e depois; mudança isolada ou comando concluído não prova sucesso."
         )
 
 

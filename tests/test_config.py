@@ -25,3 +25,26 @@ def test_frozen_build_separates_bundled_config_and_writable_data(tmp_path, monke
 
     assert settings.get("assistant.name") == "Empacotada"
     assert settings.root == local / "Kiara"
+
+
+def test_local_secret_file_loads_only_allowlisted_keys_without_overrides(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "existing")
+    (tmp_path / ".env.local").write_text(
+        "OPENAI_API_KEY=local-openai\n"
+        "GEMINI_API_KEY='local-gemini'\n"
+        "GROQ_API_KEY=must-not-replace\n"
+        "UNSAFE_VARIABLE=blocked\n",
+        encoding="utf-8",
+    )
+
+    load_settings(tmp_path / "missing.yaml")
+
+    assert __import__("os").environ["OPENAI_API_KEY"] == "local-openai"
+    assert __import__("os").environ["GEMINI_API_KEY"] == "local-gemini"
+    assert __import__("os").environ["GROQ_API_KEY"] == "existing"
+    assert "UNSAFE_VARIABLE" not in __import__("os").environ

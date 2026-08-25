@@ -39,9 +39,34 @@ Comandos demonstráveis no console:
 - `Kiara, qual programa estou usando?`
 - `Kiara, execute no PowerShell o comando hostname.`
 - `Kiara, o que estou vendo?`
+- `Kiara, analise esta tela e me ajude a resolver o erro.`
+- `Kiara, faça um diagnóstico do computador.`
+- `Kiara, faça um diagnóstico dos drivers.`
+- `Kiara, verifique se resolveu o driver.`
+- `Kiara, planeje e execute a correção deste problema.`
 
 PowerShell pede confirmação e somente aceita comandos em `config/kiara.yaml`. `/parar` encerra
 subprocessos registrados; `/sair` fecha a sessão.
+
+### Visão e execução controlada
+
+A janela ativa é acompanhada localmente e, quando seu conteúdo muda, o modelo visual cria um
+resumo semântico efêmero. Perguntas relacionadas à tela solicitam uma leitura visual atualizada;
+ao trocar de janela, a leitura anterior deixa de ser usada. Pixels, texto acessível e resumos de
+tela são removidos antes de qualquer tentativa de chamada a um modelo em nuvem.
+
+O Computer Use utiliza seletores semânticos do Windows UI Automation, nunca coordenadas geradas
+pelo modelo. Pedidos explícitos com `planeje e execute` podem criar até cinco passos. Cliques,
+digitação, teclas e operações de janela mostram a ação proposta e exigem confirmação humana.
+Depois da execução, a Kiara verifica uma pós-condição e, quando disponível, compara o estado
+visual efêmero anterior e posterior. O menu **Parar ações** continua sendo o kill switch.
+
+O atendimento de helpdesk também pode criar uma linha de base somente leitura para `overview`,
+`drivers`, `network`, `battery` ou `events`. Ao pedir uma verificação, a Kiara repete a mesma
+consulta e compara as evidências. Drivers só são marcados como recuperados quando a contagem de
+dispositivos com código de erro cai de um valor positivo para zero; rede exige que adaptadores
+antes indisponíveis apareçam operacionais. Outros resultados são apresentados como mudanças, não
+como prova de resolução, até que exista um teste funcional específico.
 
 ## Providers de IA
 

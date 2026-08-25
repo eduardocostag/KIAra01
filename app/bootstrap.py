@@ -24,6 +24,7 @@ from app.config import Settings
 from app.core.agent_core import AgentCore
 from app.core.context import ContextManager
 from app.core.event_bus import EventBus
+from app.helpdesk import SystemDiagnosticsTool
 from app.integrations.communications import MicrosoftGraphCommunications
 from app.integrations.credentials import (
     ChainedCredentials,
@@ -36,10 +37,10 @@ from app.integrations.email import (
     EmailService,
     GmailEmailProvider,
 )
-from app.integrations.obsidian import ObsidianVaultIndex
+from app.integrations.obsidian import ObsidianLearningStore, ObsidianVaultIndex
 from app.knowledge import KnowledgeStore
 from app.memory import MemoryEngine, MemoryKind
-from app.memory.embeddings import LocalHashEmbeddingProvider
+from app.memory.embeddings import LocalHashEmbeddingProvider, OllamaEmbeddingProvider
 from app.models import AutonomyMode
 from app.perception import PerceptionOptions, ScreenPerception
 from app.perception.windows import get_active_window
@@ -153,6 +154,11 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         registry.register(CreateCalendarEventTool(communications))
     registry.register(ScreenshotTool(settings.root / "data" / "screenshots"))
     registry.register(
+        SystemDiagnosticsTool(
+            timeout_seconds=float(settings.get("security.powershell_timeout_seconds", 15))
+        )
+    )
+    registry.register(
         PowerShellTool(
             list(settings.get("security.allowlisted_commands", [])),
             int(settings.get("security.powershell_timeout_seconds", 15)),
@@ -163,9 +169,21 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
     memory = None
     embeddings = None
     if settings.get("memory.embeddings_enabled", False):
-        embeddings = LocalHashEmbeddingProvider(
-            int(settings.get("memory.embedding_dimensions", 384))
-        )
+        embedding_provider = str(settings.get("memory.embedding_provider", "hash")).casefold()
+        if embedding_provider == "ollama":
+            embeddings = OllamaEmbeddingProvider(
+                model=str(settings.get("memory.embedding_model", "embeddinggemma")),
+                base_url=str(
+                    settings.get("llm.ollama_base_url", "http://127.0.0.1:11434")
+                ),
+                timeout_seconds=float(settings.get("memory.embedding_timeout_seconds", 30)),
+            )
+        elif embedding_provider == "hash":
+            embeddings = LocalHashEmbeddingProvider(
+                int(settings.get("memory.embedding_dimensions", 384))
+            )
+        else:
+            raise ValueError(f"Provider de embeddings desconhecido: {embedding_provider}")
     if settings.get("memory.enabled", True):
         memory = MemoryEngine(
             settings.root / settings.get("memory.database", "data/memory.db"),
@@ -187,6 +205,10 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
             relevance_threshold=float(settings.get("knowledge.relevance_threshold", 0.1)),
             max_chunks_per_source=int(settings.get("knowledge.max_chunks_per_source", 2)),
         )
+        if embeddings is not None:
+            knowledge.backfill_embeddings(
+                batch_size=int(settings.get("memory.embedding_batch_size", 16))
+            )
     obsidian = None
     if settings.get("integrations.obsidian.enabled", False):
         if knowledge is None:
@@ -273,6 +295,13 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         resources=resources,
         task_planner=planner,
         perception=perception,
+        feedback_learning=(
+            ObsidianLearningStore(obsidian)
+            if obsidian is not None
+            and settings.get("integrations.obsidian.feedback_learning_enabled", False)
+            else None
+        ),
+        feedback_prompt=str(settings.get("integrations.obsidian.feedback_prompt", "Te auxiliei?")),
     )
     core.obsidian = obsidian
     core.background = BackgroundServices(

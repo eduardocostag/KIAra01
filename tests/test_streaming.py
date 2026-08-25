@@ -52,3 +52,21 @@ async def test_agent_core_streams_and_records_the_completed_exchange() -> None:
         {"role": "user", "content": "olá"},
         {"role": "assistant", "content": "Olá mundo"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_agent_core_appends_feedback_question_after_stream(tmp_path) -> None:
+    class Learning:
+        def save(self, user_message, assistant_response):
+            return tmp_path / "ok.md"
+
+    core = AgentCore(
+        NoTools(),
+        ConversationProvider(),
+        ContextManager(lambda: ScreenContext()),
+        feedback_learning=Learning(),
+    )
+
+    chunks = [chunk async for chunk in core.handle_stream("olá")]
+
+    assert "".join(chunks) == "Olá mundo\n\nTe auxiliei?"

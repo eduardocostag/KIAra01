@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import threading
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
 from app.knowledge import KnowledgeStore
+from app.security.redaction import redact_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,3 +192,43 @@ class ObsidianSyncService:
                 await asyncio.wait_for(self._stop.wait(), timeout=self.interval_seconds)
             except TimeoutError:
                 pass
+
+
+class ObsidianLearningStore:
+    """Persists only exchanges explicitly approved by the user."""
+
+    def __init__(self, index: ObsidianVaultIndex) -> None:
+        self.index = index
+
+    def save(self, user_message: str, assistant_response: str) -> Path:
+        user_message = redact_text(user_message.strip())
+        assistant_response = redact_text(assistant_response.strip())
+        if not user_message or not assistant_response:
+            raise ValueError("A troca aprovada não pode estar vazia.")
+        now = datetime.now(UTC)
+        words = re.sub(r"[^\w\s-]", "", user_message, flags=re.UNICODE).split()
+        title = " ".join(words[:8])[:80].strip() or "Aprendizado da Kiara"
+        folder = self.index.vault / "30 - Conhecimento" / "Aprendizados Kiara"
+        folder.mkdir(parents=True, exist_ok=True)
+        destination = folder / f"{now:%Y%m%d-%H%M%S} - {title}.md"
+        counter = 2
+        while destination.exists():
+            destination = folder / f"{now:%Y%m%d-%H%M%S} - {title} ({counter}).md"
+            counter += 1
+        body = (
+            "---\n"
+            "tags: [kiara, aprendizado-aprovado]\n"
+            "source: feedback-explicito\n"
+            f"created_at: {now.isoformat()}\n"
+            "---\n\n"
+            f"# {title}\n\n"
+            "## Solicitação\n\n"
+            f"{user_message}\n\n"
+            "## Resposta e processo aprovado\n\n"
+            f"{assistant_response}\n"
+        )
+        temporary = destination.with_suffix(".md.tmp")
+        temporary.write_text(body, encoding="utf-8")
+        temporary.replace(destination)
+        self.index.sync()
+        return destination

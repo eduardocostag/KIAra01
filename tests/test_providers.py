@@ -14,6 +14,7 @@ from app.providers.remote import (
     OpenAIProvider,
     ProviderConfigurationError,
 )
+from app.providers.router import ModelRouter
 
 
 class FakeResponses:
@@ -171,3 +172,71 @@ def test_factory_rejects_unknown_provider() -> None:
     settings = Settings(raw={"llm": {"provider": "mystery"}}, root=Path.cwd())
     with pytest.raises(ProviderConfigurationError, match="desconhecido"):
         build_llm_provider(settings, {})
+
+
+def test_factory_builds_opt_in_local_model_router() -> None:
+    settings = Settings(
+        raw={
+            "llm": {
+                "provider": "ollama",
+                "model": "fast-default",
+                "routing": {
+                    "enabled": True,
+                    "fast_model": "fast-local",
+                    "reasoning_model": "reasoning-local",
+                },
+            }
+        },
+        root=Path.cwd(),
+    )
+
+    provider = build_llm_provider(settings, {})
+
+    assert isinstance(provider, ModelRouter)
+    assert provider.profiles["fast"].model == "fast-local"
+    assert provider.profiles["reasoning"].model == "reasoning-local"
+
+
+def test_factory_builds_hybrid_profiles_and_keeps_vision_local(tmp_path) -> None:
+    settings = Settings(
+        raw={
+            "llm": {
+                "provider": "ollama",
+                "model": "local-fast",
+                "vision_enabled": True,
+                "vision_model": "local-vision",
+                "routing": {
+                    "enabled": True,
+                    "mode": "hybrid",
+                    "fast_model": "local-fast",
+                    "reasoning_model": "local-reasoning",
+                    "fast": {"provider": "groq", "model": "openai/gpt-oss-20b"},
+                    "reasoning": {
+                        "provider": "groq",
+                        "model": "openai/gpt-oss-120b",
+                    },
+                },
+            }
+        },
+        root=tmp_path,
+    )
+
+    provider = build_llm_provider(settings, {"GROQ_API_KEY": "test-key"})
+
+    assert isinstance(provider, ModelRouter)
+    assert isinstance(provider.profiles["fast"], FallbackProvider)
+    assert isinstance(provider.profiles["reasoning"], FallbackProvider)
+    assert isinstance(provider.profiles["vision"], OllamaProvider)
+    assert "vision" in provider.capabilities
+
+
+def test_factory_rejects_nonofficial_groq_endpoint() -> None:
+    settings = Settings(
+        raw={"llm": {"provider": "groq", "model": "openai/gpt-oss-120b"}},
+        root=Path.cwd(),
+    )
+    with pytest.raises(ProviderConfigurationError, match="não autorizado"):
+        build_llm_provider(
+            settings,
+            {"GROQ_API_KEY": "test-key", "KIARA_LLM_BASE_URL": "https://evil.test/v1"},
+        )

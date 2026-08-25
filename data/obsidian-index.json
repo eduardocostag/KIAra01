@@ -1,5 +1,169 @@
 {
   "files": {
+    "10 - Projetos/Planejamento de projeto.md": {
+      "document_id": 6,
+      "hash": "d0de1c5460189258248e36264b7a52244508508db71f209b6f463eacea4900de"
+    },
+    "10 - Projetos/Retrospectiva de processo.md": {
+      "document_id": 7,
+      "hash": "5faca7c16b3eb207269e8292820a17e1b40d92bd56929688ee305be9a16feeac"
+    },
+    "20 - Helpdesk/Hardware/Computador lento.md": {
+      "document_id": 8,
+      "hash": "b6f510dc04ce5878d972cdb1f243b9c29fc9ddca6f9367358d4c17ba801cc49b"
+    },
+    "20 - Helpdesk/Hardware/Diagnóstico de drivers.md": {
+      "document_id": 9,
+      "hash": "e662fea44a76cb14db19a5e08e7773ce865ade1e93dd3aa70d371174045f7f47"
+    },
+    "20 - Helpdesk/Hardware/Disco cheio.md": {
+      "document_id": 10,
+      "hash": "0e71ef7af799a34ddaa5aafeefe6ee404c7308523af1ecdc8d3d33f4dd6f6382"
+    },
+    "20 - Helpdesk/Hardware/Impressora não imprime.md": {
+      "document_id": 11,
+      "hash": "5d188d0ad71c92c911747316f4db3e8ef5f5b6aa2ee43235562d665e74377c9f"
+    },
+    "20 - Helpdesk/Hardware/Áudio ou microfone sem funcionar.md": {
+      "document_id": 12,
+      "hash": "754b3fab7dabd5aeaa5152a3d88437de77783b83bf54dadb70cf904a74e6e653"
+    },
+    "20 - Helpdesk/Procedimentos/Backup antes de mudanças.md": {
+      "document_id": 13,
+      "hash": "741bdd1759e10867f7324d2366c34c3e4415a5b409e7051dfa00e61f1472ee9e"
+    },
+    "20 - Helpdesk/Procedimentos/Triagem inicial de atendimento.md": {
+      "document_id": 14,
+      "hash": "c21be6ac0fd38000c7484d8e5c7afc2660257b662297f9f86281efc3ec5ff90e"
+    },
+    "20 - Helpdesk/Redes/Diagnóstico de DNS.md": {
+      "document_id": 15,
+      "hash": "638c795f2fdc4ecc048d56b783f314a936efc60d70b36ef477f93a467400de28"
+    },
+    "20 - Helpdesk/Redes/Sem conexão Ethernet.md": {
+      "document_id": 16,
+      "hash": "367b98d06cfb62694e575940e976ae81d5b6ef8afa59482843f1ef7e74541ca9"
+    },
+    "20 - Helpdesk/Redes/Wi-Fi instável.md": {
+      "document_id": 17,
+      "hash": "0cce8840b71565896b962e39a06a570046bdbd77ec2bcd346072c755f7cbe911"
+    },
+    "20 - Helpdesk/Windows/Falha no Windows Update.md": {
+      "document_id": 18,
+      "hash": "629717b4a422af4d220466a26cc9daf6fb4db59406e25aa33faa6c6e649e19a3"
+    },
+    "20 - Helpdesk/Windows/Restauração e recuperação.md": {
+      "document_id": 19,
+      "hash": "ae94647b09b5cf0d0dc9c458d0efc5fed1280bde23aba4817b6a951f88e2ad28"
+    },
+    "20 - Helpdesk/Windows/Tela azul e reinicialização.md": {
+      "document_id": 20,
+      "hash": "72677128af33dff9f8e17ec3a2878d4d5328383d0c2c0d53be5df75d05e96551"
+    },
+    "20 - Helpdesk/Windows/Windows não inicia.md": {
+      "document_id": 21,
+      "hash": "aa125e8079d6d302091a79d0d5f8ab0227f8cb1e4e33e3e35d13be8e6c4e70af"
+    },
+    "30 - Conhecimento/Engenharia de Software/Ambientes virtuais Python.md": {
+      "document_id": 22,
+      "hash": "4f950cce9aab25dc0f7630bdfa95f14bc2f79224dc00b3679a1df705710c1617"
+    },
+    "30 - Conhecimento/Engenharia de Software/Debugging baseado em evidências.md": {
+      "document_id": 23,
+      "hash": "4faf06bac554cb7004d2eb71a95f42c1db940b1ef7cf00e60de8f63b51d667f1"
+    },
+    "30 - Conhecimento/Engenharia de Software/Estratégia de testes.md": {
+      "document_id": 24,
+      "hash": "1500ad497ba246f453365b2ec639dcc6f1255fc86762f2a31979136fc7e1b386"
+    },
+    "30 - Conhecimento/Engenharia de Software/Exceções em Python.md": {
+      "document_id": 25,
+      "hash": "248d515ec8075179a2499898d6a4c5141b80ebac6d075eef94832778f6a6d9fe"
+    },
+    "30 - Conhecimento/Engenharia de Software/Fluxo Git seguro.md": {
+      "document_id": 26,
+      "hash": "0759411803c426f59cd14f9a27bdc27d258a7792f8e2316bc42a3282ce91e4bf"
+    },
+    "30 - Conhecimento/Engenharia de Software/Levantamento de requisitos.md": {
+      "document_id": 27,
+      "hash": "d540dd8fbd6d623cbe16cba39223d5b80316e50aff9f8d5d2dec6aa4388ad4ea"
+    },
+    "30 - Conhecimento/Engenharia de Software/Logging observável e privado.md": {
+      "document_id": 28,
+      "hash": "370bd7467ffa296d649d9be59abc519f8c782c2e8b5e3c7a257e18275c0ac936"
+    },
+    "30 - Conhecimento/Engenharia de Software/Migrações de banco de dados.md": {
+      "document_id": 29,
+      "hash": "374aa3db300bfbf1ababee8ea6cf99cd62d19a707fc02e333d35493551c61bd8"
+    },
+    "30 - Conhecimento/Engenharia de Software/Projeto de APIs.md": {
+      "document_id": 30,
+      "hash": "a9e04066023aec7b0e845c3e7177a9ac5e77acae89190271e1f00ddee18a861a"
+    },
+    "30 - Conhecimento/Engenharia de Software/Validação de entrada.md": {
+      "document_id": 31,
+      "hash": "5bff88a36dbb4184eb046ff598b87e95d42d6dbd08483720b158489cf14ee245"
+    },
+    "30 - Conhecimento/IA/Aprendizado por feedback explícito.md": {
+      "document_id": 32,
+      "hash": "4394ba46ba9f6acb36a2861cbf95bf020a53fe1aa9f66aaef28f7df5263022ce"
+    },
+    "30 - Conhecimento/IA/Defesa contra prompt injection.md": {
+      "document_id": 33,
+      "hash": "d5f27b85f828bd6d2dc7703e12f41572fcdcc37bc5bcaf86b4c4c4aa02016ca6"
+    },
+    "30 - Conhecimento/IA/RAG com contexto seletivo.md": {
+      "document_id": 34,
+      "hash": "0c7c18d5d7df1c8ad90f3b9a1f52cfbb98403ca7abb2ed4fb41b7dc6e97b35b3"
+    },
+    "30 - Conhecimento/IA/Respostas fundamentadas.md": {
+      "document_id": 35,
+      "hash": "c8c11c50e7e4e1f6ad0899360fee950d3e1a4b5290c98ee8d732ee06b3cd2ad2"
+    },
+    "30 - Conhecimento/Produtividade/Priorização semanal.md": {
+      "document_id": 36,
+      "hash": "93db51badb2ce29cf2b09742fe3c204d71b679607d61f7ced5c80d5f226ec93e"
+    },
+    "30 - Conhecimento/Produtividade/Reunião objetiva.md": {
+      "document_id": 37,
+      "hash": "292b81da8ec5d3d4356b6f389b75c7ebd1a517c4bc96d2828ee895ee2c30d458"
+    },
+    "30 - Conhecimento/Segurança/Atualizações e correções.md": {
+      "document_id": 38,
+      "hash": "024425714d9a569d95793245bf72ef94440266b3f17a72f03d186c705d78fc10"
+    },
+    "30 - Conhecimento/Segurança/Autenticação segura.md": {
+      "document_id": 39,
+      "hash": "f3383b45609b94ac92f5961fea8960634ef454f3746a8616c3c9063b1b68a9a2"
+    },
+    "30 - Conhecimento/Segurança/Backup contra ransomware.md": {
+      "document_id": 40,
+      "hash": "06246cbe863228f0e7d62632580911a8591de7a709081eb6f79892b4d8242a73"
+    },
+    "30 - Conhecimento/Segurança/Gestão de segredos.md": {
+      "document_id": 41,
+      "hash": "fb33cc7e89aa23ca2f5a705facbd9cbae5f179714b1fca3da355246ee56d6253"
+    },
+    "30 - Conhecimento/Segurança/Phishing e mensagens suspeitas.md": {
+      "document_id": 42,
+      "hash": "6ff5f5679aadba9bc8f7ce721761bf1a4cec13cf81989210bb54eb3c5961cb81"
+    },
+    "30 - Conhecimento/Segurança/Privacidade em logs.md": {
+      "document_id": 43,
+      "hash": "ad78b0e26d803df74020cce6fbd633bc8577d5ca11e5f1e2c4ffd6efe78191ec"
+    },
+    "30 - Conhecimento/Segurança/Privilégio mínimo.md": {
+      "document_id": 44,
+      "hash": "5d5bbd5c4d2202c21bb013e2f41779a9a6b8b8c71b267de13e4addefaf0b9ac9"
+    },
+    "30 - Conhecimento/Segurança/Resposta inicial a incidente.md": {
+      "document_id": 45,
+      "hash": "ea703b4507e3e56fa528cc851bdba8d4eedec5b77612df1854c7041c9e81ac7c"
+    },
+    "40 - Decisões/Registro de decisão.md": {
+      "document_id": 46,
+      "hash": "bff18c370cf60f93aef0ba9cc3766451d41420d48c7d00356d3c2e7d45b0f665"
+    },
     "Inventário de equipamentos.md": {
       "document_id": 1,
       "hash": "710af1e4aec41d4f3ac0f254205661f2bd0c32d765e0a01c41f4156fcd86d8c3"

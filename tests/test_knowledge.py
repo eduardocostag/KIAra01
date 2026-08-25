@@ -126,3 +126,21 @@ def test_context_budget_bounds_retrieved_knowledge(tmp_path) -> None:
     results = context.assemble("procedimento")["relevant_knowledge"]
 
     assert sum(len(item["content"]) for item in results) <= 500
+
+
+def test_backfill_embeddings_updates_existing_lexical_chunks(tmp_path) -> None:
+    source = tmp_path / "legacy.txt"
+    source.write_text("felino doméstico", encoding="utf-8")
+    database = tmp_path / "knowledge.db"
+    lexical_store = KnowledgeStore(database)
+    lexical_store.ingest(source)
+    lexical_store.close()
+
+    semantic_store = KnowledgeStore(database, embedding_provider=TinyEmbeddings())
+
+    assert semantic_store.backfill_embeddings(batch_size=1) == 1
+    assert semantic_store.backfill_embeddings(batch_size=1) == 0
+    embedding = semantic_store._connection.execute(
+        "SELECT embedding FROM chunks"
+    ).fetchone()["embedding"]
+    assert embedding is not None

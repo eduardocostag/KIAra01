@@ -49,6 +49,12 @@ def test_policy_reads_user_message_in_structured_specialist_prompt():
     decision = policy.select_text('{"role":"helpdesk","user_message":"diagnostique o erro"}')
     assert decision.profile == "reasoning"
     assert decision.reason == "complexity_marker"
+    assert policy.select_text(
+        '{"role":"generalista","user_message":"explique como funciona a memória"}'
+    ).profile == "reasoning"
+    assert policy.select_text(
+        '{"user_message":"qual é a diferença entre memória RAM e armazenamento?"}'
+    ).profile == "reasoning"
 
 
 @pytest.mark.asyncio

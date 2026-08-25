@@ -209,6 +209,32 @@ class KnowledgeStore:
                 )
         return self._diversify(results, limit)
 
+    def backfill_embeddings(self, *, batch_size: int = 16) -> int:
+        """Populate vectors for previously indexed chunks without reingesting source files."""
+        if self._embedding_provider is None:
+            return 0
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than zero")
+        rows = self._connection.execute(
+            "SELECT id, content FROM chunks WHERE embedding IS NULL ORDER BY id"
+        ).fetchall()
+        updated = 0
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
+            vectors = self._embedding_provider.embed([str(row["content"]) for row in batch])
+            if len(vectors) != len(batch):
+                raise RuntimeError("Provider retornou uma quantidade incorreta de embeddings.")
+            with self._connection:
+                self._connection.executemany(
+                    "UPDATE chunks SET embedding = ? WHERE id = ?",
+                    (
+                        (json.dumps(list(vector)), int(row["id"]))
+                        for row, vector in zip(batch, vectors, strict=True)
+                    ),
+                )
+            updated += len(batch)
+        return updated
+
     def _diversify(self, results: list[KnowledgeResult], limit: int) -> list[KnowledgeResult]:
         """Remove repeated chunks and prevent one document from monopolizing context."""
         selected: list[KnowledgeResult] = []

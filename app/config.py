@@ -8,6 +8,10 @@ from typing import Any
 
 import yaml
 
+_LOCAL_SECRET_NAMES = frozenset(
+    {"OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"}
+)
+
 DEFAULTS: dict[str, Any] = {
     "assistant": {"name": "Kiara", "language": "pt-BR"},
     "voice": {
@@ -62,6 +66,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
     else:
         root = Path(os.environ.get("KIARA_DATA_ROOT", Path.cwd()))
         bundle_root = Path.cwd()
+    _load_local_secrets(root / ".env.local")
     configured = os.environ.get("KIARA_CONFIG")
     config_path = Path(path or configured) if path or configured else bundle_root / "config" / "kiara.yaml"
     raw = _merge({}, DEFAULTS)
@@ -69,6 +74,27 @@ def load_settings(path: str | Path | None = None) -> Settings:
         with config_path.open("r", encoding="utf-8") as handle:
             raw = _merge(raw, yaml.safe_load(handle) or {})
     return Settings(raw=raw, root=root)
+
+
+def _load_local_secrets(path: Path) -> None:
+    """Load only allowlisted API keys without overriding the process environment."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (FileNotFoundError, OSError):
+        return
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        name = name.strip()
+        if name not in _LOCAL_SECRET_NAMES or name in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if value:
+            os.environ[name] = value
 
 
 def _merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:

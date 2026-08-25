@@ -111,6 +111,7 @@ class OpenAICompatibleProvider(LLMProvider):
         base_url: str,
         timeout_seconds: float = 30.0,
         transport: OllamaTransport | None = None,
+        vision_enabled: bool = True,
     ) -> None:
         if not api_key:
             raise ProviderConfigurationError("A chave do provedor remoto não foi definida.")
@@ -118,12 +119,13 @@ class OpenAICompatibleProvider(LLMProvider):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
+        self.vision_enabled = vision_enabled
         self._transport = transport or partial(_post_authenticated_json, api_key=self.api_key)
         self._native_streaming = transport is None
 
     @property
     def capabilities(self) -> frozenset[str]:
-        return frozenset({"generate", "vision"})
+        return frozenset({"generate", "vision"} if self.vision_enabled else {"generate"})
 
     async def generate(self, prompt: str) -> str:
         return await self._complete(
@@ -158,6 +160,8 @@ class OpenAICompatibleProvider(LLMProvider):
     async def vision_bytes(
         self, prompt: str, image: bytes, *, media_type: str = "image/png"
     ) -> str:
+        if not self.vision_enabled:
+            raise NotImplementedError("Este provider remoto não oferece visão.")
         encoded = base64.b64encode(image).decode("ascii")
         return await self._complete(
             [{

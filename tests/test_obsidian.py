@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 
-from app.integrations.obsidian import ObsidianSyncService, ObsidianVaultIndex
+from app.integrations.obsidian import (
+    ObsidianLearningStore,
+    ObsidianSyncService,
+    ObsidianVaultIndex,
+)
 from app.knowledge import KnowledgeStore
 from app.tools.obsidian import SaveObsidianNoteTool, SearchObsidianTool, SyncObsidianTool
 
@@ -124,3 +128,21 @@ async def test_automatic_sync_service_indexes_changes(tmp_path) -> None:
     await service.stop()
 
     assert (tmp_path / "state.json").exists()
+
+
+def test_approved_learning_is_redacted_written_and_indexed(tmp_path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    index = ObsidianVaultIndex(vault, store, tmp_path / "state.json")
+
+    destination = ObsidianLearningStore(index).save(
+        "Configure token=segredo123 no sistema",
+        "O processo validado usa reinicialização segura.",
+    )
+
+    content = destination.read_text(encoding="utf-8")
+    assert "segredo123" not in content
+    assert "[REDACTED]" in content
+    assert "feedback-explicito" in content
+    assert store.search("reinicialização segura")

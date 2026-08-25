@@ -96,7 +96,8 @@ async def test_specialists_never_receive_tools_or_claim_execution() -> None:
     await router.respond("Revise este código", {"user_message": "Revise"})
     prompt = provider.prompts[0]
     assert "constraint" in prompt
-    assert "Não afirme que vê tela" in prompt["constraint"]
+    assert "assistant_capabilities" in prompt["constraint"]
+    assert "não invente acesso" in prompt["constraint"]
     assert "tools" not in prompt
     assert prompt["response_policy"]["identity"].startswith("Você é Kiara")
     assert "material de referência" in prompt["context_policy"]
