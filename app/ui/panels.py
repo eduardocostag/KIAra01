@@ -53,8 +53,9 @@ class InfoPanel(QWidget):
 class AutomationPanel(QWidget):
     """Validated, preview-first automation administration."""
     def __init__(self, core) -> None:
-        super().__init__(); self.engine = core.background.automations
+        super().__init__(); self.setObjectName("automationPanel"); self.engine = core.background.automations
         self.items = QListWidget(accessibleName="Automações cadastradas")
+        self.items.setObjectName("automationList")
         self.name, self.trigger_value = QLineEdit(), QLineEdit()
         self.name.setAccessibleName("Nome da automação")
         self.trigger_value.setPlaceholderText("ISO, segundos, evento ou condição JSON")
@@ -64,10 +65,10 @@ class AutomationPanel(QWidget):
         self.action = QComboBox(); self.action.setAccessibleName("Ação da automação")
         self.action.addItems(core.tools.names())
         self.parameters = QLineEdit("{}"); self.parameters.setAccessibleName("Parâmetros JSON")
-        self.templates = QComboBox(accessibleName="Modelos de automação")
+        self.templates = QComboBox(accessibleName="Modelos de automação", objectName="automationTemplates")
         self.templates.addItems(["abrir_portal_diariamente", "avisar_erro_detectado"])
-        self.preview = QTextBrowser(accessibleName="Prévia da automação"); self.preview.setMaximumHeight(120)
-        self.history = QTextBrowser(accessibleName="Histórico de execuções"); self.history.setMaximumHeight(100)
+        self.preview = QTextBrowser(accessibleName="Prévia da automação", objectName="automationPreview"); self.preview.setMaximumHeight(120)
+        self.history = QTextBrowser(accessibleName="Histórico de execuções", objectName="automationHistory"); self.history.setMaximumHeight(100)
         form = QFormLayout()
         for label, widget in (("Nome", self.name), ("Gatilho", self.trigger), ("Valor", self.trigger_value),
                               ("Ação", self.action), ("Parâmetros", self.parameters)): form.addRow(label, widget)
@@ -76,10 +77,18 @@ class AutomationPanel(QWidget):
         for label, slot in (("Aplicar modelo", self.apply_template), ("Ver prévia", self.show_preview),
                             ("Ensinar rascunho", self.teach_draft), ("Criar", self.create),
                             ("Ativar/desativar", self.toggle_selected), ("Excluir", self.delete_selected)):
-            button = QPushButton(label); button.clicked.connect(slot); buttons.addWidget(button)
+            button = QPushButton(label); button.setObjectName("automationAction"); button.clicked.connect(slot); buttons.addWidget(button)
             if label in {"Ativar/desativar", "Excluir"}: self._selection_buttons.append(button)
-        layout = QVBoxLayout(self); layout.addWidget(self.items, 1); layout.addWidget(self.templates); layout.addLayout(form)
-        layout.addWidget(self.preview); layout.addLayout(buttons); layout.addWidget(self.history)
+        layout = QVBoxLayout(self); layout.setContentsMargins(16, 14, 16, 14); layout.setSpacing(8)
+        heading = QLabel("Fluxo rápido de automações", objectName="automationTitle")
+        subtitle = QLabel("Escolha um modelo ou monte uma automação com revisão antes de ativar.", objectName="automationSubtitle")
+        layout.addWidget(heading); layout.addWidget(subtitle)
+        layout.addWidget(QLabel("Automações cadastradas", objectName="automationSection"))
+        layout.addWidget(self.items, 1)
+        template_row = QHBoxLayout(); template_row.addWidget(QLabel("Modelos recomendados", objectName="automationSection")); template_row.addWidget(self.templates, 1); layout.addLayout(template_row)
+        layout.addWidget(QLabel("Configuração rápida", objectName="automationSection")); layout.addLayout(form)
+        layout.addWidget(QLabel("Pré-visualização", objectName="automationSection")); layout.addWidget(self.preview); layout.addLayout(buttons)
+        layout.addWidget(QLabel("Histórico de execuções", objectName="automationSection")); layout.addWidget(self.history)
         self.items.currentItemChanged.connect(self._update_selection_actions)
         self.refresh()
 

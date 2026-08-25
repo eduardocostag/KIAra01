@@ -62,3 +62,67 @@ def test_context_manager_surfaces_relevant_knowledge(tmp_path) -> None:
 
     assembled = context.assemble("Qual é a política de férias?")
     assert assembled["relevant_knowledge"][0]["content"] == "Política de férias: trinta dias"
+    assert assembled["relevant_knowledge"][0]["citation"] == {
+        "source": str(source.resolve()),
+        "chunk": 0,
+    }
+
+
+def test_relevance_threshold_filters_weak_semantic_matches(tmp_path) -> None:
+    source = tmp_path / "animals.txt"
+    source.write_text("animal doméstico", encoding="utf-8")
+    store = KnowledgeStore(
+        tmp_path / "knowledge.db",
+        embedding_provider=TinyEmbeddings(),
+        relevance_threshold=0.4,
+    )
+    store.ingest(source)
+
+    assert store.search("assunto sem termos comuns") == []
+    assert store.search("assunto sem termos comuns", relevance_threshold=0.3)
+
+
+def test_results_are_deduplicated_and_diversified_across_sources(tmp_path) -> None:
+    duplicate_a = tmp_path / "duplicate-a.txt"
+    duplicate_b = tmp_path / "duplicate-b.txt"
+    diverse = tmp_path / "diverse.txt"
+    duplicate_a.write_text("reinicie o roteador", encoding="utf-8")
+    duplicate_b.write_text("reinicie   o roteador", encoding="utf-8")
+    diverse.write_text("verifique o roteador e os cabos", encoding="utf-8")
+    store = KnowledgeStore(
+        tmp_path / "knowledge.db",
+        relevance_threshold=0.1,
+        max_chunks_per_source=1,
+    )
+    store.ingest(duplicate_a)
+    store.ingest(duplicate_b)
+    store.ingest(diverse)
+
+    results = store.search("roteador", limit=10)
+
+    assert len(results) == 2
+    assert len({result.content.casefold() for result in results}) == 2
+    assert len({result.source for result in results}) == 2
+
+
+def test_structured_citation_includes_page_when_metadata_provides_it(tmp_path) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("procedimento de diagnóstico", encoding="utf-8")
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    store.ingest(source, {"page": 7})
+
+    result = store.search("diagnóstico")[0]
+
+    assert result.citation == {"source": str(source.resolve()), "chunk": 0, "page": 7}
+
+
+def test_context_budget_bounds_retrieved_knowledge(tmp_path) -> None:
+    source = tmp_path / "large.txt"
+    source.write_text("procedimento " * 300, encoding="utf-8")
+    store = KnowledgeStore(tmp_path / "knowledge.db", chunk_size=700, chunk_overlap=50)
+    store.ingest(source)
+    context = ContextManager(lambda: ScreenContext(), knowledge=store, knowledge_max_chars=500)
+
+    results = context.assemble("procedimento")["relevant_knowledge"]
+
+    assert sum(len(item["content"]) for item in results) <= 500

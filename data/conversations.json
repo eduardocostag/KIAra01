@@ -1,0 +1,299 @@
+{
+  "conversations": [
+    {
+      "id": "conversation-1787666399866862",
+      "title": "Nova conversa",
+      "updated_at": "2026-08-25T13:59:59.866862+00:00",
+      "messages": []
+    },
+    {
+      "id": "conversation-1787666353718949",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:59:59.866862+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:59:59.866862+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:59:59.866862+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787665273396057",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:59:13.718949+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:59:13.718949+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:59:13.718949+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664889426272",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:41:13.390221+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:41:13.386251+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:41:13.390221+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664838753132",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:34:49.421111+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:34:49.410010+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:34:49.421111+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664798802613",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:33:58.749107+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:33:58.747096+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:33:58.749107+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664684606171",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:33:18.800605+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:33:18.792026+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:33:18.800605+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664667516177",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:31:24.600136+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:31:24.588310+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:31:24.600136+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664327578024",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:31:07.516177+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:31:07.508603+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:31:07.516177+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664296394033",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:25:27.574581+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:25:27.572018+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:25:27.574581+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787664287773702",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:24:56.387471+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:24:56.378392+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:24:56.387471+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787663060538603",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:24:47.769344+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:24:47.757389+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:24:47.769344+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787663007457562",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:04:20.538603+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:04:20.535296+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:04:20.538603+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787662727031188",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T13:03:27.441840+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T13:03:27.441840+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T13:03:27.441840+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787655895094129",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T12:58:47.024838+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T12:58:47.016830+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T12:58:47.024838+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787605069634801",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-25T11:04:55.094129+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-25T11:04:55.077694+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-25T11:04:55.094129+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787604295846037",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-24T20:57:49.630793+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-24T20:57:49.628789+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-24T20:57:49.630793+00:00"
+        }
+      ]
+    },
+    {
+      "id": "conversation-1787604295793804",
+      "title": "teste do usuário",
+      "updated_at": "2026-08-24T20:44:55.846037+00:00",
+      "messages": [
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-08-24T20:44:55.846037+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-08-24T20:44:55.846037+00:00"
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,8 @@ import pytest
 
 from app.agents.catalog import CatalogSpecialist, load_local_specialists
 from app.agents.router import AgentRouter
+from app.agents.specialists import HelpdeskSpecialist, SoftwareSpecialist
+from app.bootstrap import _merge_specialists
 from app.providers.llm import LLMProvider
 
 
@@ -63,3 +65,17 @@ def test_routes_representative_specialist_cases(slug: str, message: str) -> None
     specialist = CatalogSpecialist(slug, slug.replace("-", " "), "safe description")
     router = AgentRouter(NullProvider(), specialists=(specialist,))
     assert router.select(message)[0].name == f"especialista:{slug}"
+
+
+def test_merge_specialists_preserves_builtins_and_deduplicates_by_identity() -> None:
+    first_helpdesk = HelpdeskSpecialist()
+    merged = _merge_specialists(
+        (SoftwareSpecialist(), first_helpdesk),
+        (HelpdeskSpecialist(),),
+    )
+
+    assert [specialist.name for specialist in merged] == [
+        "engenharia_de_software",
+        "helpdesk",
+    ]
+    assert merged[1] is first_helpdesk

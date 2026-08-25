@@ -46,7 +46,23 @@ subprocessos registrados; `/sair` fecha a sessão.
 ## Providers de IA
 
 Em `config/kiara.yaml`, defina `llm.provider` como `local`, `openai` ou `ollama`, além de
-`llm.model`. Para OpenAI, instale o extra `openai` e forneça a credencial somente pelo ambiente:
+`llm.model`. Também há suporte a endpoints compatíveis com OpenAI usando `groq`, `openrouter`
+ou `gemini`. Para esses provedores, defina a chave somente no ambiente:
+
+```powershell
+$env:KIARA_LLM_PROVIDER = "groq"
+$env:KIARA_LLM_MODEL = "llama-3.1-8b-instant"
+$env:GROQ_API_KEY = "..."
+```
+
+Para manter a aplicação disponível quando o limite gratuito falhar, configure um fallback:
+
+```powershell
+$env:KIARA_LLM_FALLBACK_PROVIDER = "ollama"
+$env:KIARA_LLM_FALLBACK_MODEL = "kiara-stable:latest"
+```
+
+Para OpenAI, instale o extra `openai` e forneça a credencial somente pelo ambiente:
 
 ```powershell
 $env:OPENAI_API_KEY = "..."
@@ -63,6 +79,10 @@ duplicadas pelo hash SHA-256 do arquivo. O índice fica em `data/knowledge.db` e
 embeddings quando um `EmbeddingProvider` é fornecido; busca lexical continua disponível sem eles.
 PDF requer o extra `knowledge`. Resultados relevantes são incluídos no contexto conversacional
 como `relevant_knowledge`, preservando fonte, posição do chunk e metadados.
+
+Um vault local do Obsidian pode ser conectado em modo somente leitura, com sincronização
+incremental, exclusão de notas privadas e links de volta à origem. Consulte
+[`docs/OBSIDIAN_INTEGRATION.md`](docs/OBSIDIAN_INTEGRATION.md).
 
 ## Limites atuais da Fase 1
 

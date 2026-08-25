@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import io
 
 from PIL import Image
 
 from app.config import Settings
+from app.core.context import ContextManager
 from app.core.event_bus import EventBus
 from app.models import ScreenContext
 from app.perception import PerceptionOptions, ScreenPerception
+from app.perception.understanding import LiveScreenUnderstanding
 from app.perception.windows import WindowSnapshot
+from app.providers.llm import LLMProvider
 
 
 def snapshot(title: str = "Documento") -> WindowSnapshot:
@@ -79,6 +83,23 @@ async def test_virtual_desktop_capture_is_ephemeral_and_in_memory(monkeypatch) -
     assert result.png == b"desktop-png"
     assert (result.width, result.height) == (1920, 1080)
     assert not hasattr(result, "path")
+
+
+async def test_latest_capture_reuses_current_live_frame(monkeypatch) -> None:
+    perception = ScreenPerception(
+        EventBus(), PerceptionOptions(live_view_enabled=True), inspector=snapshot
+    )
+    monkeypatch.setattr(perception, "_capture_png", lambda *_: b"live-frame")
+    identity = ("42", "notepad.exe", "Documento")
+
+    assert await perception.poll_once() is True
+    first = await perception.latest_capture(expected_identity=identity)
+
+    assert first is not None
+    assert first.png == b"live-frame"
+    assert (
+        await perception.latest_capture(expected_identity=("99", "other.exe", "Outra")) is not None
+    )
 
 
 def test_visual_capture_downscales_without_cropping() -> None:
@@ -208,3 +229,41 @@ def test_screen_intelligence_options_are_loaded(tmp_path) -> None:
     assert options.content_change_threshold == 0.3
     assert options.content_change_cooldown_seconds == 9
     assert options.error_detection_enabled is True
+
+
+class _VisionProvider(LLMProvider):
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"generate", "vision"})
+
+    async def generate(self, prompt: str) -> str:
+        return prompt
+
+    async def vision_bytes(
+        self, prompt: str, image: bytes, *, media_type: str = "image/png"
+    ) -> str:
+        assert image == b"live-frame"
+        return "Painel do Windows com erro de driver código 10."
+
+
+async def test_live_understanding_keeps_semantics_without_pixels(monkeypatch) -> None:
+    bus = EventBus()
+    perception = ScreenPerception(
+        bus, PerceptionOptions(live_view_enabled=True), inspector=snapshot
+    )
+    monkeypatch.setattr(perception, "_capture_png", lambda *_: b"live-frame")
+    context = ContextManager(lambda: snapshot().context)
+    service = LiveScreenUnderstanding(
+        perception, _VisionProvider(), context, min_interval_seconds=2
+    )
+    service.start()
+    await perception.poll_once()
+    await asyncio.sleep(0)
+    if service._analysis_task is not None:
+        await service._analysis_task
+    understanding = context.live_screen_understanding()
+    assert understanding is not None
+    assert "erro de driver" in understanding["summary"]
+    assert understanding["pixels_persisted"] is False
+    assert "png" not in understanding
+    await service.stop()

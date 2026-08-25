@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.core.context import ContextManager
+from app.core.context import ContextManager, ConversationSession
 from app.memory import MemoryEngine, MemoryKind
 from app.models import ScreenContext
 
@@ -55,3 +55,69 @@ def test_context_manager_surfaces_relevant_memory(tmp_path) -> None:
     assert assembled["relevant_memories"][0]["content"] == "Prefere tema escuro"
     context.remember_action("open_url", True)
     assert engine.search("open_url", kinds=[MemoryKind.WORKING])
+
+
+def test_context_manager_remembers_desktop_screen_context_for_session_memory(tmp_path) -> None:
+    engine = MemoryEngine(tmp_path / "memory.db")
+    context = ContextManager(
+        lambda: ScreenContext(active_application="Google Chrome", window_title="Dashboard"),
+        engine,
+    )
+    context.remember_screen_context(
+        "olha minha tela",
+        "Google Chrome",
+        "Dashboard",
+        "Relatório de vendas",
+    )
+    records = engine.search("Dashboard", kinds=[MemoryKind.WORKING])
+    assert records
+    assert any("Dashboard" in record.content for record in records)
+    assert all("Relatório de vendas" not in record.content for record in records)
+    assert all("visible_text" not in record.metadata for record in records)
+    assert records[0].metadata["visible_text_available"] is True
+
+
+def test_configurable_working_ttl_and_default_retrieval_limit(tmp_path) -> None:
+    engine = MemoryEngine(
+        tmp_path / "memory.db",
+        default_ttl={MemoryKind.WORKING: timedelta(hours=2)},
+        retrieval_limit=2,
+    )
+    identifiers = [
+        engine.remember(MemoryKind.WORKING, f"registro configurado {index}")
+        for index in range(3)
+    ]
+
+    records = engine.search("registro configurado")
+
+    assert len(records) == 2
+    all_records = {record.id: record for record in engine.list_records()}
+    expected_expiry = all_records[identifiers[0]].created_at + timedelta(hours=2)
+    assert all_records[identifiers[0]].expires_at == expected_expiry
+
+
+def test_conversation_session_keeps_recent_turns_and_summarizes_evicted_ones() -> None:
+    session = ConversationSession(max_recent_turns=2, max_recent_chars=100, max_summary_chars=100)
+    context = ContextManager(lambda: ScreenContext(), conversation=session)
+
+    context.remember_exchange("primeira pergunta", "primeira resposta")
+    context.remember_exchange("segunda pergunta", "segunda resposta")
+
+    assembled = context.assemble("continue")
+    assert assembled["conversation_history"] == [
+        {"role": "user", "content": "segunda pergunta"},
+        {"role": "assistant", "content": "segunda resposta"},
+    ]
+    assert assembled["conversation_summary"] == (
+        "Usuário: primeira pergunta\nKiara: primeira resposta"
+    )
+
+
+def test_conversation_session_applies_deterministic_character_limits() -> None:
+    session = ConversationSession(max_recent_turns=10, max_recent_chars=8, max_summary_chars=12)
+    session.record_exchange("abcde", "fghij")
+
+    snapshot = session.snapshot()
+    assert snapshot["recent_turns"] == [{"role": "assistant", "content": "fghij"}]
+    assert len(snapshot["summary"]) <= 12
+    assert snapshot["summary"].endswith("abcde")

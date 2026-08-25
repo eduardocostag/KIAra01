@@ -13,11 +13,14 @@ class MetricSummary:
     total_ms: float
     average_ms: float
     maximum_ms: float
+    p50_ms: float
+    p95_ms: float
 
 
 class MetricsRegistry:
     def __init__(self) -> None:
         self._values: dict[str, list[float]] = defaultdict(list)
+        self._counters: dict[str, int] = defaultdict(int)
         self._lock = threading.Lock()
 
     def observe(self, name: str, duration_ms: float) -> None:
@@ -30,7 +33,28 @@ class MetricsRegistry:
         with self._lock:
             values = tuple(self._values.get(name, ()))
         total = sum(values)
-        return MetricSummary(len(values), total, total / len(values) if values else 0.0, max(values, default=0.0))
+        ordered = sorted(values)
+        return MetricSummary(
+            len(values), total, total / len(values) if values else 0.0,
+            max(values, default=0.0), self._percentile(ordered, 0.50),
+            self._percentile(ordered, 0.95),
+        )
+
+    def increment(self, name: str, amount: int = 1) -> None:
+        if amount < 0:
+            raise ValueError("counter increment cannot be negative")
+        with self._lock:
+            self._counters[name] += amount
+
+    def count(self, name: str) -> int:
+        with self._lock:
+            return self._counters.get(name, 0)
+
+    @staticmethod
+    def _percentile(values: list[float], quantile: float) -> float:
+        if not values:
+            return 0.0
+        return values[round((len(values) - 1) * quantile)]
 
     def timer(self, name: str) -> Timer:
         return Timer(self, name)

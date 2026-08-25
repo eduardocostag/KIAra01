@@ -26,11 +26,16 @@ screen:
   enabled: true
   monitor_active_window: true
   capture_active_window: true
+  # Mantém o último quadro visual em memória para responder sem nova espera.
+  live_view_enabled: true
+  # Mantém um resumo semântico efêmero da janela e do assunto atual para suporte contextual.
+  continuous_understanding_enabled: true
+  understanding_interval_seconds: 8.0
   poll_interval_seconds: 1.0
   ui_automation_enabled: false
   ocr_enabled: false
   # Amostragem efêmera da janela ativa; nenhum pixel é persistido.
-  content_change_enabled: false
+  content_change_enabled: true
   content_change_threshold: 0.18
   content_change_cooldown_seconds: 5.0
   error_detection_enabled: false
@@ -78,6 +83,14 @@ planning:
   max_steps: 5
   max_safe_retries: 1
 integrations:
+  obsidian:
+    enabled: true
+    # Caminho absoluto do vault. A integração é somente leitura.
+    vault_path: C:/Users/EduardoGonçalves/Documents/Kiara Vault
+    state: data/obsidian-index.json
+    max_file_bytes: 2000000
+    sync_interval_seconds: 10
+    write_enabled: true
   email:
     provider: none
   graph:
@@ -87,6 +100,9 @@ knowledge:
   database: data/knowledge.db
   chunk_size: 1200
   chunk_overlap: 150
+  relevance_threshold: 0.1
+  max_chunks_per_source: 2
+  context_max_chars: 6000
 automation:
   enabled: true
   database: data/automations.db

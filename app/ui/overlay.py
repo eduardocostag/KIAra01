@@ -82,32 +82,51 @@ class AnimatedOrb(QWidget):
         diameter = 76 * scale
         orb_rect = QRectF((92 - diameter) / 2 - 3, (86 - diameter) / 2, diameter, diameter)
 
-        # HUD tecnológico contínuo: arcos contrarrotativos e partículas.
-        ring_alpha = int((95 if active else 54) + 35 * (pulse + 1) / 2)
-        outer = orb_rect.adjusted(-4, -4, 4, 4)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(58, 255, 236, ring_alpha), 1.45))
-        start = int((self._phase * 78) % 360 * 16)
-        for offset in (0, 120, 240):
-            painter.drawArc(outer, start + offset * 16, 48 * 16)
-        painter.setPen(QPen(QColor(58, 188, 255, max(35, ring_alpha - 22)), 1.0))
-        inner_ring = orb_rect.adjusted(2, 2, -2, -2)
-        reverse = int((-self._phase * 52) % 360 * 16)
-        for offset in (25, 205):
-            painter.drawArc(inner_ring, reverse + offset * 16, 92 * 16)
+        if active:
+            # Motion language changes by state: calm listening waves, stronger
+            # thinking arcs, and broad speaking waves around the orb.
+            ring_alpha = int(120 + 70 * (pulse + 1) / 2)
+            outer = orb_rect.adjusted(-4, -4, 4, 4)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor(58, 255, 236, ring_alpha), 1.45))
+            start = int((self._phase * 78) % 360 * 16)
+            arc_length = 64 if self._state == "pensando" else 48
+            for offset in (0, 120, 240):
+                painter.drawArc(outer, start + offset * 16, arc_length * 16)
 
-        orbit = self._phase * (1.55 if self._state == "pensando" else 0.92)
-        particle_count = 5 if active else 3
-        for index in range(particle_count):
-            angle = orbit + index * math.tau / particle_count
-            radius = 39 + 1.5 * math.sin(self._phase * 1.7 + index)
-            x = 43 + math.cos(angle) * radius
-            y = 41 + math.sin(angle) * radius
-            alpha = 225 if index == 0 else 105 + index * 18
-            size = 4.5 if index == 0 else 2.7
-            painter.setBrush(QColor(91, 255, 238, alpha))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QRectF(x - size / 2, y - size / 2, size, size))
+            if self._state == "pensando":
+                painter.setPen(QPen(QColor(72, 190, 255, 130), 1.1))
+                for index in range(3):
+                    spread = 7 + index * 5 + abs(math.sin(self._phase * 1.4 + index)) * 3
+                    wave = orb_rect.adjusted(-spread, -spread, spread, spread)
+                    painter.drawArc(wave, int((start - index * 55) % 360 * 16), 135 * 16)
+            elif self._state == "falando":
+                painter.setPen(QPen(QColor(93, 255, 239, 155), 1.7))
+                for side in (-1, 1):
+                    for index in range(2):
+                        radius = 43 + index * 7 + 3 * math.sin(self._phase * 2 + index)
+                        wave = QRectF(43 - radius, 41 - radius, radius * 2, radius * 2)
+                        angle = (-52 if side < 0 else 128) + index * (12 if side < 0 else -12)
+                        painter.drawArc(wave, angle * 16, 42 * 16)
+            else:
+                painter.setPen(QPen(QColor(72, 220, 255, 115), 1.0))
+                for index in range(2):
+                    radius = 43 + index * 6 + 2 * math.sin(self._phase + index)
+                    wave = QRectF(43 - radius, 41 - radius, radius * 2, radius * 2)
+                    painter.drawArc(wave, int((-35 + index * 25) * 16), 70 * 16)
+
+            orbit = self._phase * (1.8 if self._state == "pensando" else 1.05)
+            particle_count = 7 if self._state == "pensando" else 5
+            for index in range(particle_count):
+                angle = orbit + index * math.tau / particle_count
+                radius = 39 + 1.5 * math.sin(self._phase * 1.7 + index)
+                x = 43 + math.cos(angle) * radius
+                y = 41 + math.sin(angle) * radius
+                alpha = 225 if index == 0 else 105 + index * 18
+                size = 4.5 if index == 0 else 2.7
+                painter.setBrush(QColor(91, 255, 238, alpha))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(QRectF(x - size / 2, y - size / 2, size, size))
 
         painter.save()
         center = orb_rect.center()
@@ -118,14 +137,28 @@ class AnimatedOrb(QWidget):
         painter.drawPixmap(orb_rect, self._image, QRectF(self._image.rect()))
         painter.restore()
 
-        # Linha de varredura interna, lenta em repouso e rápida durante atividade.
-        scan_progress = (math.sin(self._phase * (1.4 if active else 0.75)) + 1) / 2
-        scan_y = orb_rect.top() + 8 + scan_progress * max(1, orb_rect.height() - 16)
-        painter.save()
-        painter.setClipPath(self._ellipse_path(orb_rect.adjusted(5, 5, -5, -5)))
-        painter.setPen(QPen(QColor(93, 255, 239, 80 if active else 42), 1.2))
-        painter.drawLine(QLineF(orb_rect.left() + 10, scan_y, orb_rect.right() - 10, scan_y))
-        painter.restore()
+        if self._state in {"pensando", "ocupada"}:
+            # Three sequential dots make processing visible without adding a
+            # second animation clock to the overlay.
+            dot_phase = (self._phase * 1.8) % math.tau
+            for index in range(3):
+                pulse = (math.sin(dot_phase - index * 1.3) + 1) / 2
+                radius = 2.0 + pulse * 1.1
+                alpha = int(145 + pulse * 110)
+                x = center.x() - 10 + index * 10
+                y = center.y()
+                painter.setBrush(QColor(225, 255, 252, alpha))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(QRectF(x - radius, y - radius, radius * 2, radius * 2))
+
+        if active:
+            scan_progress = (math.sin(self._phase * 1.4) + 1) / 2
+            scan_y = orb_rect.top() + 8 + scan_progress * max(1, orb_rect.height() - 16)
+            painter.save()
+            painter.setClipPath(self._ellipse_path(orb_rect.adjusted(5, 5, -5, -5)))
+            painter.setPen(QPen(QColor(93, 255, 239, 80), 1.2))
+            painter.drawLine(QLineF(orb_rect.left() + 10, scan_y, orb_rect.right() - 10, scan_y))
+            painter.restore()
 
         if self._state == "falando":
             painter.setPen(QPen(QColor(93, 255, 239, 180), 2.0))
@@ -211,6 +244,8 @@ class StatusOverlay(QWidget):
         self.orb = AnimatedOrb()
         self.orb.setObjectName("kiaraOrb")
         self.orb.setProperty("keyboardFocus", False)
+        self.orb.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.orb.installEventFilter(self)
         self.quick_panel = QWidget()
         self.quick_panel.setObjectName("quickPanel")
         panel = QVBoxLayout(self.quick_panel)
@@ -219,10 +254,15 @@ class StatusOverlay(QWidget):
         self.response_label = QLabel("Como posso ajudar você?")
         self.response_label.setObjectName("quickResponse")
         self.response_label.setWordWrap(True)
-        self.response_label.setMinimumWidth(270)
-        self.response_label.setMaximumWidth(360)
+        self.response_label.setMinimumWidth(230)
+        self.response_label.setMaximumWidth(300)
+        self.response_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         self.response_label.setAccessibleName("Resposta da Kiara")
         row = QHBoxLayout()
+        row.setSpacing(6)
         self.quick_input = QLineEdit()
         self.quick_input.setObjectName("quickInput")
         self.quick_input.setPlaceholderText("Converse com a Kiara…")
@@ -233,23 +273,20 @@ class StatusOverlay(QWidget):
         self.quick_input.installEventFilter(self)
         self.quick_input.returnPressed.connect(self._submit_quick_message)
         row.addWidget(self.quick_input, 1)
-        panel_header = QHBoxLayout()
-        panel_header.addStretch(1)
         self.open_central_button = CentralButton("")
         self.open_central_button.setObjectName("openCentral")
         self.open_central_button.setFixedSize(34, 34)
         self.open_central_button.setAccessibleName("Abrir central completa da Kiara")
         self.open_central_button.setToolTip("Abrir central completa")
         self.open_central_button.clicked.connect(self._request_main_window)
-        panel_header.addWidget(self.open_central_button)
         self.voice_button = MicrophoneButton("")
         self.voice_button.setObjectName("quickVoice")
         self.voice_button.setFixedSize(34, 34)
         self.voice_button.setAccessibleName("Falar com a Kiara")
         self.voice_button.setToolTip("Falar com a Kiara")
         self.voice_button.clicked.connect(self.voice_requested.emit)
+        row.addWidget(self.open_central_button)
         row.addWidget(self.voice_button)
-        panel.addLayout(panel_header)
         panel.addWidget(self.response_label)
         panel.addLayout(row)
         self.quick_panel.hide()
@@ -273,8 +310,8 @@ class StatusOverlay(QWidget):
         return """
         #statusOverlay { background: transparent; }
         #quickPanel { background-color:rgba(4,20,28,248); border:1px solid rgba(56,221,235,170); border-radius:16px; }
-        #quickResponse { color:#e8fbff; font-size:13px; padding:3px; }
-        #quickInput { color:#efffff; background:rgba(12,38,49,245); border:1px solid #257b87; border-radius:10px; padding:8px; }
+        #quickResponse { color:#e8fbff; font-size:13px; padding:2px 3px; }
+        #quickInput { color:#efffff; background:rgba(12,38,49,245); border:1px solid #257b87; border-radius:10px; padding:7px 8px; min-width:210px; max-width:270px; }
         #quickInput:focus { border:1px solid #63fff2; }
         #quickVoice { background:#087c83; border:1px solid #43e1df; border-radius:17px; }
         #quickVoice:hover, #quickVoice:focus { background:#0aa1a5; border:2px solid #fff; }
@@ -384,7 +421,7 @@ class StatusOverlay(QWidget):
         super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and self._orb_contains(event.position().toPoint()):
             self._press_global = event.globalPosition().toPoint()
             self._window_at_press = self.pos()
             self._dragged = False
@@ -435,6 +472,18 @@ class StatusOverlay(QWidget):
         super().keyPressEvent(event)
 
     def eventFilter(self, watched, event: QEvent) -> bool:
+        if watched is self.orb and event.type() in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+        ):
+            if event.type() == QEvent.Type.MouseButtonPress:
+                self._begin_orb_drag(event)
+            elif event.type() == QEvent.Type.MouseMove:
+                self._move_orb(event)
+            else:
+                self._finish_orb_drag(event)
+            return True
         if (
             watched is self.quick_input
             and event.type() == QEvent.Type.KeyPress
@@ -448,6 +497,31 @@ class StatusOverlay(QWidget):
             return True
         return super().eventFilter(watched, event)
 
+    def _begin_orb_drag(self, event: QMouseEvent) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        self._press_global = event.globalPosition().toPoint()
+        self._window_at_press = self.pos()
+        self._dragged = False
+
+    def _move_orb(self, event: QMouseEvent) -> None:
+        if self._press_global is None or self._window_at_press is None:
+            return
+        delta = event.globalPosition().toPoint() - self._press_global
+        if delta.manhattanLength() >= self._DRAG_THRESHOLD:
+            self._dragged = True
+            self.move(self._clamped_position(self._window_at_press + delta))
+
+    def _finish_orb_drag(self, event: QMouseEvent) -> None:
+        if event.button() != Qt.MouseButton.LeftButton or self._press_global is None:
+            return
+        should_click = not self._dragged
+        self._press_global = None
+        self._window_at_press = None
+        self._dragged = False
+        if should_click:
+            self._apply_single_click()
+
     def focusInEvent(self, event: QFocusEvent) -> None:
         self._set_keyboard_focus_visible(True)
         super().focusInEvent(event)
@@ -460,6 +534,9 @@ class StatusOverlay(QWidget):
         self.orb.setProperty("keyboardFocus", visible)
         self.orb.style().unpolish(self.orb)
         self.orb.style().polish(self.orb)
+
+    def _orb_contains(self, position: QPoint) -> bool:
+        return self.orb.geometry().contains(position)
 
     def _update_accessibility(self) -> None:
         voice = "ouvindo a palavra Kiara" if self._listening else "microfone em espera"

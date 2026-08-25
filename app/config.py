@@ -32,6 +32,7 @@ DEFAULTS: dict[str, Any] = {
     "llm": {
         "provider": "local",
         "model": None,
+        "remote_base_url": None,
         "vision_enabled": False,
         "vision_model": None,
         "vision_num_gpu": 0,

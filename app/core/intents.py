@@ -27,7 +27,10 @@ class PatternMatcher:
         matched = self.pattern.search(message)
         if matched is None:
             return None
-        parameters = {key: value.strip().rstrip(".!?") for key, value in zip(self.parameter_names, matched.groups(), strict=True)}
+        parameters = {
+            key: value.strip().rstrip(".!?")
+            for key, value in zip(self.parameter_names, matched.groups(), strict=True)
+        }
         return Intent(self.name, self.confidence, parameters)
 
 
@@ -47,8 +50,30 @@ def default_matchers() -> list[IntentMatcher]:
     flags = re.IGNORECASE
     return [
         PatternMatcher(
+            "sync_obsidian", re.compile(r"(?:sincronize|atualize).{0,20}obsidian", flags)
+        ),
+        PatternMatcher(
+            "search_obsidian",
+            re.compile(
+                r"(?:pesquise|procure|busque).{0,12}(?:no|meu)\s+obsidian(?:\s+por)?\s+(.+)", flags
+            ),
+            ("query",),
+        ),
+        PatternMatcher(
+            "open_obsidian_note",
+            re.compile(r"(?:abra|abrir).{0,12}(?:a\s+)?nota\s+(.+?)\s+(?:no|do)\s+obsidian", flags),
+            ("note",),
+        ),
+        PatternMatcher(
+            "save_obsidian_note",
+            re.compile(r"(?:salve|grave|anote).{0,12}(?:no|meu)\s+obsidian\s*:?\s*(.+)", flags),
+            ("content",),
+        ),
+        PatternMatcher(
             "complex_task",
-            re.compile(r"(?:planeje e execute|execute (?:os )?seguintes passos|tarefa complexa)", flags),
+            re.compile(
+                r"(?:planeje e execute|execute (?:os )?seguintes passos|tarefa complexa)", flags
+            ),
         ),
         PatternMatcher("active_window", re.compile(r"(?:qual programa|janela ativa)", flags)),
         PatternMatcher(
@@ -59,15 +84,30 @@ def default_matchers() -> list[IntentMatcher]:
                 flags,
             ),
         ),
-        PatternMatcher("powershell", re.compile(r"(?:powershell\s+(?:o\s+)?comando|comando)\s+([\w-]+)\s*[.!?]?$", flags), ("command",)),
+        PatternMatcher(
+            "powershell",
+            re.compile(r"(?:powershell\s+(?:o\s+)?comando|comando)\s+([\w-]+)\s*[.!?]?$", flags),
+            ("command",),
+        ),
         PatternMatcher(
             "screen_context",
             re.compile(
                 r"(?:o\s*que|oque).{0,20}(?:estou|est[aá]|t[oô]|voc[eê]).{0,12}"
-                r"(?:vendo|v[eê])|(?:descreva|analise|leia).{0,20}(?:minha|a|essa)?\s*tela|essa\s+tela",
+                r"(?:vendo|v[eê])|"
+                r"(?:descreva|analise|leia|explique|olha|olhe|observe).{0,20}"
+                r"(?:minha|a|essa)?\s*tela|"
+                r"(?:olha|olhe|analise|explique).{0,20}(?:o\s+que\s+est[aá]|o\s+conte[uú]do).{0,20}"
+                r"(?:na|d[aá]|nessa)\s*tela|"
+                r"(?:essa|esta)\s+tela",
                 flags,
             ),
         ),
-        PatternMatcher("open_url", re.compile(r"(?:abra|abrir|acesse)\s+(https?://\S+)", flags), ("url",)),
-        PatternMatcher("open_application", re.compile(r"(?:abra|abrir)\s+(?:o\s+)?(.+?)(?:\s+por favor)?[.!?]?$", flags), ("application",)),
+        PatternMatcher(
+            "open_url", re.compile(r"(?:abra|abrir|acesse)\s+(https?://\S+)", flags), ("url",)
+        ),
+        PatternMatcher(
+            "open_application",
+            re.compile(r"(?:abra|abrir)\s+(?:o\s+)?(.+?)(?:\s+por favor)?[.!?]?$", flags),
+            ("application",),
+        ),
     ]

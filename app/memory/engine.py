@@ -33,7 +33,10 @@ class MemoryEngine:
         *,
         embedding_provider: EmbeddingProvider | None = None,
         default_ttl: dict[MemoryKind, timedelta | None] | None = None,
+        retrieval_limit: int = 5,
     ) -> None:
+        if retrieval_limit <= 0:
+            raise ValueError("retrieval_limit must be greater than zero")
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self._lock = threading.RLock()
@@ -42,6 +45,7 @@ class MemoryEngine:
         self._connection.row_factory = sqlite3.Row
         self._embedding_provider = embedding_provider
         self._ttl = default_ttl or {MemoryKind.WORKING: timedelta(hours=24)}
+        self.retrieval_limit = retrieval_limit
         self._migrate()
 
     def _migrate(self) -> None:
@@ -149,10 +153,11 @@ class MemoryEngine:
         query: str,
         *,
         kinds: Iterable[MemoryKind] | None = None,
-        limit: int = 5,
+        limit: int | None = None,
         now: datetime | None = None,
         profile: MemoryProfile | None = None,
     ) -> list[MemoryRecord]:
+        limit = self.retrieval_limit if limit is None else limit
         if limit <= 0:
             return []
         now = now or datetime.now(UTC)

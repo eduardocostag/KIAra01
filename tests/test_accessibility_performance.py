@@ -73,10 +73,7 @@ def test_ui_accessibility_names_shortcuts_and_bounded_history(monkeypatch):
         assert window.minimumWidth() <= 440
         assert window.minimumHeight() <= 420
         assert [window.tabs.tabText(index) for index in range(window.tabs.count())] == [
-            "Conversa",
-            "Automações",
-            "Memória",
-            "Agentes",
+            "Conversa"
         ]
         assert "desativado" in window.conversation.text().casefold()
         window.conversation.setChecked(True)

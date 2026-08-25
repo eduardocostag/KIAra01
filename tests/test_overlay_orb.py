@@ -39,15 +39,27 @@ def test_single_click_opens_and_closes_quick_chat_immediately() -> None:
     overlay = StatusOverlay(lambda: activations.append("activate"))
     try:
         overlay.show()
-        QTest.mouseClick(overlay, Qt.MouseButton.LeftButton, pos=QPoint(20, 20))
+        orb_center = overlay.orb.geometry().center()
+        QTest.mouseClick(overlay, Qt.MouseButton.LeftButton, pos=orb_center)
         assert overlay.is_expanded()
-        QTest.mouseClick(overlay, Qt.MouseButton.LeftButton, pos=QPoint(20, 80))
+        QTest.mouseClick(overlay, Qt.MouseButton.LeftButton, pos=overlay.orb.geometry().center())
         assert not overlay.is_expanded()
         assert activations == []
         QApplication.sendEvent(overlay, QFocusEvent(QEvent.Type.FocusIn))
         assert overlay.orb.property("keyboardFocus") is True
         overlay.set_expanded(False)
         QTest.keyClick(overlay, Qt.Key.Key_Return)
+        assert overlay.is_expanded()
+    finally:
+        overlay.close()
+
+
+def test_clicking_orb_widget_opens_quick_chat() -> None:
+    _app()
+    overlay = StatusOverlay()
+    try:
+        overlay.show()
+        QTest.mouseClick(overlay.orb, Qt.MouseButton.LeftButton)
         assert overlay.is_expanded()
     finally:
         overlay.close()
@@ -85,6 +97,7 @@ def test_quick_message_and_response_contract() -> None:
         QApplication.processEvents()
         assert "aberta" in overlay.accessibleDescription().casefold()
         assert overlay.quick_input.hasFocus()
+        assert overlay.response_label.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse
         overlay.quick_input.setText("  Olá, Kiara  ")
         QTest.keyClick(overlay.quick_input, Qt.Key.Key_Return)
         assert messages == ["Olá, Kiara"]

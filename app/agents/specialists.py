@@ -21,11 +21,86 @@ class SoftwareSpecialist(Specialist):
     )
     system_prompt = "Você é especialista em engenharia de software pragmática e verificável."
     context_keys = frozenset(
-        {"user_message", "recent_actions", "relevant_memories", "relevant_knowledge"}
+        {
+            "user_message",
+            "recent_actions",
+            "relevant_memories",
+            "relevant_knowledge",
+            "active_screen",
+            "screen_context_summary",
+        }
     )
 
     def instructions(self) -> str:
         return "Diagnostique tecnicamente, explicite hipóteses e proponha passos testáveis."
+
+
+class HelpdeskSpecialist(Specialist):
+    name = "helpdesk"
+    description = "Suporte e diagnóstico de software, Windows, periféricos e hardware"
+    keywords = frozenset(
+        {
+            "helpdesk",
+            "suporte",
+            "erro",
+            "falha",
+            "travou",
+            "lento",
+            "não abre",
+            "nao abre",
+            "windows",
+            "driver",
+            "rede",
+            "wifi",
+            "internet",
+            "impressora",
+            "monitor",
+            "teclado",
+            "mouse",
+            "microfone",
+            "camera",
+            "câmera",
+            "audio",
+            "áudio",
+            "hardware",
+            "software",
+            "cpu",
+            "memória ram",
+            "disco",
+            "ssd",
+            "temperatura",
+            "tela azul",
+            "bsod",
+            "bios",
+            "usb",
+            "bateria",
+        }
+    )
+    system_prompt = (
+        "Você é a especialista de helpdesk da Kiara para software e hardware, "
+        "com diagnóstico seguro, metódico e orientado por evidências."
+    )
+    context_keys = frozenset(
+        {
+            "user_message",
+            "recent_actions",
+            "relevant_memories",
+            "relevant_knowledge",
+            "active_screen",
+            "screen_context_summary",
+            "live_screen_understanding",
+        }
+    )
+
+    def instructions(self) -> str:
+        return (
+            "Comece pelos sintomas e evidências observáveis. Separe causa confirmada de "
+            "hipótese, priorize verificações reversíveis e de baixo risco e forneça passos "
+            "curtos com critério de sucesso. Para hardware, nunca afirme enxergar componentes "
+            "físicos sem dados de sensores, foto ou confirmação do usuário; antes de abrir o "
+            "equipamento, desligar proteções, atualizar BIOS/firmware ou manipular energia, "
+            "explique riscos e solicite confirmação."
+        )
 
 
 class SecuritySpecialist(Specialist):
@@ -48,7 +123,14 @@ class ProductivitySpecialist(Specialist):
     )
     system_prompt = "Você é especialista em planejamento executável e sustentável."
     context_keys = frozenset(
-        {"user_message", "recent_actions", "relevant_memories", "relevant_knowledge"}
+        {
+            "user_message",
+            "recent_actions",
+            "relevant_memories",
+            "relevant_knowledge",
+            "active_screen",
+            "screen_context_summary",
+        }
     )
 
     def instructions(self) -> str:

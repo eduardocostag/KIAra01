@@ -1,7 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import timedelta
+
 from app.agents.catalog import load_local_specialists
+from app.agents.contracts import Specialist
 from app.agents.router import AgentRouter
+from app.agents.specialists import (
+    GeneralistSpecialist,
+    HelpdeskSpecialist,
+    ProductivitySpecialist,
+    ResearchSpecialist,
+    SecuritySpecialist,
+    SoftwareSpecialist,
+)
 from app.browser import BrowserSession
 from app.computer_use import (
     EphemeralVisualStateVerifier,
@@ -24,8 +36,9 @@ from app.integrations.email import (
     EmailService,
     GmailEmailProvider,
 )
+from app.integrations.obsidian import ObsidianVaultIndex
 from app.knowledge import KnowledgeStore
-from app.memory import MemoryEngine
+from app.memory import MemoryEngine, MemoryKind
 from app.memory.embeddings import LocalHashEmbeddingProvider
 from app.models import AutonomyMode
 from app.perception import PerceptionOptions, ScreenPerception
@@ -47,11 +60,30 @@ from app.tools.communications import (
     SendMessageTool,
 )
 from app.tools.email import DraftEmailTool, ReadEmailTool, SendEmailTool
+from app.tools.obsidian import (
+    OpenObsidianNoteTool,
+    SaveObsidianNoteTool,
+    SearchObsidianTool,
+    SyncObsidianTool,
+)
 from app.tools.powershell import PowerShellTool
 from app.tools.registry import ToolRegistry
 from app.tools.windows import OpenApplicationTool, OpenUrlTool, ScreenshotTool
 from app.voice.adapters import FasterWhisperRecognizer, SapiSynthesizer, SoundDeviceMicrophone
 from app.voice.service import VoiceService
+
+
+def _merge_specialists(*groups: Sequence[Specialist]) -> tuple[Specialist, ...]:
+    """Preserve built-ins and add catalog roles without duplicate identities."""
+    merged: list[Specialist] = []
+    seen: set[str] = set()
+    for specialist in (item for group in groups for item in group):
+        identity = specialist.name.casefold()
+        if identity in seen:
+            continue
+        seen.add(identity)
+        merged.append(specialist)
+    return tuple(merged)
 
 
 def build_voice_service(settings: Settings) -> VoiceService | None:
@@ -75,9 +107,7 @@ def build_voice_service(settings: Settings) -> VoiceService | None:
         require_wake_word=bool(settings.get("voice.require_wake_word", True)),
         vad_enabled=bool(settings.get("voice.vad_enabled", True)),
         continuous_conversation=bool(settings.get("voice.continuous_conversation", False)),
-        always_listen_for_wake_word=bool(
-            settings.get("voice.always_listen_for_wake_word", True)
-        ),
+        always_listen_for_wake_word=bool(settings.get("voice.always_listen_for_wake_word", True)),
         conversation_requires_wake_word=bool(
             settings.get("voice.conversation_requires_wake_word", True)
         ),
@@ -122,12 +152,14 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         registry.register(PreviewCalendarEventTool())
         registry.register(CreateCalendarEventTool(communications))
     registry.register(ScreenshotTool(settings.root / "data" / "screenshots"))
-    registry.register(PowerShellTool(
-        list(settings.get("security.allowlisted_commands", [])),
-        int(settings.get("security.powershell_timeout_seconds", 15)),
-        kill_switch,
-        int(settings.get("security.max_command_output_chars", 16_384)),
-    ))
+    registry.register(
+        PowerShellTool(
+            list(settings.get("security.allowlisted_commands", [])),
+            int(settings.get("security.powershell_timeout_seconds", 15)),
+            kill_switch,
+            int(settings.get("security.max_command_output_chars", 16_384)),
+        )
+    )
     memory = None
     embeddings = None
     if settings.get("memory.embeddings_enabled", False):
@@ -138,6 +170,12 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         memory = MemoryEngine(
             settings.root / settings.get("memory.database", "data/memory.db"),
             embedding_provider=embeddings,
+            default_ttl={
+                MemoryKind.WORKING: timedelta(
+                    hours=float(settings.get("memory.working_ttl_hours", 24))
+                )
+            },
+            retrieval_limit=int(settings.get("memory.retrieval_limit", 5)),
         )
     knowledge = None
     if settings.get("knowledge.enabled", True):
@@ -146,8 +184,34 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
             chunk_size=int(settings.get("knowledge.chunk_size", 1_200)),
             chunk_overlap=int(settings.get("knowledge.chunk_overlap", 150)),
             embedding_provider=embeddings,
+            relevance_threshold=float(settings.get("knowledge.relevance_threshold", 0.1)),
+            max_chunks_per_source=int(settings.get("knowledge.max_chunks_per_source", 2)),
         )
-    context = ContextManager(get_active_window, memory, knowledge)
+    obsidian = None
+    if settings.get("integrations.obsidian.enabled", False):
+        if knowledge is None:
+            raise ValueError("A integração Obsidian requer knowledge.enabled.")
+        vault_path = str(settings.get("integrations.obsidian.vault_path", "")).strip()
+        if not vault_path:
+            raise ValueError("Configure integrations.obsidian.vault_path.")
+        obsidian = ObsidianVaultIndex(
+            vault_path,
+            knowledge,
+            settings.root / settings.get("integrations.obsidian.state", "data/obsidian-index.json"),
+            max_file_bytes=int(settings.get("integrations.obsidian.max_file_bytes", 2_000_000)),
+        )
+        obsidian.sync()
+        registry.register(SyncObsidianTool(obsidian))
+        registry.register(SearchObsidianTool(knowledge))
+        registry.register(OpenObsidianNoteTool(obsidian))
+        if settings.get("integrations.obsidian.write_enabled", False):
+            registry.register(SaveObsidianNoteTool(obsidian))
+    context = ContextManager(
+        get_active_window,
+        memory,
+        knowledge,
+        knowledge_max_chars=int(settings.get("knowledge.context_max_chars", 6_000)),
+    )
     provider = build_llm_provider(settings)
     perception = ScreenPerception(EventBus(), PerceptionOptions.from_settings(settings))
     vision_fallback = None
@@ -175,7 +239,18 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         resources.append(knowledge)
     resources.append(provider)
     local_specialists = load_local_specialists()
-    agent_router = AgentRouter(provider, specialists=local_specialists or None)
+    built_in_specialists = (
+        SoftwareSpecialist(),
+        HelpdeskSpecialist(),
+        SecuritySpecialist(),
+        ProductivitySpecialist(),
+        ResearchSpecialist(),
+    )
+    agent_router = AgentRouter(
+        provider,
+        specialists=_merge_specialists(built_in_specialists, local_specialists),
+        generalist=GeneralistSpecialist(),
+    )
     planner = None
     if settings.get("planning.enabled", False):
         plan_store = PlanStore(
@@ -199,7 +274,15 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         task_planner=planner,
         perception=perception,
     )
-    core.background = BackgroundServices(settings, registry)
+    core.obsidian = obsidian
+    core.background = BackgroundServices(
+        settings,
+        registry,
+        screen=perception,
+        provider=provider,
+        context=context,
+        obsidian=obsidian,
+    )
     return core, kill_switch
 
 

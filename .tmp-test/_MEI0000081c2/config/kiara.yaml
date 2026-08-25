@@ -1,0 +1,102 @@
+assistant:
+  name: Kiara
+  language: pt-BR
+voice:
+  # Solicitado pelo usuário: monitor local contínuo, acionado apenas por "Kiara".
+  enabled: true
+  wake_word: Kiara
+  require_wake_word: true
+  vad_enabled: true
+  continuous_conversation: false
+  always_listen_for_wake_word: true
+  # Protege contra fala ambiente: mesmo no modo conversa, exige "Kiara".
+  conversation_requires_wake_word: true
+  capture_seconds: 5
+  sample_rate: 16000
+  stt_model: base
+  stt_language: pt
+  # Perfil local suave para pt-BR; ajuste fino depende da voz SAPI instalada.
+  tts_rate: -1
+  tts_volume: 92
+  tts_language: pt-BR
+  tts_max_chunk_chars: 280
+  # Trecho do nome de uma voz SAPI instalada; null usa a voz padrão do Windows.
+  tts_voice_name: null
+screen:
+  enabled: true
+  monitor_active_window: true
+  capture_active_window: true
+  # Mantém o último quadro visual em memória para responder sem nova espera.
+  live_view_enabled: true
+  poll_interval_seconds: 1.0
+  ui_automation_enabled: false
+  ocr_enabled: false
+  # Amostragem efêmera da janela ativa; nenhum pixel é persistido.
+  content_change_enabled: false
+  content_change_threshold: 0.18
+  content_change_cooldown_seconds: 5.0
+  error_detection_enabled: false
+  # Limita custo de VRAM sem recortar o desktop; preserva a proporção completa.
+  vision_max_edge: 896
+computer_use:
+  enabled: false
+  vision_fallback_enabled: false
+  # Compara apenas assinaturas perceptuais efêmeras antes/depois; não persiste pixels.
+  visual_validation_enabled: false
+  operation_timeout_seconds: 5.0
+autonomy:
+  mode: execute_with_confirmation
+security:
+  powershell_timeout_seconds: 15
+  max_command_output_chars: 16384
+  allowlisted_commands: [hostname, whoami, Get-Date, Get-Location, Get-Process, Get-Service]
+  audit_log: data/audit.jsonl
+llm:
+  # Ollama local: conversa funcional sem enviar dados para a nuvem.
+  provider: ollama
+  model: kiara-stable:latest
+  timeout_seconds: 90
+  # Respostas mais consistentes e contexto suficiente para memória, visão e especialistas.
+  temperature: 0.25
+  context_window: 8192
+  repeat_penalty: 1.08
+  # Evita recarregar o modelo a cada mensagem e reduz a latência percebida.
+  keep_alive: 10m
+  vision_enabled: true
+  # Modelo multimodal local separado: conversa rápida e visão real dos pixels.
+  vision_model: qwen2.5vl:3b
+  vision_num_gpu: 0
+  ollama_base_url: http://127.0.0.1:11434
+browser:
+  enabled: false
+  headless: false
+  timeout_ms: 15000
+  allow_private_hosts: false
+proactivity:
+  level: low
+planning:
+  enabled: false
+  database: data/planning.db
+  max_steps: 5
+  max_safe_retries: 1
+integrations:
+  email:
+    provider: none
+  graph:
+    enabled: false
+knowledge:
+  enabled: true
+  database: data/knowledge.db
+  chunk_size: 1200
+  chunk_overlap: 150
+automation:
+  enabled: true
+  database: data/automations.db
+  tick_seconds: 1.0
+memory:
+  enabled: true
+  database: data/kiara-memory.sqlite3
+  working_ttl_hours: 24
+  retrieval_limit: 5
+  embeddings_enabled: false
+  embedding_dimensions: 384

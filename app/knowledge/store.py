@@ -26,6 +26,7 @@ class KnowledgeResult:
     chunk_index: int
     metadata: dict[str, Any]
     score: float
+    citation: dict[str, Any]
 
 
 TextExtractor = Callable[[Path], str]
@@ -68,7 +69,13 @@ class KnowledgeStore:
         chunk_size: int = 1_200,
         chunk_overlap: int = 150,
         extractors: dict[str, TextExtractor] | None = None,
+        relevance_threshold: float = 0.1,
+        max_chunks_per_source: int = 2,
     ) -> None:
+        if not 0 <= relevance_threshold <= 1:
+            raise ValueError("relevance_threshold must be between zero and one")
+        if max_chunks_per_source <= 0:
+            raise ValueError("max_chunks_per_source must be greater than zero")
         path = Path(database)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
@@ -77,6 +84,8 @@ class KnowledgeStore:
         self._connection.row_factory = sqlite3.Row
         self._embedding_provider = embedding_provider
         self.chunk_size, self.chunk_overlap = chunk_size, chunk_overlap
+        self.relevance_threshold = relevance_threshold
+        self.max_chunks_per_source = max_chunks_per_source
         self._extractors = {".txt": self._plain_text, ".md": self._plain_text, ".pdf": _extract_pdf}
         self._extractors.update(extractors or {})
         self._fts = self._initialize()
@@ -147,9 +156,20 @@ class KnowledgeStore:
                     )
         return IngestReport(document_id, len(chunks), False)
 
-    def search(self, query: str, limit: int = 5) -> list[KnowledgeResult]:
+    def search(
+        self,
+        query: str,
+        limit: int = 5,
+        *,
+        relevance_threshold: float | None = None,
+    ) -> list[KnowledgeResult]:
         if not query.strip() or limit <= 0:
             return []
+        threshold = (
+            self.relevance_threshold if relevance_threshold is None else relevance_threshold
+        )
+        if not 0 <= threshold <= 1:
+            raise ValueError("relevance_threshold must be between zero and one")
         lexical: dict[int, float] = {}
         tokens = re.findall(r"\w+", query, flags=re.UNICODE)
         if self._fts and tokens:
@@ -175,11 +195,47 @@ class KnowledgeStore:
             if query_embedding is not None and row["embedding"]:
                 semantic = max(0.0, cosine_similarity(query_embedding, json.loads(row["embedding"])))
             score = 0.65 * lexical_score + 0.35 * semantic
-            if score:
+            if score >= threshold:
+                metadata = json.loads(row["metadata"])
                 results.append(
-                    KnowledgeResult(row["content"], row["source"], row["chunk_index"], json.loads(row["metadata"]), score)
+                    KnowledgeResult(
+                        row["content"],
+                        row["source"],
+                        row["chunk_index"],
+                        metadata,
+                        score,
+                        self._citation(row["source"], row["chunk_index"], metadata),
+                    )
                 )
-        return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+        return self._diversify(results, limit)
+
+    def _diversify(self, results: list[KnowledgeResult], limit: int) -> list[KnowledgeResult]:
+        """Remove repeated chunks and prevent one document from monopolizing context."""
+        selected: list[KnowledgeResult] = []
+        seen_content: set[str] = set()
+        source_counts: dict[str, int] = {}
+        for result in sorted(results, key=lambda item: item.score, reverse=True):
+            fingerprint = hashlib.sha256(
+                re.sub(r"\s+", " ", result.content).strip().casefold().encode("utf-8")
+            ).hexdigest()
+            if fingerprint in seen_content:
+                continue
+            if source_counts.get(result.source, 0) >= self.max_chunks_per_source:
+                continue
+            seen_content.add(fingerprint)
+            source_counts[result.source] = source_counts.get(result.source, 0) + 1
+            selected.append(result)
+            if len(selected) == limit:
+                break
+        return selected
+
+    @staticmethod
+    def _citation(source: str, chunk_index: int, metadata: dict[str, Any]) -> dict[str, Any]:
+        citation: dict[str, Any] = {"source": source, "chunk": chunk_index}
+        page = metadata.get("page", metadata.get("page_number"))
+        if page is not None:
+            citation["page"] = page
+        return citation
 
     def close(self) -> None:
         self._connection.close()

@@ -6,17 +6,19 @@ import html
 import sys
 import threading
 from collections.abc import Callable
+from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
-    QButtonGroup,
     QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -30,23 +32,22 @@ from PySide6.QtWidgets import (
 
 from app.core.agent_core import AgentCore
 from app.security.kill_switch import KillSwitch
+from app.ui.conversations import ConversationStore
 from app.ui.overlay import MicrophoneButton, StatusOverlay
-from app.ui.panels import (
-    AutomationPanel,
-    InfoPanel,
-    MemoryPanel,
-    agent_snapshot,
-    automation_snapshot,
-    memory_snapshot,
-)
 from app.ui.theme import apply_kiara_theme
 from app.voice.service import VoiceService
+
+
+def thinking_text(step: int) -> str:
+    dots = "." * ((step % 3) + 1)
+    return f"Pensando{dots}"
 
 
 class RequestWorker(QObject):
     """Executa o núcleo assíncrono fora da thread da interface."""
 
     completed = Signal(str)
+    delta_received = Signal(str)
     failed = Signal(str)
     busy_changed = Signal(bool)
 
@@ -85,7 +86,18 @@ class RequestWorker(QObject):
     @Slot(str)
     def handle(self, message: str) -> None:
         self.busy_changed.emit(True)
-        future = asyncio.run_coroutine_threadsafe(self._core.handle(message), self._loop)
+
+        async def run() -> str:
+            stream = getattr(self._core, "handle_stream", None)
+            if stream is None:
+                return await self._core.handle(message)
+            chunks: list[str] = []
+            async for delta in stream(message):
+                chunks.append(delta)
+                self.delta_received.emit("".join(chunks))
+            return "".join(chunks)
+
+        future = asyncio.run_coroutine_threadsafe(run(), self._loop)
 
         def completed(done) -> None:
             self.busy_changed.emit(False)
@@ -103,6 +115,7 @@ class RequestWorker(QObject):
         if close is not None:
             future = asyncio.run_coroutine_threadsafe(close(), self._loop)
         else:
+
             async def legacy_close() -> None:
                 self._core.stop_background()
 
@@ -240,6 +253,16 @@ class KiaraWindow(QMainWindow):
         self._shutdown_complete = False
         self._request_origin = "main"
         self._voice_listen_pending = False
+        settings = getattr(core, "settings", None)
+        data_root = getattr(settings, "root", Path.cwd())
+        self._conversation_store = ConversationStore(
+            Path(data_root) / "data" / "conversations.json"
+        )
+        self._active_conversation_id = self._conversation_store.list()[0]["id"]
+        self._thinking_step = 0
+        self._thinking_timer = QTimer(self)
+        self._thinking_timer.setInterval(350)
+        self._thinking_timer.timeout.connect(self._pulse_thinking)
         self.setWindowTitle("Kiara")
         self.setMinimumSize(440, 420)
         screen = QApplication.primaryScreen()
@@ -255,10 +278,16 @@ class KiaraWindow(QMainWindow):
         self.transcript = QTextBrowser(objectName="transcript")
         self.transcript.setAccessibleName("Histórico da conversa")
         self.transcript.setAccessibleDescription("Mensagens recentes entre você e a Kiara")
+        self.transcript.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         self.transcript.document().setMaximumBlockCount(500)
         self.status = QLabel("Pronta", objectName="status")
         self.status.setAccessibleName("Estado da Kiara")
-        self.status.hide()
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status.setWordWrap(True)
+        self.status.setVisible(False)
         self.input = QLineEdit(objectName="messageInput")
         self.input.setPlaceholderText("Converse com a Kiara…")
         self.input.setAccessibleName("Mensagem para a Kiara")
@@ -269,9 +298,7 @@ class KiaraWindow(QMainWindow):
         self.talk.setFixedSize(40, 40)
         self.talk.setAccessibleName("Pressione para falar com a Kiara")
         self.talk.setShortcut(QKeySequence("Alt+F"))
-        self.conversation = QCheckBox(
-            "Modo conversa: desativado", objectName="conversationMode"
-        )
+        self.conversation = QCheckBox("Modo conversa: desativado", objectName="conversationMode")
         self.conversation.setAccessibleName("Modo conversa contínua desativado")
         self.stop = QPushButton("Parar ações", objectName="stopButton")
         self.stop.setAccessibleName("Interromper todas as ações")
@@ -279,7 +306,7 @@ class KiaraWindow(QMainWindow):
         self.stop.setShortcut(QKeySequence("Escape"))
 
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(6)
         attach = QPushButton("＋", objectName="attachButton")
         attach.setAccessibleName("Adicionar contexto ou anexo")
         attach.setToolTip("Adicionar contexto ou anexo")
@@ -289,15 +316,11 @@ class KiaraWindow(QMainWindow):
         row.addWidget(self.send)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 8, 20, 16)
+        layout.setSpacing(8)
         layout.addWidget(self.transcript, 1)
         layout.addLayout(row)
-        composer_hint = QLabel(
-            "Enter para enviar  •  Alt+F para falar  •  Esc interrompe ações",
-            objectName="composerHint",
-        )
-        layout.addWidget(composer_hint)
+        layout.addWidget(self.status)
         safety_row = QHBoxLayout()
         safety_row.addWidget(self.conversation, 1)
         safety_row.addWidget(self.stop)
@@ -307,19 +330,6 @@ class KiaraWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setAccessibleName("Painéis da Kiara")
         self.tabs.addTab(conversation, "Conversa")
-        automation_panel = (
-            AutomationPanel(core)
-            if getattr(getattr(core, "background", None), "automations", None) is not None
-            else InfoPanel(lambda: automation_snapshot(core), "Nenhuma automação")
-        )
-        memory_panel = (
-            MemoryPanel(core)
-            if getattr(core, "context", None) is not None
-            else InfoPanel(lambda: memory_snapshot(core), "Memória desativada")
-        )
-        self.tabs.addTab(automation_panel, "Automações")
-        self.tabs.addTab(memory_panel, "Memória")
-        self.tabs.addTab(InfoPanel(lambda: agent_snapshot(core), "Nenhum agente"), "Agentes")
         self.tabs.setDocumentMode(True)
         self.tabs.tabBar().hide()
         self.tabs.tabBar().setUsesScrollButtons(False)
@@ -329,18 +339,35 @@ class KiaraWindow(QMainWindow):
 
         self.sidebar = self._build_navigation_sidebar()
         body = QHBoxLayout()
-        body.setSpacing(10)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
         content_shell = QFrame(objectName="contentShell")
         content_layout = QVBoxLayout(content_shell)
         content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        conversation_header = QFrame(objectName="conversationHeader")
+        header_layout = QHBoxLayout(conversation_header)
+        header_layout.setContentsMargins(4, 2, 4, 6)
+        header_layout.setSpacing(8)
+        header_copy = QVBoxLayout()
+        header_copy.setSpacing(1)
+        header_title = QLabel("Conversa com a Kiara", objectName="conversationTitle")
+        header_title.setAccessibleName("Conversa com a Kiara")
+        header_copy.addWidget(header_title)
+        self.header_status = QLabel("●  Online", objectName="headerStatus")
+        self.header_status.setAccessibleName("Estado online")
+        header_copy.addWidget(self.header_status)
+        header_layout.addLayout(header_copy)
+        header_layout.addStretch(1)
+        content_layout.addWidget(conversation_header)
         content_layout.addWidget(self.tabs)
         body.addWidget(self.sidebar, 0)
         body.addWidget(content_shell, 1)
 
         root = QWidget(objectName="kiaraRoot")
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(12, 12, 12, 12)
-        root_layout.setSpacing(10)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
         root_layout.addLayout(body, 1)
         self.setCentralWidget(root)
         self.overlay = StatusOverlay()
@@ -352,6 +379,7 @@ class KiaraWindow(QMainWindow):
         self._thread = self._worker
         self.submit_requested.connect(self._worker.handle)
         self._worker.completed.connect(self._on_completed)
+        self._worker.delta_received.connect(self._on_delta)
         self._worker.failed.connect(self._on_failed)
         self._worker.busy_changed.connect(self._set_busy)
 
@@ -399,37 +427,33 @@ class KiaraWindow(QMainWindow):
             and self._voice_worker is not None
         ):
             QTimer.singleShot(250, self.start_listening)
-        QTimer.singleShot(350, self.overlay.show_discreetly)
+        self.show_overlay()
 
     def _build_navigation_sidebar(self) -> QWidget:
-        sidebar = QFrame(objectName="navigationSidebar")
-        sidebar.setAccessibleName("Navegação principal da Kiara")
-        sidebar.setFixedWidth(178)
+        sidebar = QFrame(objectName="conversationSidebar")
+        sidebar.setAccessibleName("Conversas salvas da Kiara")
+        sidebar.setFixedWidth(270)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(10, 15, 10, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 14, 12, 12)
+        layout.setSpacing(8)
         brand = QLabel("◉  Kiara", objectName="sideBrand")
         brand.setAccessibleName("Kiara")
         layout.addWidget(brand)
-        layout.addSpacing(24)
-        self.navigation = QButtonGroup(self)
-        self.navigation.setExclusive(True)
-        destinations = (
-            ("◉  Conversa", 0),
-            ("⚡  Automações", 1),
-            ("◈  Memória", 2),
-            ("◎  Agentes", 3),
-        )
-        self.nav_buttons: list[QPushButton] = []
-        for text, index in destinations:
-            button = QPushButton(text, objectName="navButton")
-            button.setCheckable(True)
-            button.setAccessibleName(text.split("  ", 1)[-1])
-            button.clicked.connect(lambda checked=False, page=index: self.tabs.setCurrentIndex(page))
-            self.navigation.addButton(button, index)
-            self.nav_buttons.append(button)
-            layout.addWidget(button)
-        self.nav_buttons[0].setChecked(True)
+        layout.addSpacing(12)
+        title_row = QHBoxLayout()
+        title_row.addWidget(QLabel("Conversas", objectName="conversationListTitle"))
+        title_row.addStretch(1)
+        new_button = QPushButton("+", objectName="newConversationButton")
+        new_button.setFixedSize(30, 30)
+        new_button.setAccessibleName("Nova conversa")
+        new_button.setToolTip("Nova conversa")
+        new_button.clicked.connect(self._new_conversation)
+        title_row.addWidget(new_button)
+        layout.addLayout(title_row)
+        self.conversation_list = QListWidget(objectName="conversationList")
+        self.conversation_list.setAccessibleName("Lista de conversas salvas")
+        self.conversation_list.currentItemChanged.connect(self._select_conversation)
+        layout.addWidget(self.conversation_list, 1)
         layout.addStretch(1)
         profile = QFrame(objectName="profileCard")
         profile_layout = QVBoxLayout(profile)
@@ -437,6 +461,7 @@ class KiaraWindow(QMainWindow):
         profile_layout.addWidget(QLabel("Você", objectName="cardTitle"))
         profile_layout.addWidget(QLabel("Conta pessoal", objectName="muted"))
         layout.addWidget(profile)
+        self._refresh_conversation_list()
         return sidebar
 
     @staticmethod
@@ -459,22 +484,82 @@ class KiaraWindow(QMainWindow):
 
     @Slot()
     def _update_sidebar_visibility(self) -> None:
-        """Preserva uma rota de navegação em qualquer largura da janela."""
+        """Keep the saved-conversations rail visible only on wide windows."""
         wide_layout = self.width() >= 720
         if hasattr(self, "sidebar"):
             self.sidebar.setVisible(wide_layout)
         if hasattr(self, "tabs"):
             self.tabs.tabBar().setVisible(not wide_layout)
-        if hasattr(self, "nav_buttons"):
-            for index, button in enumerate(self.nav_buttons):
-                button.setChecked(index == self.tabs.currentIndex())
 
-    def _append_message(self, author: str, message: str, *, kind: str = "message") -> None:
+    def _refresh_conversation_list(self) -> None:
+        current_id = self._active_conversation_id
+        self.conversation_list.blockSignals(True)
+        self.conversation_list.clear()
+        selected_row = 0
+        for row, conversation in enumerate(self._conversation_store.list()):
+            messages = conversation.get("messages", [])
+            preview = (
+                messages[-1].get("text", "Sem mensagens ainda")
+                if messages
+                else "Sem mensagens ainda"
+            )
+            item = QListWidgetItem(f"{conversation.get('title', 'Conversa')}\n{preview[:46]}")
+            item.setData(Qt.ItemDataRole.UserRole, conversation["id"])
+            item.setToolTip(preview)
+            self.conversation_list.addItem(item)
+            if conversation["id"] == current_id:
+                selected_row = row
+        self.conversation_list.setCurrentRow(selected_row)
+        self.conversation_list.blockSignals(False)
+
+    @Slot()
+    def _new_conversation(self) -> None:
+        conversation = self._conversation_store.create()
+        self._active_conversation_id = conversation["id"]
+        self._refresh_conversation_list()
+        self.transcript.clear()
+        self.input.setFocus()
+
+    @Slot(QListWidgetItem, QListWidgetItem)
+    def _select_conversation(
+        self, current: QListWidgetItem | None, _previous: QListWidgetItem | None
+    ) -> None:
+        if current is None:
+            return
+        conversation_id = str(current.data(Qt.ItemDataRole.UserRole))
+        if conversation_id == self._active_conversation_id and self.transcript.document().isEmpty():
+            self._load_conversation(conversation_id)
+            return
+        self._active_conversation_id = conversation_id
+        self._load_conversation(conversation_id)
+
+    def _load_conversation(self, conversation_id: str) -> None:
+        conversation = self._conversation_store.get(conversation_id)
+        if conversation is None:
+            return
+        self.transcript.clear()
+        self._active_conversation_id = conversation_id
+        for message in conversation.get("messages", []):
+            self._append_message(
+                str(message.get("author", "Kiara")),
+                str(message.get("text", "")),
+                persist=False,
+            )
+
+    def _append_message(
+        self,
+        author: str,
+        message: str,
+        *,
+        kind: str = "message",
+        persist: bool = True,
+    ) -> None:
+        if persist and kind == "message":
+            self._conversation_store.add_message(self._active_conversation_id, author, message)
+            self._refresh_conversation_list()
         safe = html.escape(message).replace("\n", "<br>")
         if kind == "notice":
-            self.transcript.append(
-                f'<div style="color:#8ea4b1;margin:8px 4px">◇ {safe}</div>'
-            )
+            self.transcript.append(f'<div style="color:#8ea4b1;margin:8px 4px">◇ {safe}</div>')
             return
         is_kiara = author == "Kiara"
         accent = "#55edf7" if is_kiara else "#87f3da"
@@ -506,8 +591,9 @@ class KiaraWindow(QMainWindow):
         stop_action.triggered.connect(self.stop_actions)
         quit_action = QAction("Sair", self)
         quit_action.triggered.connect(self.quit_app)
-        overlay_action = QAction("Mostrar overlay", self)
+        overlay_action = QAction("Mostrar orbe", self)
         overlay_action.setCheckable(True)
+        overlay_action.setChecked(True)
         overlay_action.toggled.connect(self._toggle_overlay)
         menu.addAction(show_action)
         menu.addAction(stop_action)
@@ -537,6 +623,14 @@ class KiaraWindow(QMainWindow):
         self._append_message("Você", message)
         self._request_origin = "overlay"
         self.submit_requested.emit(message)
+
+    @Slot(str)
+    def _on_delta(self, response: str) -> None:
+        self._thinking_timer.stop()
+        self.status.setVisible(True)
+        self.status.setText(response[-600:])
+        if self._request_origin == "overlay":
+            self.overlay.show_response(response)
 
     @Slot(str)
     def _on_completed(self, response: str) -> None:
@@ -640,9 +734,7 @@ class KiaraWindow(QMainWindow):
 
     @Slot()
     def _continue_conversation(self) -> None:
-        wake_monitoring = bool(
-            self._voice is not None and self._voice.always_listen_for_wake_word
-        )
+        wake_monitoring = bool(self._voice is not None and self._voice.always_listen_for_wake_word)
         if (self.conversation.isChecked() or wake_monitoring) and self.send.isEnabled():
             self.start_listening()
 
@@ -664,11 +756,24 @@ class KiaraWindow(QMainWindow):
         self._request_origin = "main"
         self.status.setText("Erro — pronta para tentar novamente")
 
+    @Slot()
+    def _pulse_thinking(self) -> None:
+        self._thinking_step += 1
+        self.status.setText(thinking_text(self._thinking_step))
+
     @Slot(bool)
     def _set_busy(self, busy: bool) -> None:
         self.send.setEnabled(not busy)
         self.input.setEnabled(not busy)
-        self.status.setText("Pensando…" if busy else "Pronta")
+        self.status.setVisible(busy)
+        if busy:
+            self._thinking_step = 0
+            self.status.setText(thinking_text(self._thinking_step))
+            self._thinking_timer.start()
+        else:
+            self._thinking_timer.stop()
+            self.status.setText("Pronta")
+            self.status.setVisible(False)
         self.tray.setToolTip(f"Kiara — {'ocupada' if busy else 'pronta'}")
         self.overlay.set_state("ocupada" if busy else "pronta")
         if not busy:
@@ -686,9 +791,16 @@ class KiaraWindow(QMainWindow):
     @Slot(bool)
     def _toggle_overlay(self, visible: bool) -> None:
         if visible:
-            self.overlay.show_discreetly()
+            self.show_overlay()
         else:
             self.overlay.hide()
+
+    @Slot()
+    def show_overlay(self) -> None:
+        if self._quitting:
+            return
+        self.overlay.show_discreetly()
+        self.overlay.raise_()
 
     @Slot()
     def show_normal(self) -> None:

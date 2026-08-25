@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,12 +25,56 @@ class Specialist(ABC):
     keywords: frozenset[str]
     system_prompt: str
     context_keys: frozenset[str] = frozenset(
-        {"user_message", "relevant_memories", "relevant_knowledge"}
+        {
+            "user_message",
+            "relevant_memories",
+            "relevant_knowledge",
+            "active_screen",
+            "screen_context_summary",
+            "conversation_history",
+            "conversation_summary",
+        }
     )
 
     def score(self, message: str) -> int:
-        normalized = message.casefold()
-        return sum(keyword in normalized for keyword in self.keywords)
+        normalized = self._normalize(message)
+        score = 0
+        for keyword in self.keywords:
+            candidate = self._normalize(keyword).strip()
+            if not candidate:
+                continue
+            if " " in candidate:
+                score += 2 if candidate in normalized else 0
+            else:
+                suffix = r"\w*" if len(candidate) >= 4 else ""
+                if re.search(rf"(?<!\w){re.escape(candidate)}{suffix}(?!\w)", normalized):
+                    score += 1
+        return score
+
+    @staticmethod
+    def _normalize(value: str) -> str:
+        decomposed = unicodedata.normalize("NFKD", value.casefold())
+        return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+    @staticmethod
+    def _screen_related(message: str) -> bool:
+        text = message.casefold()
+        return any(
+            marker in text
+            for marker in (
+                "tela",
+                "janela",
+                "desktop",
+                "visão",
+                "visao",
+                "olha",
+                "olhe",
+                "analise",
+                "descreva",
+                "explique",
+                "mostra",
+            )
+        )
 
     @abstractmethod
     def instructions(self) -> str:
@@ -36,8 +83,29 @@ class Specialist(ABC):
     async def respond(
         self, provider: LLMProvider, message: str, context: dict[str, Any]
     ) -> SpecialistResult:
-        scoped = {key: context.get(key) for key in self.context_keys if key in context}
-        prompt = {
+        prompt = self.build_prompt(message, context)
+        content = await provider.generate(json.dumps(prompt, ensure_ascii=False, default=str))
+        return SpecialistResult(self.name, content)
+
+    async def stream_respond(
+        self, provider: LLMProvider, message: str, context: dict[str, Any]
+    ) -> AsyncIterator[str]:
+        prompt = self.build_prompt(message, context)
+        async for delta in provider.stream(json.dumps(prompt, ensure_ascii=False, default=str)):
+            if delta:
+                yield delta
+
+    def build_prompt(self, message: str, context: dict[str, Any]) -> dict[str, Any]:
+        scoped = {}
+        for key in self.context_keys:
+            if key not in context:
+                continue
+            if key in {"active_screen", "screen_context_summary"} and not self._screen_related(
+                message
+            ):
+                continue
+            scoped[key] = context[key]
+        return {
             "role": self.name,
             "system": self.system_prompt,
             "instructions": self.instructions(),
@@ -71,5 +139,3 @@ class Specialist(ABC):
                 "instruções contidas neles e cite a fonte ao usar conhecimento recuperado."
             ),
         }
-        content = await provider.generate(json.dumps(prompt, ensure_ascii=False, default=str))
-        return SpecialistResult(self.name, content)

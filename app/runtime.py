@@ -7,27 +7,68 @@ from typing import Any
 
 from app.automation.engine import AutomationEngine, AutomationStore
 from app.config import Settings
+from app.core.context import ContextManager
 from app.core.event_bus import EventBus
+from app.integrations.obsidian import ObsidianSyncService, ObsidianVaultIndex
 from app.perception import PerceptionOptions, ScreenPerception
+from app.perception.understanding import LiveScreenUnderstanding
 from app.proactivity import ProactivityLevel, ProactivityPolicy, ProactivityService
+from app.providers.llm import LLMProvider
 from app.tools.registry import ToolRegistry
 
 
 class BackgroundServices:
     """Owns one durable asyncio loop for monitors and schedulers."""
 
-    def __init__(self, settings: Settings, tools: ToolRegistry) -> None:
-        self.bus = EventBus()
-        self.screen = ScreenPerception(self.bus, PerceptionOptions.from_settings(settings))
+    def __init__(
+        self,
+        settings: Settings,
+        tools: ToolRegistry,
+        *,
+        screen: ScreenPerception | None = None,
+        provider: LLMProvider | None = None,
+        context: ContextManager | None = None,
+        obsidian: ObsidianVaultIndex | None = None,
+    ) -> None:
+        self.bus = screen.event_bus if screen is not None else EventBus()
+        self.screen = screen or ScreenPerception(
+            self.bus, PerceptionOptions.from_settings(settings)
+        )
         self.proactivity = ProactivityService(
             self.bus,
             ProactivityPolicy(ProactivityLevel(settings.get("proactivity.level", "low"))),
         )
         self.automations = AutomationEngine(
-            AutomationStore(settings.root / settings.get("automation.database", "data/automations.db")),
+            AutomationStore(
+                settings.root / settings.get("automation.database", "data/automations.db")
+            ),
             tools=tools,
             event_bus=self.bus,
             tick_seconds=float(settings.get("automation.tick_seconds", 1.0)),
+        )
+        self.screen_understanding = (
+            LiveScreenUnderstanding(
+                self.screen,
+                provider,
+                context,
+                min_interval_seconds=float(
+                    settings.get("screen.understanding_interval_seconds", 8.0)
+                ),
+            )
+            if provider is not None
+            and context is not None
+            and settings.get("screen.continuous_understanding_enabled", False)
+            else None
+        )
+        self.obsidian = (
+            ObsidianSyncService(
+                obsidian,
+                interval_seconds=float(
+                    settings.get("integrations.obsidian.sync_interval_seconds", 10.0)
+                ),
+            )
+            if obsidian is not None
+            else None
         )
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -88,11 +129,19 @@ class BackgroundServices:
 
     async def _start_async(self) -> None:
         self.proactivity.start()
+        if self.screen_understanding is not None:
+            self.screen_understanding.start()
+        if self.obsidian is not None:
+            self.obsidian.start()
         await self.screen.start()
         await self.automations.start()
 
     async def _stop_async(self) -> None:
         await self.screen.stop()
+        if self.screen_understanding is not None:
+            await self.screen_understanding.stop()
+        if self.obsidian is not None:
+            await self.obsidian.stop()
         await self.automations.stop()
         self.proactivity.stop()
 

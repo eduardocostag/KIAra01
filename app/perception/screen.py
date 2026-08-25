@@ -33,6 +33,7 @@ class PerceptionOptions:
     enabled: bool = True
     monitor_active_window: bool = True
     capture_active_window: bool = True
+    live_view_enabled: bool = False
     ui_automation_enabled: bool = False
     ocr_enabled: bool = False
     poll_interval_seconds: float = 1.0
@@ -48,6 +49,7 @@ class PerceptionOptions:
             enabled=bool(settings.get("screen.enabled", True)),
             monitor_active_window=bool(settings.get("screen.monitor_active_window", True)),
             capture_active_window=bool(settings.get("screen.capture_active_window", True)),
+            live_view_enabled=bool(settings.get("screen.live_view_enabled", True)),
             ui_automation_enabled=bool(settings.get("screen.ui_automation_enabled", False)),
             ocr_enabled=bool(settings.get("screen.ocr_enabled", False)),
             poll_interval_seconds=float(settings.get("screen.poll_interval_seconds", 1.0)),
@@ -80,6 +82,9 @@ class ScreenPerception:
         self._last_screen_event_at = float("-inf")
         self._last_error_fingerprint: str | None = None
         self._last_error_event_at = float("-inf")
+        self._latest_capture: ScreenCapture | None = None
+        self._latest_capture_at = float("-inf")
+        self._latest_capture_identity: tuple[str | None, str | None, str | None] | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
@@ -104,6 +109,8 @@ class ScreenPerception:
             self._last_identity = identity
             self._last_visual_signature = None
             await self.event_bus.publish(self.CONTEXT_CHANGED, asdict(context))
+        if self.options.live_view_enabled and self.options.capture_active_window:
+            await self._refresh_latest_capture(snapshot, identity)
         visual_changed = await self._detect_visual_change(snapshot, identity)
         title = context.window_title or ""
         if re.search(r"\b(error|erro|failed|falha|alerta|critical|crítico)\b", title, re.IGNORECASE):
@@ -115,6 +122,45 @@ class ScreenPerception:
             if alert:
                 await self._publish_error(identity=identity, **alert)
         return context_changed or visual_changed
+
+    async def _refresh_latest_capture(
+        self,
+        snapshot: WindowSnapshot,
+        identity: tuple[str | None, str | None, str | None],
+    ) -> None:
+        if snapshot.minimized or not snapshot.bounds:
+            self._latest_capture = None
+            return
+        left, top, width, height = snapshot.bounds
+        if width <= 0 or height <= 0:
+            return
+        try:
+            png = await asyncio.to_thread(self._capture_png, left, top, width, height)
+            png, width, height = await asyncio.to_thread(
+                self._resize_png, png, width, height, self.options.vision_max_edge
+            )
+        except (ImportError, RuntimeError, OSError, ValueError):
+            return
+        self._latest_capture = ScreenCapture(png=png, width=width, height=height)
+        self._latest_capture_at = time.monotonic()
+        self._latest_capture_identity = identity
+
+    async def latest_capture(
+        self,
+        *,
+        max_age_seconds: float = 3.0,
+        expected_identity: tuple[str | None, str | None, str | None] | None = None,
+    ) -> ScreenCapture | None:
+        """Return the newest in-memory frame, refreshed only when it is stale."""
+        if not self.options.enabled or not self.options.capture_active_window:
+            return None
+        if (
+            self._latest_capture is not None
+            and time.monotonic() - self._latest_capture_at <= max(0.0, max_age_seconds)
+            and (expected_identity is None or expected_identity == self._latest_capture_identity)
+        ):
+            return self._latest_capture
+        return await self.capture_active_window(include_text=True)
 
     async def _detect_visual_change(
         self,
@@ -215,12 +261,18 @@ class ScreenPerception:
         left, top, width, height = snapshot.bounds
         if width <= 0 or height <= 0:
             return None
-        png = await asyncio.to_thread(self._capture_png, left, top, width, height)
+        try:
+            png = await asyncio.to_thread(self._capture_png, left, top, width, height)
+        except (ImportError, RuntimeError, OSError, ValueError):
+            return None
         text = None
-        if include_text and self.options.ui_automation_enabled and snapshot.handle:
-            text = await asyncio.to_thread(self._read_ui_automation, snapshot.handle)
-        if include_text and not text and self.options.ocr_enabled:
-            text = await asyncio.to_thread(self._read_ocr, png)
+        try:
+            if include_text and self.options.ui_automation_enabled and snapshot.handle:
+                text = await asyncio.to_thread(self._read_ui_automation, snapshot.handle)
+            if include_text and not text and self.options.ocr_enabled:
+                text = await asyncio.to_thread(self._read_ocr, png)
+        except (ImportError, RuntimeError, OSError, ValueError):
+            text = None
         return ScreenCapture(png=png, width=width, height=height, visible_text=text)
 
     async def capture_virtual_desktop(self) -> ScreenCapture | None:

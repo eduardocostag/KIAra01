@@ -33,14 +33,11 @@ def test_sidebar_routes_to_existing_panels_and_chat_bubbles_are_directional(monk
     try:
         window.show()
         app.processEvents()
-        assert [button.accessibleName() for button in window.nav_buttons] == [
-            "Conversa",
-            "Automações",
-            "Memória",
-            "Agentes",
-        ]
-        window.nav_buttons[2].click()
-        assert window.tabs.currentIndex() == 2
+        assert window.sidebar.accessibleName() == "Conversas salvas da Kiara"
+        initial_conversations = window.conversation_list.count()
+        assert initial_conversations >= 1
+        assert window.tabs.count() == 1
+        assert window.tabs.tabText(0) == "Conversa"
         assert not window.sidebar.isHidden()
         assert window.tabs.tabBar().isHidden()
         window.resize(680, 620)
@@ -55,6 +52,9 @@ def test_sidebar_routes_to_existing_panels_and_chat_bubbles_are_directional(monk
         assert "teste da assistente" in markup
         assert 'align="right"' in markup
         assert markup.index("teste do usuário") < markup.index("teste da assistente")
+        window._new_conversation()
+        assert window.conversation_list.count() == initial_conversations + 1
+        assert window.transcript.document().isEmpty()
     finally:
         window.shutdown()
         window.deleteLater()

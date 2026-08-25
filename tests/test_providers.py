@@ -7,8 +7,13 @@ import pytest
 
 from app.config import Settings
 from app.providers.factory import build_llm_provider
-from app.providers.llm import LocalFallbackProvider
-from app.providers.remote import OllamaProvider, OpenAIProvider, ProviderConfigurationError
+from app.providers.llm import FallbackProvider, LLMProvider, LocalFallbackProvider
+from app.providers.remote import (
+    OllamaProvider,
+    OpenAICompatibleProvider,
+    OpenAIProvider,
+    ProviderConfigurationError,
+)
 
 
 class FakeResponses:
@@ -63,6 +68,69 @@ async def test_ollama_uses_injected_transport_without_network(tmp_path: Path) ->
     assert calls[1][0].endswith("/api/chat")
     assert calls[1][1]["messages"][0]["images"]
     assert "vision" in provider.capabilities
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_provider_supports_text_and_vision() -> None:
+    calls = []
+
+    def transport(url, payload, timeout):
+        calls.append((url, payload, timeout))
+        return {"choices": [{"message": {"content": "remoto"}}]}
+
+    provider = OpenAICompatibleProvider(
+        "llama-3.1-8b-instant", "test-key", "https://api.groq.com/openai/v1", transport=transport
+    )
+    assert await provider.generate("oi") == "remoto"
+    assert await provider.vision_bytes("veja", b"png") == "remoto"
+    assert calls[0][0].endswith("/chat/completions")
+    assert calls[1][1]["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/png")
+
+
+@pytest.mark.asyncio
+async def test_fallback_provider_uses_second_provider_after_failure() -> None:
+    class Failing(LLMProvider):
+        async def generate(self, _prompt):
+            raise RuntimeError("limite")
+
+    class Working(LLMProvider):
+        async def generate(self, _prompt):
+            return "fallback"
+
+    assert await FallbackProvider([Failing(), Working()]).generate("oi") == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_fallback_provider_streams_from_second_provider_before_any_delta() -> None:
+    class Failing(LLMProvider):
+        async def generate(self, _prompt):
+            raise RuntimeError("limite")
+
+        async def stream(self, _prompt):
+            raise RuntimeError("limite")
+            yield  # pragma: no cover
+
+    class Working(LLMProvider):
+        async def generate(self, _prompt):
+            return "fallback"
+
+        async def stream(self, _prompt):
+            yield "fall"
+            yield "back"
+
+    chunks = [chunk async for chunk in FallbackProvider([Failing(), Working()]).stream("oi")]
+    assert chunks == ["fall", "back"]
+
+
+@pytest.mark.asyncio
+async def test_injected_transports_keep_stream_generate_compatibility() -> None:
+    ollama = OllamaProvider("local", transport=lambda *_: {"response": "inteira"})
+    compatible = OpenAICompatibleProvider(
+        "remote", "key", "https://example.test/v1",
+        transport=lambda *_: {"choices": [{"message": {"content": "remota"}}]},
+    )
+    assert [part async for part in ollama.stream("oi")] == ["inteira"]
+    assert [part async for part in compatible.stream("oi")] == ["remota"]
 
 
 @pytest.mark.asyncio
