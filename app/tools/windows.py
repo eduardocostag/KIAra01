@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -22,12 +24,32 @@ class OpenApplicationTool(Tool):
         "bloco de notas": "notepad.exe", "notepad": "notepad.exe", "calculadora": "calc.exe"
     }
 
-    async def execute(self, *, application: str, **_: Any) -> ToolResult:
-        executable = self.APPS.get(application.casefold())
+    async def execute(
+        self, *, application: str, new_tab: bool = False, **_: Any
+    ) -> ToolResult:
+        normalized = application.casefold().strip()
+        executable = self.APPS.get(normalized)
+        arguments: list[str] = []
+        if normalized in {"chrome", "google chrome"}:
+            executable = self._chrome_executable()
+            if new_tab:
+                arguments = ["--new-tab", "about:blank"]
         if not executable:
             return ToolResult(False, error="Aplicativo não está na lista permitida.")
-        await asyncio.to_thread(subprocess.Popen, [executable])
+        await asyncio.to_thread(subprocess.Popen, [executable, *arguments])
         return ToolResult(True, output=f"{application} aberto.")
+
+    @staticmethod
+    def _chrome_executable() -> str | None:
+        discovered = shutil.which("chrome.exe") or shutil.which("chrome")
+        if discovered:
+            return discovered
+        candidates = (
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
+            Path(os.environ.get("ProgramFiles", "")) / "Google/Chrome/Application/chrome.exe",
+            Path(os.environ.get("ProgramFiles(x86)", "")) / "Google/Chrome/Application/chrome.exe",
+        )
+        return next((str(path) for path in candidates if path.is_file()), None)
 
 
 class OpenUrlTool(Tool):

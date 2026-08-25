@@ -66,6 +66,15 @@ class DiagnosticTools:
         )
 
 
+class CapturingTools:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def execute(self, name: str, **parameters: object) -> ToolResult:
+        self.calls.append((name, parameters))
+        return ToolResult(True, output="aberto")
+
+
 class LearningStore:
     def __init__(self, tmp_path) -> None:
         self.path = tmp_path / "aprendizado.md"
@@ -74,6 +83,35 @@ class LearningStore:
     def save(self, user_message: str, assistant_response: str):
         self.saved.append((user_message, assistant_response))
         return self.path
+
+
+@pytest.mark.asyncio
+async def test_open_chrome_new_tab_is_normalized_to_allowlisted_action() -> None:
+    tools = CapturingTools()
+    core = AgentCore(tools, RecordingProvider(), ContextManager(lambda: ScreenContext()))
+
+    await core.handle("abra o chrome numa nova aba agora")
+
+    assert tools.calls == [
+        ("open_application", {"application": "chrome", "new_tab": True})
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command", "url"),
+    (
+        ("abra o google", "https://www.google.com"),
+        ("abra o instagram agora", "https://www.instagram.com"),
+    ),
+)
+async def test_named_sites_are_routed_to_safe_https_urls(command: str, url: str) -> None:
+    tools = CapturingTools()
+    core = AgentCore(tools, RecordingProvider(), ContextManager(lambda: ScreenContext()))
+
+    await core.handle(command)
+
+    assert tools.calls == [("open_url", {"url": url})]
 
 
 @pytest.mark.asyncio
@@ -166,6 +204,13 @@ async def test_screen_related_conversation_refreshes_local_visual_analysis() -> 
     summary = specialist_context["screen_context_summary"]
     assert "erro de importação" in summary["visual_analysis"]["subject"]
     assert context.live_screen_understanding()["freshness"] == "question_refresh_ephemeral"
+
+
+def test_explain_request_without_screen_reference_does_not_trigger_vision() -> None:
+    core = AgentCore(NoTools(), RecordingProvider(), ContextManager(lambda: ScreenContext()))
+
+    assert core._screen_related("Explique consistência eventual em sistemas distribuídos") is False
+    assert core._screen_related("Explique o que aparece nesta tela") is True
 
 
 @pytest.mark.asyncio

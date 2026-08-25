@@ -1,1 +1,1 @@
-{"gemini:gemini-3.5-flash-lite": {"date": "2026-08-25", "count": 1}, "openai:gpt-5.4-nano": {"date": "2026-08-25", "count": 2}}
+{"gemini:gemini-3.5-flash-lite": {"date": "2026-08-25", "count": 1}, "openai:gpt-5.4-nano": {"date": "2026-08-25", "count": 2}, "openrouter:inclusionai/ling-3.0-flash": {"date": "2026-08-25", "count": 25}, "openrouter:nvidia/nemotron-3-ultra-550b-a55b": {"date": "2026-08-25", "count": 33}, "openrouter:stealth/ox-alpha": {"date": "2026-08-25", "count": 15}}

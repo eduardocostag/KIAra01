@@ -70,6 +70,10 @@ como prova de resolução, até que exista um teste funcional específico.
 
 ## Providers de IA
 
+Para a cadeia gratuita com NVIDIA Nemotron, Ling, Vercel AI Gateway e Ox Alpha, consulte
+[`docs/FREE_AI_PROVIDERS.md`](docs/FREE_AI_PROVIDERS.md). Provedores sem chave são ignorados e o
+Ollama permanece como fallback local; contexto visual e dados privados locais não são enviados.
+
 Em `config/kiara.yaml`, defina `llm.provider` como `local`, `openai` ou `ollama`, além de
 `llm.model`. Também há suporte a endpoints compatíveis com OpenAI usando `groq`, `openrouter`
 ou `gemini`. Para esses provedores, defina a chave somente no ambiente:

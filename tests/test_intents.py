@@ -19,6 +19,12 @@ def test_routes_application_without_hardcoding_notepad():
     assert intent.parameters == {"application": "bloco de notas"}
 
 
+def test_routes_feminine_article_without_including_it_in_application_name():
+    intent = IntentRouter().route("Kiara, abra a calculadora.")
+    assert intent.name == "open_application"
+    assert intent.parameters == {"application": "calculadora"}
+
+
 def test_routes_powershell_acceptance_phrase():
     intent = IntentRouter().route("Kiara, execute no PowerShell o comando hostname.")
     assert intent.name == "powershell"

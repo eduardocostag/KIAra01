@@ -33,11 +33,15 @@ def test_local_secret_file_loads_only_allowlisted_keys_without_overrides(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     monkeypatch.setenv("GROQ_API_KEY", "existing")
     (tmp_path / ".env.local").write_text(
         "OPENAI_API_KEY=local-openai\n"
         "GEMINI_API_KEY='local-gemini'\n"
+        "OPENROUTER_API_KEY=local-openrouter\n"
         "GROQ_API_KEY=must-not-replace\n"
+        "NVIDIA_API_KEY=local-nvidia\n"
         "UNSAFE_VARIABLE=blocked\n",
         encoding="utf-8",
     )
@@ -46,5 +50,7 @@ def test_local_secret_file_loads_only_allowlisted_keys_without_overrides(
 
     assert __import__("os").environ["OPENAI_API_KEY"] == "local-openai"
     assert __import__("os").environ["GEMINI_API_KEY"] == "local-gemini"
+    assert __import__("os").environ["OPENROUTER_API_KEY"] == "local-openrouter"
     assert __import__("os").environ["GROQ_API_KEY"] == "existing"
+    assert __import__("os").environ["NVIDIA_API_KEY"] == "local-nvidia"
     assert "UNSAFE_VARIABLE" not in __import__("os").environ

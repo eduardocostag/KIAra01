@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
+from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from openai import APIError
 
@@ -13,7 +19,7 @@ from app.providers.guarded import CircuitOpenError, CloudUsageLimitError
 
 async def main() -> int:
     settings = load_settings()
-    print("OPENAI_API_KEY carregada:", bool(os.environ.get("OPENAI_API_KEY")))
+    print("OPENROUTER_API_KEY carregada:", bool(os.environ.get("OPENROUTER_API_KEY")))
 
     router: Any = build_llm_provider(settings)
     fast_profile: Any = router.profiles["fast"]
@@ -24,7 +30,7 @@ async def main() -> int:
     try:
         answer = await guarded.generate("Responda somente com OK.")
     except (APIError, CircuitOpenError, CloudUsageLimitError, TimeoutError) as exc:
-        print("API OpenAI: FALHA")
+        print("API de nuvem: FALHA")
         print("Tipo:", type(exc).__name__)
         print("HTTP status:", getattr(exc, "status_code", None))
         body = getattr(exc, "body", None)
@@ -36,7 +42,7 @@ async def main() -> int:
         if close is not None:
             await close()
 
-    print("API OpenAI: SUCESSO")
+    print("API de nuvem: SUCESSO")
     print("Resposta válida:", answer.strip().upper().startswith("OK"))
     return 0
 

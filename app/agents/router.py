@@ -71,9 +71,6 @@ class AgentRouter:
             *(self._consult(specialist, message, context) for specialist in selected)
         )
         results = tuple(result for result in outcomes if result is not None)
-        if not results and self.generalist not in selected:
-            fallback = await self._consult(self.generalist, message, context)
-            results = (fallback,) if fallback is not None else ()
         if not results:
             return (
                 "Não consegui consultar um especialista agora. Posso tentar novamente "
@@ -109,15 +106,33 @@ class AgentRouter:
             return None
 
     async def _compose(self, message: str, results: Sequence[SpecialistResult]) -> str:
+        if sum(len(result.content) for result in results) > 8000:
+            return self._unsynthesized(results)
         prompt = {
             "role": "coordenador_de_especialistas",
             "user_message": message,
             "specialist_analyses": [
-                {"specialist": result.specialist, "content": result.content} for result in results
+                {"specialist": result.specialist, "content": result.content[:4000]}
+                for result in results
             ],
             "instructions": (
                 "Produza uma resposta única e coerente. Resolva conflitos explicitamente, "
                 "preserve ressalvas e não alegue ações não executadas."
             ),
         }
-        return await self.provider.generate(json.dumps(prompt, ensure_ascii=False))
+        try:
+            return await asyncio.wait_for(
+                self.provider.generate(json.dumps(prompt, ensure_ascii=False)), timeout=45
+            )
+        except Exception:  # noqa: BLE001 - preserve useful specialist work on compose failure
+            return self._unsynthesized(results)
+
+    @staticmethod
+    def _unsynthesized(results: Sequence[SpecialistResult]) -> str:
+        sections = [
+            f"### {result.specialist}\n\n{result.content[:5000]}" for result in results
+        ]
+        return (
+            "As análises já são extensas; seguem separadas para preservar detalhes sem "
+            "alegar consenso artificial:\n\n" + "\n\n".join(sections)
+        )

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('All', 'OpenAI', 'Groq', 'Gemini')]
+    [ValidateSet('All', 'OpenAI', 'OpenRouter', 'Groq', 'Gemini')]
     [string]$Provider = 'All',
     [switch]$FromClipboard
 )
@@ -53,6 +53,9 @@ if ($Provider -in @('All', 'Gemini')) {
 }
 if ($Provider -in @('All', 'OpenAI')) {
     Set-KiaraSecret -Name 'OPENAI_API_KEY' -Label 'OpenAI'
+}
+if ($Provider -in @('All', 'OpenRouter')) {
+    Set-KiaraSecret -Name 'OPENROUTER_API_KEY' -Label 'OpenRouter (Ox Alpha, Nemotron 3 Ultra e Ling 3.0 Flash)'
 }
 
 Write-Host 'Concluido. Feche e abra novamente a Kiara para carregar as chaves.'

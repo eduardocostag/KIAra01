@@ -112,6 +112,7 @@ class OpenAICompatibleProvider(LLMProvider):
         timeout_seconds: float = 30.0,
         transport: OllamaTransport | None = None,
         vision_enabled: bool = True,
+        max_output_tokens: int = 2048,
     ) -> None:
         if not api_key:
             raise ProviderConfigurationError("A chave do provedor remoto não foi definida.")
@@ -120,6 +121,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self.vision_enabled = vision_enabled
+        self.max_output_tokens = max(1, int(max_output_tokens))
         self._transport = transport or partial(_post_authenticated_json, api_key=self.api_key)
         self._native_streaming = transport is None
 
@@ -141,6 +143,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": True,
+            "max_tokens": self.max_output_tokens,
         }
         async for event in _stream_http_json(
             f"{self.base_url}/chat/completions",
@@ -176,7 +179,12 @@ class OpenAICompatibleProvider(LLMProvider):
         )
 
     async def _complete(self, messages: list[dict[str, Any]]) -> str:
-        payload = {"model": self.model, "messages": messages, "stream": False}
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "max_tokens": self.max_output_tokens,
+        }
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 self._transport,

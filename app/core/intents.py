@@ -135,7 +135,7 @@ def default_matchers() -> list[IntentMatcher]:
         ),
         PatternMatcher(
             "open_application",
-            re.compile(r"(?:abra|abrir)\s+(?:o\s+)?(.+?)(?:\s+por favor)?[.!?]?$", flags),
+            re.compile(r"(?:abra|abrir)\s+(?:(?:o|a)\s+)?(.+?)(?:\s+por favor)?[.!?]?$", flags),
             ("application",),
         ),
     ]

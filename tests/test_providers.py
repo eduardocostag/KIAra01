@@ -85,6 +85,7 @@ async def test_openai_compatible_provider_supports_text_and_vision() -> None:
     assert await provider.generate("oi") == "remoto"
     assert await provider.vision_bytes("veja", b"png") == "remoto"
     assert calls[0][0].endswith("/chat/completions")
+    assert calls[0][1]["max_tokens"] == 2048
     assert calls[1][1]["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/png")
 
 
@@ -240,3 +241,122 @@ def test_factory_rejects_nonofficial_groq_endpoint() -> None:
             settings,
             {"GROQ_API_KEY": "test-key", "KIARA_LLM_BASE_URL": "https://evil.test/v1"},
         )
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "model", "key_name", "expected_host"),
+    [
+        (
+            "nvidia",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            "NVIDIA_API_KEY",
+            "integrate.api.nvidia.com",
+        ),
+        ("antling", "Ling-3.0-flash", "ANT_LING_API_KEY", "api.ant-ling.com"),
+        ("tokenra", "stealth/ox-alpha", "TOKENRA_API_KEY", "tokenra.io"),
+        (
+            "vercel-gateway",
+            "inclusionai/ling-3.0-flash",
+            "AI_GATEWAY_API_KEY",
+            "ai-gateway.vercel.sh",
+        ),
+    ],
+)
+def test_factory_builds_verified_free_tier_compatible_providers(
+    provider_name, model, key_name, expected_host
+) -> None:
+    settings = Settings(
+        raw={"llm": {"provider": provider_name, "model": model}},
+        root=Path.cwd(),
+    )
+
+    provider = build_llm_provider(settings, {key_name: "test-key"})
+
+    assert isinstance(provider, OpenAICompatibleProvider)
+    assert provider.model == model
+    assert expected_host in provider.base_url
+
+
+def test_hybrid_candidates_skip_missing_keys_and_preserve_declared_order(tmp_path) -> None:
+    settings = Settings(
+        raw={
+            "llm": {
+                "provider": "ollama",
+                "model": "local",
+                "routing": {
+                    "enabled": True,
+                    "mode": "hybrid",
+                    "fast_model": "local",
+                    "reasoning_model": "local",
+                    "fast": {
+                        "candidates": [
+                            {"provider": "antling", "model": "Ling-3.0-flash"},
+                            {
+                                "provider": "nvidia",
+                                "model": "nvidia/nemotron-3-ultra-550b-a55b",
+                            },
+                        ]
+                    },
+                    "reasoning": {
+                        "candidates": [
+                            {
+                                "provider": "nvidia",
+                                "model": "nvidia/nemotron-3-ultra-550b-a55b",
+                            }
+                        ]
+                    },
+                },
+            }
+        },
+        root=tmp_path,
+    )
+
+    router = build_llm_provider(
+        settings, {"NEMOTRON_3_ULTRA_550B_API_KEY": "test-key"}
+    )
+
+    assert isinstance(router, ModelRouter)
+    fast = router.profiles["fast"]
+    assert isinstance(fast, FallbackProvider)
+    assert fast.providers[0].name.startswith("nvidia:")
+    assert isinstance(fast.providers[-1], OllamaProvider)
+
+
+def test_one_openrouter_key_activates_all_declared_models(tmp_path) -> None:
+    models = [
+        "inclusionai/ling-3.0-flash",
+        "stealth/ox-alpha",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+    ]
+    settings = Settings(
+        raw={
+            "llm": {
+                "provider": "ollama",
+                "model": "local",
+                "routing": {
+                    "enabled": True,
+                    "mode": "hybrid",
+                    "fast_model": "local",
+                    "reasoning_model": "local",
+                    "fast": {
+                        "candidates": [
+                            {"provider": "openrouter", "model": model}
+                            for model in models
+                        ]
+                    },
+                    "reasoning": {"candidates": []},
+                },
+            }
+        },
+        root=tmp_path,
+    )
+
+    router = build_llm_provider(settings, {"OPENROUTER_API_KEY": "test-key"})
+
+    assert isinstance(router, ModelRouter)
+    fast = router.profiles["fast"]
+    assert isinstance(fast, FallbackProvider)
+    assert [provider.name for provider in fast.providers[:-1]] == [
+        f"openrouter:{model}" for model in models
+    ]
+    assert isinstance(fast.providers[-1], OllamaProvider)

@@ -9,7 +9,21 @@ from typing import Any
 import yaml
 
 _LOCAL_SECRET_NAMES = frozenset(
-    {"OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"}
+    {
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+        "NVIDIA_API_KEY",
+        "ANT_LING_API_KEY",
+        "TOKENRA_API_KEY",
+        "AI_GATEWAY_API_KEY",
+        "NEMOTRON_3_ULTRA_550B_API_KEY",
+        "LING_3_0_FLASH_API_KEY",
+        "LING_3_0_FLASH_VERCEL_API_KEY",
+        "OX_ALPHA_API_KEY",
+        "VERCEL_OIDC_TOKEN",
+    }
 )
 
 DEFAULTS: dict[str, Any] = {

@@ -23,6 +23,14 @@ def snapshot(title: str = "Documento") -> WindowSnapshot:
     )
 
 
+def test_uia_text_normalizer_flattens_nested_values() -> None:
+    assert ScreenPerception._flatten_uia_text(["janela", ["erro", ["detalhe"]]]) == [
+        "janela",
+        "erro",
+        "detalhe",
+    ]
+
+
 async def test_poll_publishes_only_when_context_changes() -> None:
     bus = EventBus()
     received: list[dict[str, object]] = []
@@ -36,6 +44,30 @@ async def test_poll_publishes_only_when_context_changes() -> None:
     assert await perception.poll_once() is False
     assert len(received) == 1
     assert received[0]["window_title"] == "Documento"
+
+
+async def test_poll_loop_survives_optional_windows_backend_failure(monkeypatch) -> None:
+    perception = ScreenPerception(
+        EventBus(),
+        PerceptionOptions(poll_interval_seconds=0.25),
+        inspector=snapshot,
+    )
+    calls = 0
+
+    async def failing_poll() -> bool:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise KeyError(None)
+        perception._stop.set()
+        return False
+
+    monkeypatch.setattr(perception, "poll_once", failing_poll)
+    await perception.start()
+    await asyncio.sleep(0.35)
+    await asyncio.wait_for(perception.stop(), timeout=1)
+
+    assert calls >= 1
 
 
 async def test_disabled_features_do_not_inspect_or_capture() -> None:

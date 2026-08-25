@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import logging
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -12,6 +13,8 @@ from app.config import Settings
 from app.core.event_bus import EventBus
 from app.models import ScreenContext
 from app.perception.windows import WindowSnapshot, inspect_active_window
+
+logger = logging.getLogger(__name__)
 
 
 class WindowInspector(Protocol):
@@ -246,7 +249,10 @@ class ScreenPerception:
     async def _poll_loop(self) -> None:
         interval = max(0.25, self.options.poll_interval_seconds)
         while not self._stop.is_set():
-            await self.poll_once()
+            try:
+                await self.poll_once()
+            except Exception:
+                logger.debug("Falha transitória na percepção da tela.", exc_info=True)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=interval)
             except TimeoutError:
@@ -334,11 +340,27 @@ class ScreenPerception:
             from pywinauto import Desktop
 
             window = Desktop(backend="uia").window(handle=handle)
-            texts = (text.strip() for item in window.descendants() for text in item.texts())
+            texts = (
+                text.strip()
+                for item in window.descendants()
+                for value in item.texts()
+                for text in ScreenPerception._flatten_uia_text(value)
+            )
             content = "\n".join(text for text in texts if text)
             return content or None
-        except (ImportError, RuntimeError, OSError):
+        except Exception:  # noqa: BLE001 - pywinauto can surface backend-specific COM errors
             return None
+
+    @staticmethod
+    def _flatten_uia_text(value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, (list, tuple)):
+            flattened: list[str] = []
+            for child in value:
+                flattened.extend(ScreenPerception._flatten_uia_text(child))
+            return flattened
+        return []
 
     @staticmethod
     def _read_ui_automation_alert(handle: int | None) -> dict[str, str] | None:
@@ -354,7 +376,12 @@ class ScreenPerception:
             )
             for item in [window, *window.descendants()]:
                 control_type = str(getattr(item.element_info, "control_type", ""))
-                texts = [text.strip() for text in item.texts() if text.strip()]
+                texts = [
+                    text.strip()
+                    for value in item.texts()
+                    for text in ScreenPerception._flatten_uia_text(value)
+                    if text.strip()
+                ]
                 message = " ".join(texts)
                 if (
                     message
@@ -366,7 +393,7 @@ class ScreenPerception:
                         "title": texts[0],
                         "message": message,
                     }
-        except (ImportError, RuntimeError, OSError, AttributeError):
+        except Exception:  # noqa: BLE001 - pywinauto can surface backend-specific COM errors
             return None
         return None
 
