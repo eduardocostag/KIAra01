@@ -51,8 +51,18 @@ criadas em `00 - Caixa de entrada` por meio de escrita atômica.
 
 Quando `feedback_learning_enabled` está ativo, toda resposta normal termina com
 `Te auxiliei?`. A resposta `sim` aprova apenas a última troca e cria uma nota em
-`30 - Conhecimento/Aprendizados Kiara`. A resposta `não` descarta a troca. Se o usuário fizer
-uma nova pergunta sem responder, a aprovação anterior também é descartada.
+`30 - Conhecimento/Aprendizados Kiara`. A resposta `não` não grava a troca no Obsidian: ela é
+registrada, com segredos redigidos, em `data/correction-inbox.jsonl` para revisão. Se o usuário
+fizer uma nova pergunta sem responder, a aprovação anterior também é descartada.
+
+Pergunte `onde estão as correções?` para a Kiara mostrar o caminho absoluto e a quantidade
+pendente. No VS Code, abra `data/correction-inbox.jsonl` pelo Explorer e anexe o arquivo à
+conversa com o Codex (ou copie somente as linhas desejadas). A Kiara não envia conversas
+automaticamente; o arquivo é local e está ignorado pelo Git.
+
+Ao executar pelo código-fonte, o caminho fica dentro do projeto. Na versão instalada, os dados
+ficam em `%LOCALAPPDATA%\Kiara\data\correction-inbox.jsonl`. O comando acima sempre mostra o
+caminho efetivamente usado naquela instalação.
 
 As notas aprovadas contêm a solicitação e a resposta/processo validado. Padrões conhecidos
 de senhas, tokens e chaves de API são redigidos antes da escrita.

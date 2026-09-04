@@ -6,6 +6,7 @@ from app.integrations.communications import MicrosoftGraphCommunications, Outbou
 from app.integrations.credentials import ChainedCredentials
 from app.integrations.email import DraftEmail, GmailEmailProvider
 from app.integrations.http import HttpResponse
+from app.tools.communications import ReadCalendarTool
 
 
 class Credentials:
@@ -49,6 +50,23 @@ async def test_graph_reads_without_mutation():
     graph = MicrosoftGraphCommunications(Credentials({"KIARA_GRAPH_TOKEN": "token"}), http)
     assert await graph.read_calendar() == [{"id": "read-1"}]
     assert http.calls[0][0] == "GET"
+
+
+@pytest.mark.asyncio
+async def test_calendar_tool_formats_event_subject_and_time():
+    class Calendar:
+        async def read_calendar(self, limit=20):
+            assert limit == 20
+            return [
+                {
+                    "subject": "Reunião de projeto",
+                    "start": {"dateTime": "2026-08-28T10:00:00"},
+                }
+            ]
+
+    result = await ReadCalendarTool(Calendar()).execute()
+
+    assert result.output == "2026-08-28T10:00:00 — Reunião de projeto"
 
 
 @pytest.mark.asyncio

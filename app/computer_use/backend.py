@@ -47,7 +47,9 @@ class PywinautoBackend:
         if selector.title:
             criteria["title"] = selector.title
         if selector.process:
-            criteria["process"] = int(selector.process) if selector.process.isdigit() else selector.process
+            criteria["process"] = (
+                int(selector.process) if selector.process.isdigit() else selector.process
+            )
         if selector.class_name:
             criteria["class_name"] = selector.class_name
         window = self._desktop().window(**criteria)
@@ -82,7 +84,9 @@ class PywinautoBackend:
 
     def window_operation(self, window, operation: WindowOperation) -> None:
         wrapper = window.wrapper_object()
-        getattr(wrapper, operation.value)() if operation != WindowOperation.FOCUS else wrapper.set_focus()
+        getattr(
+            wrapper, operation.value
+        )() if operation != WindowOperation.FOCUS else wrapper.set_focus()
 
     def exists(self, target) -> bool:
         return bool(target.exists(timeout=0.2))

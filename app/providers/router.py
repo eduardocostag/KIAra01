@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import unicodedata
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 
@@ -20,10 +21,11 @@ class LocalProfilePolicy:
     """Deterministic policy; it never calls a model or external service."""
 
     _REASONING_MARKERS = re.compile(
-        r"\b(analise|arquitetura|compare|diagnostique|estrategia|planeje|"
-        r"explique(?: por que)?|por que|como (?:posso|funciona|resolver)|qual (?:é|e) a diferença|"
+        r"\b(analise|arquitetura|compare|diagnostique|diagnostico|estrategia|planeje|"
+        r"explique(?: por que)?|por que|como (?:posso|funciona|resolver)|qual (?:e )?a diferenca|"
         r"o que devo|me ensine|me ajude a|resolva|calcule|avalie|demonstre|vantagens|"
-        r"desvantagens|passo a passo|trade-?off|debug|investigue)\b",
+        r"desvantagens|passo a passo|trade-?off|debug|investigue|investigaria|hipoteses|"
+        r"causa provavel|proximos testes|sequencia de diagnostico)\b",
         re.IGNORECASE,
     )
     _CODE_MARKERS = re.compile(
@@ -34,12 +36,17 @@ class LocalProfilePolicy:
         self.reasoning_chars = max(100, reasoning_chars)
 
     def select_text(self, prompt: str) -> RoutingDecision:
-        user_text = self._user_text(prompt)
+        user_text = self._normalize(self._user_text(prompt))
         if len(user_text) >= self.reasoning_chars:
             return RoutingDecision("reasoning", "long_input")
         if self._REASONING_MARKERS.search(user_text) or self._CODE_MARKERS.search(user_text):
             return RoutingDecision("reasoning", "complexity_marker")
         return RoutingDecision("fast", "default")
+
+    @staticmethod
+    def _normalize(value: str) -> str:
+        decomposed = unicodedata.normalize("NFKD", value.casefold())
+        return "".join(char for char in decomposed if not unicodedata.combining(char))
 
     @staticmethod
     def _user_text(prompt: str) -> str:
@@ -91,6 +98,12 @@ class ModelRouter(LLMProvider):
     async def generate(self, prompt: str) -> str:
         decision = self.policy.select_text(prompt)
         return await self._generate_with(decision, prompt)
+
+    async def generate_for_profile(self, profile: str, prompt: str) -> str:
+        """Use an explicit configured profile for internal orchestration stages."""
+        if profile not in self.profiles:
+            raise ValueError(f"Perfil de modelo desconhecido: {profile}")
+        return await self._generate_with(RoutingDecision(profile, "explicit_internal_stage"), prompt)
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         decision = self.policy.select_text(prompt)

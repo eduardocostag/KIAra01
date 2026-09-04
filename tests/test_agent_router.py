@@ -4,8 +4,15 @@ import json
 
 import pytest
 
+from app.agents.contracts import SpecialistResult
 from app.agents.router import AgentRouter
-from app.agents.specialists import HelpdeskSpecialist, SoftwareSpecialist
+from app.agents.specialists import (
+    DataSystemsSpecialist,
+    HelpdeskSpecialist,
+    InfrastructureSpecialist,
+    SalesDevelopmentSpecialist,
+    SoftwareSpecialist,
+)
 from app.providers.llm import LLMProvider
 
 
@@ -57,6 +64,68 @@ def test_selects_helpdesk_for_software_and_hardware_support() -> None:
     }
 
 
+def test_selects_sdr_specialist_for_prospecting_and_webscraping_requests() -> None:
+    router = AgentRouter(RecordingProvider())
+    selected = router.select(
+        "Quero prospectar clínicas em Porto Alegre e extrair leads sem site e com WhatsApp"
+    )
+    assert "sdr_profissional" in {item.name for item in selected}
+
+
+def test_sdr_specialist_instructions_require_ranked_lead_output() -> None:
+    instructions = SalesDevelopmentSpecialist().instructions()
+    assert "lista de leads" in instructions.lower()
+    assert "ranking" in instructions.lower()
+    assert "tabela" in instructions.lower()
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que é DHCP?",
+        "Qual a diferença entre IPv4 e IPv6?",
+        "Snapshot pode substituir backup? Por quê?",
+        "Como funciona RAID 5?",
+        "Como testar a porta 443 usando PowerShell?",
+        "Por que clientes de Active Directory devem utilizar o DNS do domínio?",
+        "Um script funciona manualmente, mas falha pelo RMM. Quais causas investigar?",
+        "Como visualizar logs de um serviço usando journalctl?",
+        "Qual a diferença entre S3 e EBS?",
+        "Qual a diferença entre Terraform e Ansible?",
+    ),
+)
+def test_infrastructure_questions_never_fall_back_to_generalist(question: str) -> None:
+    selected = AgentRouter(RecordingProvider()).select(question)
+    assert "infraestrutura_ti" in {item.name for item in selected}
+
+
+def test_infrastructure_prompt_requires_evidence_driven_diagnosis() -> None:
+    instructions = InfrastructureSpecialist().instructions()
+    assert "hipóteses" in instructions
+    assert "resultado esperado" in instructions
+    assert "snapshot nunca" in instructions.casefold()
+    assert "Nunca recomende desativar ou contornar firewall" in instructions
+    assert "Get-NetTCPConnection" in instructions
+    assert "Test-NetConnection -Port testa TCP, não UDP" in instructions
+
+
+def test_database_specialist_rejects_generic_tuning_and_requires_evidence() -> None:
+    specialist = DataSystemsSpecialist()
+    selected = AgentRouter(RecordingProvider()).select(
+        "Uma consulta SQL ficou lenta com milhões de registros"
+    )
+    assert selected[0].name == "dados_e_bancos"
+    assert "EXPLAIN" in specialist.instructions()
+    assert "Nunca recomende SHRINK" in specialist.instructions()
+
+
+def test_dominant_specialist_avoids_redundant_local_model_contention() -> None:
+    selected = AgentRouter(RecordingProvider()).select(
+        "Investigue esta consulta SQL em uma tabela com milhões de registros"
+    )
+    assert [item.name for item in selected] == ["dados_e_bancos"]
+
+
 @pytest.mark.asyncio
 async def test_helpdesk_receives_live_screen_understanding() -> None:
     provider = RecordingProvider()
@@ -87,6 +156,25 @@ async def test_composes_multi_specialist_answers() -> None:
     assert coordinator["role"] == "coordenador_de_especialistas"
     assert len(coordinator["specialist_analyses"]) == 3
     assert all("active_screen" not in prompt["context"] for prompt in provider.prompts[:-1])
+
+
+@pytest.mark.asyncio
+async def test_long_specialist_answers_are_composed_with_their_conclusions() -> None:
+    provider = RecordingProvider()
+    router = AgentRouter(provider)
+    content = "premissa " + ("detalhe " * 700) + "SLO rollback conclusão"
+    answer = await router._compose(
+        "Defina arquitetura, SLO e rollback",
+        (
+            SpecialistResult("arquitetura", content),
+            SpecialistResult("operações", content),
+            SpecialistResult("qualidade", content),
+        ),
+    )
+    assert answer == "resposta-1"
+    analyses = provider.prompts[0]["specialist_analyses"]
+    assert all("SLO rollback conclusão" in item["content"] for item in analyses)
+    assert all(len(item["content"]) < 4100 for item in analyses)
 
 
 @pytest.mark.asyncio

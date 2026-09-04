@@ -20,6 +20,7 @@ exe = EXE(
     analysis.datas,
     [],
     name="Kiara",
+    icon=str(root / "app" / "ui" / "assets" / "kiara-app-icon-v3.ico"),
     console=False,
     disable_windowed_traceback=False,
     uac_admin=False,

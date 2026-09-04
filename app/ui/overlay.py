@@ -39,6 +39,7 @@ class AnimatedOrb(QWidget):
 
     _LOGICAL_SIZE = 92
     _DISPLAY_SIZE = 82
+    _ANIMATED_STATES = frozenset({"pensando", "falando", "ouvindo", "ocupada"})
 
     def __init__(self) -> None:
         super().__init__()
@@ -56,17 +57,30 @@ class AnimatedOrb(QWidget):
             Qt.TransformationMode.SmoothTransformation,
         )
         self._timer = QTimer(self)
-        self._timer.setInterval(33)
+        # 12.5 FPS is enough for a calm ambient indicator and avoids keeping
+        # the UI process busy with continuous antialiased repaints.
+        self._timer.setInterval(80)
         self._timer.timeout.connect(self._advance)
-        self._timer.start()
 
     def set_visual_state(self, state: str) -> None:
-        self._state = state.casefold()
+        normalized = state.casefold().strip() or "pronta"
+        if normalized == self._state:
+            return
+        self._state = normalized
+        if self._state in self._ANIMATED_STATES:
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._timer.stop()
+            self._phase = 0.0
         self.update()
 
     def _advance(self) -> None:
+        if self._state not in self._ANIMATED_STATES:
+            self._timer.stop()
+            return
         speeds = {"pensando": 0.16, "falando": 0.24, "ouvindo": 0.12}
-        self._phase = (self._phase + speeds.get(self._state, 0.045)) % (math.tau * 4)
+        self._phase = (self._phase + speeds.get(self._state, 0.08)) % (math.tau * 4)
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -76,9 +90,9 @@ class AnimatedOrb(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         scale_factor = self._DISPLAY_SIZE / self._LOGICAL_SIZE
         painter.scale(scale_factor, scale_factor)
-        active = self._state in {"pensando", "falando", "ouvindo", "ocupada"}
+        active = self._state in self._ANIMATED_STATES
         pulse = math.sin(self._phase)
-        scale = 1.0 + (0.075 if active else 0.025) * pulse
+        scale = 1.0 + 0.025 * pulse if active else 1.0
         diameter = 76 * scale
         orb_rect = QRectF((92 - diameter) / 2 - 3, (86 - diameter) / 2, diameter, diameter)
 
@@ -170,7 +184,9 @@ class AnimatedOrb(QWidget):
             painter.setPen(QPen(QColor(116, 255, 239, 150), 1.6))
             for index in range(2):
                 radius = 34 + index * 4 + 2 * pulse
-                painter.drawArc(QRectF(43 - radius, 43 - radius, radius * 2, radius * 2), -55 * 16, 110 * 16)
+                painter.drawArc(
+                    QRectF(43 - radius, 43 - radius, radius * 2, radius * 2), -55 * 16, 110 * 16
+                )
 
     @staticmethod
     def _ellipse_path(rect: QRectF) -> QPainterPath:
@@ -223,12 +239,18 @@ class StatusOverlay(QWidget):
     _DRAG_THRESHOLD = 6
 
     def __init__(self, on_activation_requested: Callable[[], None] | None = None) -> None:
-        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        super().__init__(
+            None,
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint,
+        )
         self.setObjectName("statusOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # The always-on-top idle orb must never become a keyboard target.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAccessibleName("Orbe da Kiara")
         self._expanded = False
         self._state = "pronta"
@@ -265,6 +287,7 @@ class StatusOverlay(QWidget):
         row.setSpacing(6)
         self.quick_input = QLineEdit()
         self.quick_input.setObjectName("quickInput")
+        self.quick_input.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.quick_input.setPlaceholderText("Converse com a Kiara…")
         self.quick_input.setAccessibleName("Mensagem rápida para a Kiara")
         self.quick_input.setAccessibleDescription(
@@ -342,7 +365,7 @@ class StatusOverlay(QWidget):
             QAccessibleEvent(self.response_label, QAccessible.Event.Alert)
         )
         self.set_state("pronta")
-        self.set_expanded(True)
+        self.set_expanded(True, focus_input=False)
         # This tool window stays above other apps. Do not leave a potentially
         # sensitive answer exposed indefinitely on the desktop.
         self._response_timer.start(30_000)
@@ -353,14 +376,14 @@ class StatusOverlay(QWidget):
             QAccessibleEvent(self.response_label, QAccessible.Event.Alert)
         )
         self.set_state("erro")
-        self.set_expanded(True)
+        self.set_expanded(True, focus_input=False)
         self._response_timer.start(30_000)
 
     def _expire_response(self) -> None:
         self.response_label.setText("Como posso ajudar você?")
         self.set_expanded(False)
 
-    def set_expanded(self, expanded: bool) -> None:
+    def set_expanded(self, expanded: bool, *, focus_input: bool = True) -> None:
         # Keep the orb anchored to the same screen corner while the quick-chat
         # panel changes this tool window's size.
         old_right = self.geometry().right()
@@ -379,16 +402,22 @@ class StatusOverlay(QWidget):
         if self.isVisible():
             anchored = QPoint(old_right - self.width() + 1, old_bottom - self.height() + 1)
             self.move(self._clamped_position(anchored))
-        if expanded:
+        if expanded and focus_input:
             # WA_ShowWithoutActivating keeps the idle orb discreet. Once the user
             # explicitly opens chat, the editor must become operable by keyboard.
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            self.quick_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             self.activateWindow()
             self.quick_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
         else:
-            # The idle always-on-top orb must never steal keyboard input from
-            # the user's active application.
+            # Programmatic responses may expand the panel, but they must never
+            # steal typing from the user's current application.
             self.quick_input.clearFocus()
+            self.quick_input.setFocusPolicy(
+                Qt.FocusPolicy.ClickFocus if expanded else Qt.FocusPolicy.NoFocus
+            )
             self.clearFocus()
+            self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._update_accessibility()
         self.setUpdatesEnabled(True)
         self.update()
@@ -421,7 +450,9 @@ class StatusOverlay(QWidget):
         super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self._orb_contains(event.position().toPoint()):
+        if event.button() == Qt.MouseButton.LeftButton and self._orb_contains(
+            event.position().toPoint()
+        ):
             self._press_global = event.globalPosition().toPoint()
             self._window_at_press = self.pos()
             self._dragged = False
@@ -465,8 +496,6 @@ class StatusOverlay(QWidget):
             return
         if event.key() == Qt.Key.Key_Escape and self.is_expanded():
             self.set_expanded(False)
-            self.activateWindow()
-            self.setFocus(Qt.FocusReason.ShortcutFocusReason)
             event.accept()
             return
         super().keyPressEvent(event)
@@ -490,10 +519,6 @@ class StatusOverlay(QWidget):
             and event.key() == Qt.Key.Key_Escape
         ):
             self.set_expanded(False)
-            # Escape is an explicit keyboard interaction, so returning focus
-            # to the orb is safe and keeps keyboard navigation available.
-            self.activateWindow()
-            self.setFocus(Qt.FocusReason.ShortcutFocusReason)
             return True
         return super().eventFilter(watched, event)
 
@@ -567,4 +592,3 @@ class StatusOverlay(QWidget):
         self.resize(self.sizeHint())
         self.move(geometry.right() - self.width() + 1, geometry.bottom() - self.height() + 1)
         self.show()
-        self.raise_()

@@ -46,7 +46,7 @@ def test_listen_reports_capture_and_transcription_states():
     states = []
     service = VoiceService(FakeMicrophone(), FakeRecognizer(), FakeSynthesizer())
     service.listen(1, states.append)
-    assert states == ["Ouvindo…", "Transcrevendo…"]
+    assert states == ["Ouvindo comando…", "Transcrevendo comando…"]
 
 
 def test_cancel_stops_input_and_output():
@@ -93,6 +93,17 @@ def test_voice_factory_is_disabled_by_default():
     assert build_voice_service(settings) is None
 
 
+def test_shipped_defaults_do_not_monitor_microphone(tmp_path):
+    from app.config import load_settings
+
+    settings = load_settings(tmp_path / "missing.yaml")
+    assert settings.get("voice.enabled") is False
+    assert settings.get("voice.always_listen_for_wake_word") is False
+    assert settings.get("voice.require_wake_word") is True
+    assert settings.get("proactivity.level") == "off"
+    assert settings.get("automation.enabled") is False
+
+
 def test_voice_factory_does_not_initialize_optional_backends():
     settings = Settings({"voice": {"enabled": True}}, Path.cwd())
     service = build_voice_service(settings)
@@ -132,6 +143,63 @@ def test_always_on_monitor_requires_wake_word_for_every_turn():
     assert service.listen(1).text == "abra o bloco de notas"
     assert service.conversation_mode is False
     assert service.listen(1).text == ""
+
+
+def test_bare_wake_word_opens_one_short_command_window():
+    class SequenceRecognizer:
+        def __init__(self):
+            self.transcripts = iter(
+                (
+                    Transcript("Kiara", "pt"),
+                    Transcript("abra o Chrome", "pt"),
+                    Transcript("apague os arquivos", "pt"),
+                )
+            )
+
+        def transcribe(self, audio):
+            return next(self.transcripts)
+
+    service = VoiceService(
+        FakeMicrophone(),
+        SequenceRecognizer(),
+        FakeSynthesizer(),
+        always_listen_for_wake_word=True,
+    )
+    wake = service.listen(1)
+    assert wake.text == ""
+    assert wake.wake_detected
+    assert service.listen(1).text == "abra o Chrome"
+    assert service.listen(1).text == ""
+
+
+def test_common_whisper_wake_variation_is_accepted_only_at_start():
+    class AliasRecognizer:
+        def transcribe(self, audio):
+            return Transcript("Quiara, qual é a data?", "pt")
+
+    service = VoiceService(
+        FakeMicrophone(), AliasRecognizer(), FakeSynthesizer(), always_listen_for_wake_word=True
+    )
+    result = service.listen(1)
+    assert result.wake_detected
+    assert result.text == "qual é a data?"
+
+
+def test_low_confidence_wake_transcription_is_rejected():
+    class UncertainRecognizer:
+        def transcribe(self, audio):
+            return Transcript("Kiara, abra o navegador", "pt", confidence=0.2)
+
+    service = VoiceService(
+        FakeMicrophone(),
+        UncertainRecognizer(),
+        FakeSynthesizer(),
+        always_listen_for_wake_word=True,
+        wake_min_confidence=0.65,
+    )
+    result = service.listen(1)
+    assert result.text == ""
+    assert not result.wake_detected
 
 
 def test_wake_word_is_consumed_and_activates_conversation():

@@ -114,7 +114,7 @@ def _build_provider(
             "openrouter": ("https://openrouter.ai/api/v1", "openrouter/free"),
             "gemini": (
                 "https://generativelanguage.googleapis.com/v1beta/openai",
-                "gemini-2.0-flash",
+                "gemini-3.1-flash-lite",
             ),
             "nvidia": (
                 "https://integrate.api.nvidia.com/v1",
@@ -190,9 +190,7 @@ def _build_hybrid_router(
 ) -> LLMProvider:
     if not isinstance(local_router, ModelRouter):
         return local_router
-    ledger = settings.root / str(
-        settings.get("llm.routing.usage_ledger", "data/cloud-usage.json")
-    )
+    ledger = settings.root / str(settings.get("llm.routing.usage_ledger", "data/cloud-usage.json"))
     daily_limit = int(settings.get("llm.routing.daily_cloud_request_limit", 500))
     failure_threshold = int(settings.get("llm.routing.failure_threshold", 3))
     cooldown = float(settings.get("llm.routing.cooldown_seconds", 60))

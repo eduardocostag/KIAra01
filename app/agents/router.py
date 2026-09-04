@@ -8,10 +8,13 @@ from typing import Any
 
 from app.agents.contracts import Specialist, SpecialistResult
 from app.agents.specialists import (
+    DataSystemsSpecialist,
     GeneralistSpecialist,
     HelpdeskSpecialist,
+    InfrastructureSpecialist,
     ProductivitySpecialist,
     ResearchSpecialist,
+    SalesDevelopmentSpecialist,
     SecuritySpecialist,
     SoftwareSpecialist,
 )
@@ -38,10 +41,13 @@ class AgentRouter:
             specialists
             or (
                 SoftwareSpecialist(),
+                DataSystemsSpecialist(),
                 HelpdeskSpecialist(),
+                InfrastructureSpecialist(),
                 SecuritySpecialist(),
                 ProductivitySpecialist(),
                 ResearchSpecialist(),
+                SalesDevelopmentSpecialist(),
             )
         )
         self.generalist = generalist or GeneralistSpecialist()
@@ -59,6 +65,10 @@ class AgentRouter:
         selected = tuple(item[1] for item in ranked if item[0] > 0)[: self.max_specialists]
         if not selected:
             return RoutingDecision((self.generalist,), 0.0, {})
+        # A clearly dominant domain does not benefit from duplicate consultations. This also
+        # prevents concurrent requests from contending for the same local Ollama model.
+        if len(selected) > 1 and ranked[0][0] >= ranked[1][0] + 2:
+            selected = selected[:1]
         positive = {specialist.name: score for score, specialist in ranked if score > 0}
         top_score = ranked[0][0]
         total = sum(positive.values())
@@ -100,38 +110,54 @@ class AgentRouter:
     ) -> SpecialistResult | None:
         try:
             return await asyncio.wait_for(
-                specialist.respond(self.provider, message, context), timeout=45
+                specialist.respond(self.provider, message, context), timeout=100
             )
         except Exception:  # noqa: BLE001 - isolate a failed specialist branch
             return None
 
     async def _compose(self, message: str, results: Sequence[SpecialistResult]) -> str:
-        if sum(len(result.content) for result in results) > 8000:
-            return self._unsynthesized(results)
         prompt = {
             "role": "coordenador_de_especialistas",
             "user_message": message,
             "specialist_analyses": [
-                {"specialist": result.specialist, "content": result.content[:4000]}
+                {
+                    "specialist": result.specialist,
+                    "content": self._composition_excerpt(result.content),
+                }
                 for result in results
             ],
             "instructions": (
                 "Produza uma resposta única e coerente. Resolva conflitos explicitamente, "
-                "preserve ressalvas e não alegue ações não executadas."
+                "preserve ressalvas e não alegue ações não executadas. Cubra cada parte "
+                "pedida pelo usuário, inclusive critérios, etapas e conclusões que apareçam "
+                "no fim das análises. Elimine repetições e seja conciso."
             ),
         }
         try:
+            generate_profile = getattr(self.provider, "generate_for_profile", None)
+            generation = (
+                generate_profile("fast", json.dumps(prompt, ensure_ascii=False))
+                if callable(generate_profile)
+                else self.provider.generate(json.dumps(prompt, ensure_ascii=False))
+            )
             return await asyncio.wait_for(
-                self.provider.generate(json.dumps(prompt, ensure_ascii=False)), timeout=45
+                generation, timeout=60
             )
         except Exception:  # noqa: BLE001 - preserve useful specialist work on compose failure
             return self._unsynthesized(results)
 
     @staticmethod
+    def _composition_excerpt(content: str, limit: int = 4000) -> str:
+        """Keep both reasoning premises and conclusions within a bounded coordinator prompt."""
+        if len(content) <= limit:
+            return content
+        head = int(limit * 0.6)
+        tail = limit - head
+        return content[:head] + "\n\n[trecho intermediário condensado]\n\n" + content[-tail:]
+
+    @staticmethod
     def _unsynthesized(results: Sequence[SpecialistResult]) -> str:
-        sections = [
-            f"### {result.specialist}\n\n{result.content[:5000]}" for result in results
-        ]
+        sections = [f"### {result.specialist}\n\n{result.content[:5000]}" for result in results]
         return (
             "As análises já são extensas; seguem separadas para preservar detalhes sem "
             "alegar consenso artificial:\n\n" + "\n\n".join(sections)

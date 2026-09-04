@@ -7,6 +7,8 @@ from dataclasses import dataclass
 class Transcript:
     text: str
     language: str | None = None
+    wake_detected: bool = False
+    confidence: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

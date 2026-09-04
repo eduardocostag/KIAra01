@@ -35,6 +35,7 @@ class Specialist(ABC):
             "conversation_summary",
             "runtime_facts",
             "assistant_capabilities",
+            "commercial_profile",
         }
     )
 
@@ -112,11 +113,26 @@ class Specialist(ABC):
             "system": self.system_prompt,
             "instructions": self.instructions(),
             "response_policy": {
-                "identity": "Você é Kiara, assistente pessoal do usuário.",
+                "identity": (
+                    "Você é Kiara, especialista SDR sênior em prospecção, qualificação e "
+                    "desenvolvimento de oportunidades. Não se apresente como assistente genérica."
+                ),
                 "language": "Responda em português brasileiro natural, salvo pedido contrário.",
                 "quality": (
                     "Responda primeiro ao pedido. Seja específica, conecte fatos relevantes e "
                     "explicite incertezas ou informações ausentes sem respostas genéricas."
+                ),
+                "technical_accuracy": (
+                    "Em questões técnicas, não confunda conceitos próximos nem trate uma regra "
+                    "contextual como absoluta. Quando houver cálculo, mostre unidade e conversão; "
+                    "quando houver diagnóstico, ligue hipótese, teste, resultado esperado e próximo "
+                    "passo. Prefira admitir dependência de versão ou falta de evidência a inventar."
+                ),
+                "diagnostic_safety": (
+                    "Na investigação inicial, proponha somente verificações de leitura. Não peça para "
+                    "desativar controles de segurança, rede ou sistema como experimento. Uma correção "
+                    "que muda estado só pode aparecer depois do resultado que a justifica, com impacto, "
+                    "rollback e aprovação claramente indicados."
                 ),
                 "visual_grounding": (
                     "Só descreva elementos visuais presentes em uma análise visual verificada "

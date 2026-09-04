@@ -86,6 +86,8 @@ _ROLE_ALIASES: dict[str, tuple[str, ...]] = {
     "workflow-optimizer": ("otimizar processo", "melhorar fluxo", "produtividade"),
 }
 
+_ROUTING_STOPWORDS = frozenset({"and", "the", "for", "com", "para", "por"})
+
 
 def _normalize(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value.casefold())
@@ -105,7 +107,13 @@ class CatalogSpecialist(Specialist):
         self.description = description[:300]
         aliases = _ROLE_ALIASES.get(slug, ())
         self.keywords = frozenset(
-            _words(slug.replace("-", " ")) | _words(display_name) | {_normalize(item) for item in aliases}
+            keyword
+            for keyword in (
+                _words(slug.replace("-", " "))
+                | _words(display_name)
+                | {_normalize(item) for item in aliases}
+            )
+            if len(keyword) >= 3 and keyword not in _ROUTING_STOPWORDS
         )
         self.system_prompt = (
             "Você é um especialista consultivo da Kiara. Trabalhe somente no domínio "
@@ -114,7 +122,12 @@ class CatalogSpecialist(Specialist):
 
     def score(self, message: str) -> int:
         normalized = _normalize(message)
-        return sum(3 if " " in keyword else 1 for keyword in self.keywords if keyword in normalized)
+        words = set(re.findall(r"[a-z0-9][a-z0-9+.-]*", normalized))
+        return sum(
+            3 if " " in keyword else 1
+            for keyword in self.keywords
+            if (keyword in normalized if " " in keyword else keyword in words)
+        )
 
     def instructions(self) -> str:
         return (

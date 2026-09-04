@@ -130,9 +130,7 @@ class OpenAICompatibleProvider(LLMProvider):
         return frozenset({"generate", "vision"} if self.vision_enabled else {"generate"})
 
     async def generate(self, prompt: str) -> str:
-        return await self._complete(
-            [{"role": "user", "content": prompt}]
-        )
+        return await self._complete([{"role": "user", "content": prompt}])
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         if not self._native_streaming:
@@ -167,15 +165,18 @@ class OpenAICompatibleProvider(LLMProvider):
             raise NotImplementedError("Este provider remoto não oferece visão.")
         encoded = base64.b64encode(image).decode("ascii")
         return await self._complete(
-            [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {
-                        "url": f"data:{media_type};base64,{encoded}"
-                    }},
-                ],
-            }]
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{media_type};base64,{encoded}"},
+                        },
+                    ],
+                }
+            ]
         )
 
     async def _complete(self, messages: list[dict[str, Any]]) -> str:

@@ -18,7 +18,9 @@ def run() -> dict[str, object]:
         "powershell": shutil.which("powershell.exe") is not None,
         "config": settings.get("assistant.name") == "Kiara",
         "active_window": get_active_window().window_title,
-        "dependencies": {name: importlib.util.find_spec(name) is not None for name in ("yaml", "mss", "win32gui")},
+        "dependencies": {
+            name: importlib.util.find_spec(name) is not None for name in ("yaml", "mss", "win32gui")
+        },
         "audit_directory_writable": (settings.root / "data").parent.exists(),
         "voice": voice_diagnostics(),
     }

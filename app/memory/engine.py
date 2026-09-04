@@ -17,6 +17,7 @@ _TOKEN = re.compile(r"[\wÀ-ÿ]+", re.UNICODE)
 
 def _serialized(method):
     """Serialize access to the shared SQLite connection across UI/core threads."""
+
     def wrapper(self, *args, **kwargs):
         with self._lock:
             return method(self, *args, **kwargs)
@@ -141,7 +142,10 @@ class MemoryEngine:
                 now.isoformat(),
                 expires_at.isoformat() if expires_at else None,
                 json.dumps(embedding) if embedding is not None else None,
-                profile.value, provenance.strip() or "user", parent_id, version,
+                profile.value,
+                provenance.strip() or "user",
+                parent_id,
+                version,
             ),
         )
         self._connection.commit()
@@ -169,8 +173,12 @@ class MemoryEngine:
             f"""SELECT * FROM memories WHERE kind IN ({placeholders})
                 AND (expires_at IS NULL OR expires_at > ?) AND superseded_by IS NULL
                 AND (? IS NULL OR profile = ?)""",
-            (*(kind.value for kind in selected), now.isoformat(),
-             profile.value if profile else None, profile.value if profile else None),
+            (
+                *(kind.value for kind in selected),
+                now.isoformat(),
+                profile.value if profile else None,
+                profile.value if profile else None,
+            ),
         ).fetchall()
         query_tokens = self._tokens(query)
         query_embedding = None
@@ -185,9 +193,25 @@ class MemoryEngine:
             recency = math.exp(-age_days / 30)
             semantic = 0.0
             if query_embedding is not None and row["embedding"]:
-                semantic = max(0.0, cosine_similarity(query_embedding, json.loads(row["embedding"])))
-            score = 0.55 * lexical + 0.2 * float(row["importance"]) + 0.15 * recency + 0.1 * semantic
-            scored.append(self._record(row, score, {"lexical": lexical, "importance": float(row["importance"]), "recency": recency, "semantic": semantic, "total": score}))
+                semantic = max(
+                    0.0, cosine_similarity(query_embedding, json.loads(row["embedding"]))
+                )
+            score = (
+                0.55 * lexical + 0.2 * float(row["importance"]) + 0.15 * recency + 0.1 * semantic
+            )
+            scored.append(
+                self._record(
+                    row,
+                    score,
+                    {
+                        "lexical": lexical,
+                        "importance": float(row["importance"]),
+                        "recency": recency,
+                        "semantic": semantic,
+                        "total": score,
+                    },
+                )
+            )
         scored.sort(key=lambda item: (item.score, item.created_at), reverse=True)
         result = scored[:limit]
         if result:
@@ -207,14 +231,25 @@ class MemoryEngine:
 
     @_serialized
     def revise(self, identifier: int, content: str, *, provenance: str = "user_correction") -> int:
-        row = self._connection.execute("SELECT * FROM memories WHERE id = ?", (identifier,)).fetchone()
+        row = self._connection.execute(
+            "SELECT * FROM memories WHERE id = ?", (identifier,)
+        ).fetchone()
         if row is None or row["superseded_by"] is not None:
             raise KeyError(identifier)
-        new_id = self.remember(MemoryKind(row["kind"]), content, metadata=json.loads(row["metadata"]),
-            importance=float(row["importance"]), expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
-            profile=MemoryProfile(row["profile"]), provenance=provenance, parent_id=identifier,
-            version=int(row["version"]) + 1)
-        self._connection.execute("UPDATE memories SET superseded_by = ? WHERE id = ?", (new_id, identifier))
+        new_id = self.remember(
+            MemoryKind(row["kind"]),
+            content,
+            metadata=json.loads(row["metadata"]),
+            importance=float(row["importance"]),
+            expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
+            profile=MemoryProfile(row["profile"]),
+            provenance=provenance,
+            parent_id=identifier,
+            version=int(row["version"]) + 1,
+        )
+        self._connection.execute(
+            "UPDATE memories SET superseded_by = ? WHERE id = ?", (new_id, identifier)
+        )
         self._connection.commit()
         return new_id
 
@@ -223,14 +258,24 @@ class MemoryEngine:
         ids = tuple(dict.fromkeys(identifiers))
         if len(ids) < 2:
             raise ValueError("At least two memories are required")
-        rows = self._connection.execute(f"SELECT * FROM memories WHERE id IN ({','.join('?' for _ in ids)})", ids).fetchall()
+        rows = self._connection.execute(
+            f"SELECT * FROM memories WHERE id IN ({','.join('?' for _ in ids)})", ids
+        ).fetchall()
         if len(rows) != len(ids) or any(row["superseded_by"] is not None for row in rows):
             raise KeyError("Memory missing or already superseded")
         if len({row["profile"] for row in rows}) != 1:
             raise ValueError("Cannot consolidate across profiles")
-        new_id = self.remember(MemoryKind.FACT, content, metadata={"consolidated_from": list(ids)},
-            importance=max(float(row["importance"]) for row in rows), profile=MemoryProfile(rows[0]["profile"]), provenance="consolidation")
-        self._connection.executemany("UPDATE memories SET superseded_by = ? WHERE id = ?", ((new_id, item) for item in ids))
+        new_id = self.remember(
+            MemoryKind.FACT,
+            content,
+            metadata={"consolidated_from": list(ids)},
+            importance=max(float(row["importance"]) for row in rows),
+            profile=MemoryProfile(rows[0]["profile"]),
+            provenance="consolidation",
+        )
+        self._connection.executemany(
+            "UPDATE memories SET superseded_by = ? WHERE id = ?", ((new_id, item) for item in ids)
+        )
         self._connection.commit()
         return new_id
 
@@ -267,7 +312,9 @@ class MemoryEngine:
         return {token.casefold() for token in _TOKEN.findall(text)}
 
     @staticmethod
-    def _record(row: sqlite3.Row, score: float, explanation: dict[str, float] | None = None) -> MemoryRecord:
+    def _record(
+        row: sqlite3.Row, score: float, explanation: dict[str, float] | None = None
+    ) -> MemoryRecord:
         return MemoryRecord(
             id=int(row["id"]),
             kind=MemoryKind(row["kind"]),
@@ -278,7 +325,10 @@ class MemoryEngine:
             accessed_at=datetime.fromisoformat(row["accessed_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
             score=score,
-            profile=MemoryProfile(row["profile"]), version=int(row["version"]),
-            parent_id=row["parent_id"], superseded_by=row["superseded_by"],
-            provenance=str(row["provenance"]), retrieval_explanation=explanation or {},
+            profile=MemoryProfile(row["profile"]),
+            version=int(row["version"]),
+            parent_id=row["parent_id"],
+            superseded_by=row["superseded_by"],
+            provenance=str(row["provenance"]),
+            retrieval_explanation=explanation or {},
         )

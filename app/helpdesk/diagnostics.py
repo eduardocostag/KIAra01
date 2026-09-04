@@ -82,9 +82,7 @@ class SystemDiagnosticsTool(Tool):
             if category == "overview" and self.runner is _run_powershell:
                 snapshot = await asyncio.to_thread(_native_overview)
             else:
-                raw = await asyncio.to_thread(
-                    self.runner, _SCRIPTS[category], self.timeout_seconds
-                )
+                raw = await asyncio.to_thread(self.runner, _SCRIPTS[category], self.timeout_seconds)
                 snapshot = json.loads(raw)
         except subprocess.TimeoutExpired:
             return ToolResult(False, error="Diagnóstico excedeu o tempo limite.")
@@ -126,7 +124,10 @@ def _resolution_criterion(
         old = before.get("problem_count")
         new = after.get("problem_count")
         if isinstance(old, int) and isinstance(new, int) and old > 0 and new == 0:
-            return True, "Os dispositivos com código de erro passaram de um valor positivo para zero."
+            return (
+                True,
+                "Os dispositivos com código de erro passaram de um valor positivo para zero.",
+            )
     if category == "network":
         old_down = _adapter_down_count(before)
         new_down = _adapter_down_count(after)
@@ -149,8 +150,7 @@ def _adapter_down_count(snapshot: dict[str, Any]) -> int:
     return sum(
         1
         for item in adapters
-        if isinstance(item, dict)
-        and str(item.get("status", "")).casefold() not in operational
+        if isinstance(item, dict) and str(item.get("status", "")).casefold() not in operational
     )
 
 
@@ -232,7 +232,9 @@ def _bound(value: Any, *, depth: int = 0) -> Any:
     if depth >= 5:
         return "[TRUNCATED]"
     if isinstance(value, dict):
-        return {str(key)[:100]: _bound(item, depth=depth + 1) for key, item in list(value.items())[:50]}
+        return {
+            str(key)[:100]: _bound(item, depth=depth + 1) for key, item in list(value.items())[:50]
+        }
     if isinstance(value, list):
         return [_bound(item, depth=depth + 1) for item in value[:50]]
     if isinstance(value, str):

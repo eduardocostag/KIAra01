@@ -70,11 +70,11 @@ def test_ui_accessibility_names_shortcuts_and_bounded_history(monkeypatch):
         assert window.send.shortcut().toString() == "Alt+E"
         assert window.talk.shortcut().toString() == "Alt+F"
         assert window.stop.shortcut().toString() == "Esc"
-        assert window.minimumWidth() <= 440
-        assert window.minimumHeight() <= 420
-        assert [window.tabs.tabText(index) for index in range(window.tabs.count())] == [
-            "Conversa"
-        ]
+        # The full SDR workspace needs a real desktop minimum; accepting 440px
+        # compressed the inspector controls until they overlapped.
+        assert window.minimumWidth() == 900
+        assert window.minimumHeight() == 680
+        assert window.workspace_stack.count() == 3
         assert "desativado" in window.conversation.text().casefold()
         window.conversation.setChecked(True)
         assert "ativado" in window.conversation.text().casefold()
@@ -96,17 +96,17 @@ def test_ui_accessibility_names_shortcuts_and_bounded_history(monkeypatch):
         # tool overlays from earlier tests still exist. Verify keyboard focus is
         # enabled; interactive focus transfer is covered by the overlay tests.
         assert window.input.focusPolicy() != Qt.FocusPolicy.NoFocus
-        assert window.sidebar.isVisible() is (window.width() >= 720)
-        window.tabs.setCurrentIndex(1)
+        assert not window.sidebar.isVisible()
+        window.workspace_stack.setCurrentIndex(1)
         app.processEvents()
-        assert window.sidebar.isVisible() is (window.width() >= 720)
-        window.tabs.setCurrentIndex(0)
+        assert not window.sidebar.isVisible()
+        window.workspace_stack.setCurrentIndex(0)
         window.resize(900, 600)
         app.processEvents()
-        assert window.sidebar.isVisible()
-        for index in range(600):
-            window.transcript.append(f"linha {index}")
-        assert window.transcript.document().blockCount() <= 500
+        assert not window.sidebar.isVisible()
+        for index in range(510):
+            window.transcript.append_message("Kiara", f"linha {index}")
+        assert len(window.transcript.cards) <= 500
     finally:
         window.shutdown()
         window.deleteLater()

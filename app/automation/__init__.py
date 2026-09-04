@@ -9,4 +9,12 @@ from app.automation.engine import (
     TriggerKind,
 )
 
-__all__ = ["AutomationEngine", "AutomationSpec", "AutomationStore", "AutomationTeacher", "RunState", "TriggerKind", "automation_template"]
+__all__ = [
+    "AutomationEngine",
+    "AutomationSpec",
+    "AutomationStore",
+    "AutomationTeacher",
+    "RunState",
+    "TriggerKind",
+    "automation_template",
+]

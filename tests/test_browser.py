@@ -5,6 +5,10 @@ import pytest
 from app.browser.session import BrowserSession
 
 
+def test_browser_is_headless_by_default():
+    assert BrowserSession().headless is True
+
+
 @pytest.mark.parametrize("url", ["http://example.com", "file:///tmp/x", "https://u:p@example.com", "javascript:alert(1)", "https://localhost", "https://127.0.0.1", "https://169.254.169.254"])
 def test_browser_rejects_unsafe_urls(url: str):
     with pytest.raises(ValueError):

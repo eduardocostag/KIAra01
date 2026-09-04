@@ -70,6 +70,7 @@ class ScreenPerception:
     CONTEXT_CHANGED = "screen.context_changed"
     SCREEN_CHANGED = "SCREEN_CHANGED"
     ERROR_DETECTED = "ERROR_DETECTED"
+    APP_NOT_RESPONDING = "APP_NOT_RESPONDING"
 
     def __init__(
         self,
@@ -85,6 +86,9 @@ class ScreenPerception:
         self._last_screen_event_at = float("-inf")
         self._last_error_fingerprint: str | None = None
         self._last_error_event_at = float("-inf")
+        self._hung_identity: tuple[str | None, str | None, str | None] | None = None
+        self._hung_polls = 0
+        self._hung_notified = False
         self._latest_capture: ScreenCapture | None = None
         self._latest_capture_at = float("-inf")
         self._latest_capture_identity: tuple[str | None, str | None, str | None] | None = None
@@ -97,7 +101,9 @@ class ScreenPerception:
         snapshot = await asyncio.to_thread(self._inspector)
         context = snapshot.context
         if include_visible_text and self.options.ui_automation_enabled and snapshot.handle:
-            context.visible_text = await asyncio.to_thread(self._read_ui_automation, snapshot.handle)
+            context.visible_text = await asyncio.to_thread(
+                self._read_ui_automation, snapshot.handle
+            )
         return context
 
     async def poll_once(self) -> bool:
@@ -116,7 +122,10 @@ class ScreenPerception:
             await self._refresh_latest_capture(snapshot, identity)
         visual_changed = await self._detect_visual_change(snapshot, identity)
         title = context.window_title or ""
-        if re.search(r"\b(error|erro|failed|falha|alerta|critical|crítico)\b", title, re.IGNORECASE):
+        await self._detect_not_responding(title, identity)
+        if re.search(
+            r"\b(error|erro|failed|falha|alerta|critical|crítico)\b", title, re.IGNORECASE
+        ):
             await self._publish_error(
                 source="window_title", title=title, message=title, identity=identity
             )
@@ -125,6 +134,40 @@ class ScreenPerception:
             if alert:
                 await self._publish_error(identity=identity, **alert)
         return context_changed or visual_changed
+
+    async def _detect_not_responding(
+        self,
+        title: str,
+        identity: tuple[str | None, str | None, str | None],
+    ) -> None:
+        appears_hung = bool(
+            re.search(
+                r"(?:not responding|não está respondendo|nao esta respondendo)",
+                title,
+                re.IGNORECASE,
+            )
+        )
+        if not appears_hung:
+            self._hung_identity = None
+            self._hung_polls = 0
+            self._hung_notified = False
+            return
+        if identity != self._hung_identity:
+            self._hung_identity = identity
+            self._hung_polls = 0
+            self._hung_notified = False
+        self._hung_polls += 1
+        if self._hung_polls < 2 or self._hung_notified:
+            return
+        self._hung_notified = True
+        await self.event_bus.publish(
+            self.APP_NOT_RESPONDING,
+            {
+                "active_application": identity[1],
+                "importance": 0.95,
+                "state": "not_responding_confirmed",
+            },
+        )
 
     async def _refresh_latest_capture(
         self,
@@ -219,7 +262,10 @@ class ScreenPerception:
         ).hexdigest()
         now = time.monotonic()
         cooldown = max(0.0, self.options.content_change_cooldown_seconds)
-        if fingerprint == self._last_error_fingerprint and now - self._last_error_event_at < cooldown:
+        if (
+            fingerprint == self._last_error_fingerprint
+            and now - self._last_error_event_at < cooldown
+        ):
             return
         self._last_error_fingerprint = fingerprint
         self._last_error_event_at = now
@@ -305,9 +351,7 @@ class ScreenPerception:
             return mss.tools.to_png(image.rgb, image.size), image.width, image.height
 
     @staticmethod
-    def _resize_png(
-        png: bytes, width: int, height: int, max_edge: int
-    ) -> tuple[bytes, int, int]:
+    def _resize_png(png: bytes, width: int, height: int, max_edge: int) -> tuple[bytes, int, int]:
         """Bound multimodal input cost while preserving the complete desktop view."""
         limit = max(256, min(int(max_edge), 2048))
         largest = max(width, height)
@@ -411,9 +455,7 @@ class ScreenPerception:
     def _signature_difference(previous: bytes, current: bytes) -> float:
         if len(previous) != len(current) or not current:
             return 1.0
-        changed = sum(
-            left != right for left, right in zip(previous, current, strict=True)
-        )
+        changed = sum(left != right for left, right in zip(previous, current, strict=True))
         return changed / len(current)
 
     @staticmethod

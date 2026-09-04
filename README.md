@@ -1,19 +1,35 @@
-# Kiara Assistant
+# Kiara SDR
 
-MVP local-first de uma assistente pessoal para Windows. A Fase 1 prioriza um fluxo vertical
-executável: entrada em linguagem natural, contexto da janela ativa, ferramentas locais com
-permissões, PowerShell allowlisted, screenshot sob demanda, auditoria redigida e kill switch.
+Workspace local-first de uma especialista SDR para Windows. A Kiara pesquisa empresas,
+valida sinais comerciais, qualifica oportunidades e mantém um pipeline local com próxima ação.
+Ferramentas de sistema, pesquisa e produtividade são capacidades auxiliares da operação comercial.
+
+O produto inicial é desenhado para autônomos, vendedores de serviços e pequenas empresas. Na
+primeira abertura, configure em **Configurar minha operação** o serviço vendido, nichos, regiões,
+cliente ideal, proposta de valor, ticket e limite diário. Esses dados orientam a pesquisa e tornam
+o score explicável para a realidade de cada vendedor.
+
+## Fluxo comercial
+
+1. Configure oferta e ICP.
+2. Peça leads por nicho e região.
+3. A Kiara verifica contato e sinais comerciais e grava os resultados no pipeline.
+4. Revise o dossiê e os motivos do score antes da abordagem.
+5. Registre o resultado do contato; a etapa do funil e as métricas são atualizadas.
+6. Defina sempre uma próxima ação para evitar oportunidades esquecidas.
+
+O score é uma priorização baseada em sinais observáveis, não uma garantia de venda. O primeiro
+contato permanece sob controle do usuário e os limites diários ajudam a evitar prospecção abusiva.
 
 ## Arquitetura
 
-- `AgentCore` interpreta pedidos e roteia ferramentas; um provedor de LLM é substituível.
+- `AgentCore` interpreta pedidos comerciais, executa pesquisas e alimenta o pipeline.
+- `LeadStore` persiste leads, qualificação, etapa, score e próxima ação em SQLite.
 - `ToolRegistry` valida, autoriza, executa e audita cada capacidade.
 - `PermissionGate` mantém ações críticas sob confirmação até no modo autônomo.
 - `ScreenPerception` usa APIs do Windows e screenshot apenas sob demanda.
 - `EventBus` fornece a base assíncrona para voz, automações e percepção incremental.
-- `AgentRouter` seleciona especialistas de software, segurança, produtividade e pesquisa; quando
-  mais de um domínio se aplica, compõe as análises em uma resposta única. Solicitações sem domínio
-  claro usam o generalista. Especialistas orientam, mas não recebem nem executam ferramentas.
+- `AgentRouter` mantém a identidade SDR e usa pesquisa e produtividade como apoio especializado.
 
 Python 3.12, `asyncio`, pywin32, MSS e YAML formam a base. PySide6, voz, OpenAI e Playwright
 são extras isolados para não tornar o núcleo dependente de nuvem ou de uma GUI específica.
@@ -146,3 +162,91 @@ assinatura Authenticode.
 
 Os recursos invasivos continuam desligados por padrao. Habilite-os individualmente em
 `config/kiara.yaml`; toda ferramenta continua sujeita ao mesmo gate de permissao e auditoria.
+
+## Navegador e mensagens sociais
+
+A Kiara usa um perfil Chrome persistente e local em `data/browser-profile`, ignorado pelo Git.
+No primeiro uso, diga `abra o Instagram da Kiara`, `abra o WhatsApp da Kiara` ou
+`abra o Telegram da Kiara` e faca login manualmente. Depois, comandos como estes ficam
+disponiveis:
+
+```text
+pesquise no Google como diagnosticar tela azul no Windows 11
+mande uma mensagem no WhatsApp para +5511999999999 dizendo chego as 18h
+abra o direct de @usuario no Instagram e escreva ola e envie
+```
+
+O envio de mensagens e uma acao critica: a Kiara apresenta uma confirmacao antes de enviar.
+O conteudo da mensagem e redigido na confirmacao e nos registros. Instagram e Telegram usam
+o nome de usuario; WhatsApp aceita o numero completo ou um contato existente. Mudancas nas
+interfaces desses servicos podem exigir atualizacao dos seletores.
+
+A navegação geral também aceita domínios, nomes de sites e ações acessíveis da página:
+
+```text
+abra example.com
+abra o site da prefeitura de Curitiba
+pesquise por como configurar uma impressora Wi-Fi
+digite no campo Pesquisa com impressora laser
+leia esta página
+clique no botão Buscar
+```
+
+Abrir, pesquisar, ler e preencher sem enviar são ações automáticas. Cliques genéricos pedem
+confirmação, pois o mesmo clique pode publicar, comprar, excluir ou enviar dados. Senhas nunca
+são extraídas da tela nem gravadas no log. Para aplicativos, a Kiara reconhece os programas
+nativos configurados e também procura uma correspondência exata nos atalhos do Menu Iniciar;
+atalhos de desinstalação são bloqueados.
+
+## Web Studio para estabelecimentos
+
+Descreva somente dados confirmados do estabelecimento; não é necessário preparar uma imagem:
+
+```text
+crie um site completo para Café Aurora, cafeteria artesanal aberta das 8h às 18h
+```
+
+A Kiara perguntará se pode capturar a janela atual. Responda `use a tela`, `tire um print` ou
+`sim` para usar uma captura efêmera. Se preferir uma foto, coloque um PNG, JPEG ou WebP em
+`data/site-references` e responda `use a foto cafe.png`. Responda `não` para cancelar sem captura.
+
+A geração pede confirmação porque a imagem é processada pelo modelo visual configurado. Antes
+do envio, a Kiara valida e reprocessa a imagem, removendo metadados. Cada resultado é criado em
+uma nova pasta dentro de `generated-sites`, contendo `index.html`, `styles.css` e `script.js`.
+Projetos existentes não são sobrescritos e nenhum site é publicado automaticamente. Recursos
+remotos, rastreadores, iframes, handlers inline, chamadas de rede e JavaScript dinâmico são
+rejeitados.
+
+Antes de declarar sucesso, o Web Studio inicia um servidor efêmero somente em `127.0.0.1` e
+abre o projeto em um navegador Playwright isolado. O gate verifica mobile (390x844), tablet
+(768x1024) e desktop (1440x900), overflow horizontal, erros de console/JavaScript, título,
+`main`, `h1`, textos alternativos e rótulos acessíveis. Requisições externas são abortadas e
+as screenshots de verificação não são persistidas. Se o gate falhar, o projeto permanece como
+rascunho local e a Kiara não o apresenta como concluído.
+
+## Hub MCP
+
+Servidores MCP locais podem fornecer novas ferramentas à Kiara por `stdio`, com allowlist,
+timeout, confirmação crítica e auditoria sem valores dos argumentos. Consulte
+[`docs/MCP_HUB.md`](docs/MCP_HUB.md) para configurar e testar. Transporte HTTP/OAuth permanece
+desabilitado nesta fase.
+
+## Centro Pessoal
+
+Tarefas e compromissos ficam persistidos localmente em `data/personal.db`. A busca pessoal
+consulta somente nomes de arquivos, nunca o conteúdo, e fica limitada às pastas declaradas em
+`personal.file_roots` no `config/kiara.yaml`. Exemplos:
+
+```text
+adicione uma tarefa comprar leite
+liste minhas tarefas
+conclua tarefa 12ab34cd
+agende consulta para amanhã às 14:30
+liste meus compromissos
+encontre o arquivo contrato
+crie um rascunho de email para pessoa@example.com assunto Olá mensagem Tudo bem?
+```
+
+E-mails são apenas salvos como rascunho nesse fluxo; criar um rascunho nunca o envia. A
+sincronização real com Google Calendar, Gmail ou Microsoft 365 requer OAuth separado e permanece
+desativada enquanto a conta não for conectada explicitamente.

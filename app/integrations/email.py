@@ -38,17 +38,25 @@ class DraftStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False)
-        self._db.execute("CREATE TABLE IF NOT EXISTS email_drafts(id TEXT PRIMARY KEY, recipient TEXT, subject TEXT, body TEXT, sent_id TEXT)")
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS email_drafts(id TEXT PRIMARY KEY, recipient TEXT, subject TEXT, body TEXT, sent_id TEXT)"
+        )
         self._db.commit()
 
     def save(self, draft: DraftEmail) -> DraftEmail:
         draft = draft.with_id()
-        self._db.execute("INSERT OR REPLACE INTO email_drafts(id,recipient,subject,body,sent_id) VALUES (?,?,?,?,NULL)", (draft.id, draft.to, draft.subject, draft.body))
+        self._db.execute(
+            "INSERT OR REPLACE INTO email_drafts(id,recipient,subject,body,sent_id) VALUES (?,?,?,?,NULL)",
+            (draft.id, draft.to, draft.subject, draft.body),
+        )
         self._db.commit()
         return draft
 
     def get(self, identifier: str) -> DraftEmail | None:
-        row = self._db.execute("SELECT id,recipient,subject,body FROM email_drafts WHERE id=? AND sent_id IS NULL", (identifier,)).fetchone()
+        row = self._db.execute(
+            "SELECT id,recipient,subject,body FROM email_drafts WHERE id=? AND sent_id IS NULL",
+            (identifier,),
+        ).fetchone()
         return DraftEmail(row[1], row[2], row[3], row[0]) if row else None
 
     def mark_sent(self, identifier: str, provider_id: str) -> None:
@@ -89,10 +97,18 @@ class MicrosoftGraphEmailProvider:
         return await asyncio.to_thread(self._send_sync, draft)
 
     def _send_sync(self, draft: DraftEmail) -> str:
-        payload = {"message": {"subject": draft.subject, "body": {"contentType": "Text", "content": draft.body}, "toRecipients": [{"emailAddress": {"address": draft.to}}]}, "saveToSentItems": True}
+        payload = {
+            "message": {
+                "subject": draft.subject,
+                "body": {"contentType": "Text", "content": draft.body},
+                "toRecipients": [{"emailAddress": {"address": draft.to}}],
+            },
+            "saveToSentItems": True,
+        }
         request = urllib.request.Request(
             "https://graph.microsoft.com/v1.0/me/sendMail",
-            data=json.dumps(payload).encode(), method="POST",
+            data=json.dumps(payload).encode(),
+            method="POST",
             headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
         )
         try:
@@ -105,7 +121,9 @@ class MicrosoftGraphEmailProvider:
 
 
 class CredentialGraphEmailProvider:
-    def __init__(self, credentials: CredentialProvider, client: JsonHttpClient | None = None) -> None:
+    def __init__(
+        self, credentials: CredentialProvider, client: JsonHttpClient | None = None
+    ) -> None:
         self.credentials, self.client = credentials, client or JsonHttpClient()
 
     def _token(self) -> str:
@@ -115,17 +133,36 @@ class CredentialGraphEmailProvider:
         return token
 
     async def send(self, draft: DraftEmail) -> str:
-        payload = {"message": {"subject": draft.subject, "body": {"contentType": "Text", "content": draft.body}, "toRecipients": [{"emailAddress": {"address": draft.to}}]}, "saveToSentItems": True}
-        await self.client.request("POST", "https://graph.microsoft.com/v1.0/me/sendMail", token=self._token(), payload=payload, idempotency_key=draft.id)
+        payload = {
+            "message": {
+                "subject": draft.subject,
+                "body": {"contentType": "Text", "content": draft.body},
+                "toRecipients": [{"emailAddress": {"address": draft.to}}],
+            },
+            "saveToSentItems": True,
+        }
+        await self.client.request(
+            "POST",
+            "https://graph.microsoft.com/v1.0/me/sendMail",
+            token=self._token(),
+            payload=payload,
+            idempotency_key=draft.id,
+        )
         return f"graph:{draft.id}"
 
     async def read(self, limit: int = 20) -> list[dict[str, object]]:
-        response = await self.client.request("GET", f"https://graph.microsoft.com/v1.0/me/messages?$top={min(max(limit, 1), 50)}&$select=id,subject,from,receivedDateTime", token=self._token())
+        response = await self.client.request(
+            "GET",
+            f"https://graph.microsoft.com/v1.0/me/messages?$top={min(max(limit, 1), 50)}&$select=id,subject,from,receivedDateTime",
+            token=self._token(),
+        )
         return list(response.body.get("value", []))
 
 
 class GmailEmailProvider:
-    def __init__(self, credentials: CredentialProvider, client: JsonHttpClient | None = None) -> None:
+    def __init__(
+        self, credentials: CredentialProvider, client: JsonHttpClient | None = None
+    ) -> None:
         self.credentials, self.client = credentials, client or JsonHttpClient()
 
     def _token(self) -> str:
@@ -137,9 +174,19 @@ class GmailEmailProvider:
     async def send(self, draft: DraftEmail) -> str:
         mime = f"To: {draft.to}\r\nSubject: {draft.subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{draft.body}"
         raw = base64.urlsafe_b64encode(mime.encode()).decode().rstrip("=")
-        response = await self.client.request("POST", "https://gmail.googleapis.com/gmail/v1/users/me/messages/send", token=self._token(), payload={"raw": raw}, idempotency_key=draft.id)
+        response = await self.client.request(
+            "POST",
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            token=self._token(),
+            payload={"raw": raw},
+            idempotency_key=draft.id,
+        )
         return str(response.body.get("id", f"gmail:{draft.id}"))
 
     async def read(self, limit: int = 20) -> list[dict[str, object]]:
-        response = await self.client.request("GET", f"https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={min(max(limit, 1), 50)}", token=self._token())
+        response = await self.client.request(
+            "GET",
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={min(max(limit, 1), 50)}",
+            token=self._token(),
+        )
         return list(response.body.get("messages", []))

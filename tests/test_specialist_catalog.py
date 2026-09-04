@@ -79,3 +79,10 @@ def test_merge_specialists_preserves_builtins_and_deduplicates_by_identity() -> 
         "helpdesk",
     ]
     assert merged[1] is first_helpdesk
+
+
+def test_catalog_does_not_route_substrings_or_slug_stopwords() -> None:
+    ui = CatalogSpecialist("ui-designer", "UI Designer", "safe")
+    risk = CatalogSpecialist("risk-and-controls-specialist", "Risk and Controls", "safe")
+    assert ui.score("outra máquina") == 0
+    assert risk.score("hipóteses, comandos e interpretação") == 0

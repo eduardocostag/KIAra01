@@ -19,7 +19,12 @@ class JsonHttpClient:
         self.timeout = timeout_seconds
 
     async def request(
-        self, method: str, url: str, *, token: str, payload: dict[str, Any] | None = None,
+        self,
+        method: str,
+        url: str,
+        *,
+        token: str,
+        payload: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> HttpResponse:
         return await asyncio.to_thread(
@@ -33,8 +38,10 @@ class JsonHttpClient:
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
         request = urllib.request.Request(
-            url, data=json.dumps(payload).encode() if payload is not None else None,
-            method=method, headers=headers,
+            url,
+            data=json.dumps(payload).encode() if payload is not None else None,
+            method=method,
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:

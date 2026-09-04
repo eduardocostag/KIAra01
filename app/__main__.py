@@ -2,9 +2,26 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
+from logging.handlers import RotatingFileHandler
 
 from app.bootstrap import build_app
 from app.config import load_settings
+
+
+def configure_runtime_logging() -> None:
+    settings = load_settings()
+    log_path = settings.root / "data" / "kiara-runtime.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        log_path, maxBytes=2_000_000, backupCount=2, encoding="utf-8"
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
 
 
 def confirm(summary: str) -> bool:
@@ -32,12 +49,14 @@ async def interactive() -> None:
 
 
 def main() -> None:
+    configure_runtime_logging()
     parser = argparse.ArgumentParser(description="Kiara Assistant")
     parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--console", action="store_true", help="usa a interface de terminal")
     args = parser.parse_args()
     if args.diagnostics:
         from app.diagnostics import main as diagnostics_main
+
         diagnostics_main()
         return
     if args.console:

@@ -13,7 +13,12 @@ from app.tools.base import Tool
 
 
 class ToolRegistry:
-    def __init__(self, permission_gate: PermissionGate, audit: AuditLog, kill_switch: KillSwitch | None = None) -> None:
+    def __init__(
+        self,
+        permission_gate: PermissionGate,
+        audit: AuditLog,
+        kill_switch: KillSwitch | None = None,
+    ) -> None:
         self._tools: dict[str, Tool] = {}
         self.permission_gate = permission_gate
         self.audit = audit
@@ -40,7 +45,7 @@ class ToolRegistry:
                 "schema": tool.schema,
             }
             for tool in self._tools.values()
-            if hasattr(tool, "schema")
+            if hasattr(tool, "schema") and getattr(tool, "plannable", True)
         )
 
     def permission_for(self, name: str):
@@ -69,7 +74,10 @@ class ToolRegistry:
             if self.kill_switch is not None and self.kill_switch.stopped:
                 raise RuntimeError("Kill switch ativo; retome manualmente antes de novas ações.")
             tool.validate(parameters)
-            self.permission_gate.authorize(tool.permission_level, f"{name}: {redact(parameters)}")
+            self.permission_gate.authorize(
+                tool.permission_level,
+                f"{name}: {redact(tool.confirmation_parameters(parameters))}",
+            )
             confirmed = tool.permission_level.value in {"sensitive_action", "critical_action"}
             result = await tool.execute(**parameters)
             return result
@@ -77,7 +85,15 @@ class ToolRegistry:
             result = ToolResult(False, error=str(exc))
             return result
         finally:
-            self.audit.record(action_id=action_id, agent="AgentCore", tool=name, intent=name, parameters_safe=parameters,
-                              result=result.success, error=result.error,
-                              duration_ms=round((time.perf_counter() - started) * 1000, 2),
-                              permission=tool.permission_level.value, user_confirmation=confirmed)
+            self.audit.record(
+                action_id=action_id,
+                agent="AgentCore",
+                tool=name,
+                intent=name,
+                parameters_safe=tool.audit_parameters(parameters),
+                result=result.success,
+                error=result.error,
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                permission=tool.permission_level.value,
+                user_confirmation=confirmed,
+            )

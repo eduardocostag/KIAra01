@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
+import logging
 import platform
 import re
+import tempfile
 import threading
+from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.voice.models import Transcript, VoiceAvailability
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -150,8 +157,10 @@ class FasterWhisperRecognizer:
 
     def availability(self) -> VoiceAvailability:
         installed = importlib.util.find_spec("faster_whisper") is not None
-        detail = "faster-whisper instalado; o modelo pode exigir download inicial" if installed else (
-            "dependência opcional faster-whisper não instalada"
+        detail = (
+            "faster-whisper instalado; o modelo pode exigir download inicial"
+            if installed
+            else ("dependência opcional faster-whisper não instalada")
         )
         return VoiceAvailability(installed, detail)
 
@@ -166,8 +175,24 @@ class FasterWhisperRecognizer:
         segments, info = self._model.transcribe(
             audio, language=self.language, vad_filter=True, word_timestamps=True
         )
-        text = " ".join(segment.text.strip() for segment in segments).strip()
-        return Transcript(text=text, language=getattr(info, "language", self.language))
+        collected = list(segments)
+        text = " ".join(segment.text.strip() for segment in collected).strip()
+        first_word = next(
+            (
+                word
+                for segment in collected
+                for word in (getattr(segment, "words", None) or ())
+                if str(getattr(word, "word", "")).strip()
+            ),
+            None,
+        )
+        probability = getattr(first_word, "probability", None)
+        confidence = float(probability) if isinstance(probability, int | float) else None
+        return Transcript(
+            text=text,
+            language=getattr(info, "language", self.language),
+            confidence=confidence,
+        )
 
 
 class SapiSynthesizer:
@@ -194,8 +219,12 @@ class SapiSynthesizer:
         self.selected_voice_name: str | None = None
 
     def availability(self) -> VoiceAvailability:
-        available = platform.system() == "Windows" and importlib.util.find_spec("win32com") is not None
-        return VoiceAvailability(available, "Windows SAPI disponível" if available else "Windows SAPI indisponível")
+        available = (
+            platform.system() == "Windows" and importlib.util.find_spec("win32com") is not None
+        )
+        return VoiceAvailability(
+            available, "Windows SAPI disponível" if available else "Windows SAPI indisponível"
+        )
 
     def _get_voice(self):
         if self._voice is None:
@@ -230,7 +259,9 @@ class SapiSynthesizer:
             except Exception:  # noqa: BLE001 - token attributes vary between SAPI voices
                 language = ""
             combined = f"{description} {language}"
-            locale_score = 2 if "416" in language else int(any(x in combined for x in locale_markers))
+            locale_score = (
+                2 if "416" in language else int(any(x in combined for x in locale_markers))
+            )
             # Known Windows neural/natural labels win when already installed.
             natural_score = int(any(x in combined for x in ("natural", "neural", "online")))
             return locale_score, natural_score
@@ -258,6 +289,223 @@ class SapiSynthesizer:
 
     def wait_until_done(self, timeout_ms: int = 30_000) -> bool:
         return bool(self._voice is None or self._voice.WaitUntilDone(timeout_ms))
+
+
+class EdgeNeuralSynthesizer:
+    """Natural online pt-BR speech with cancellable playback and local fallback."""
+
+    def __init__(
+        self,
+        *,
+        voice: str = "pt-BR-ThalitaMultilingualNeural",
+        rate: str = "-4%",
+        pitch: str = "-2Hz",
+        timeout_seconds: float = 18,
+        fallback=None,
+    ) -> None:
+        self.voice = voice
+        self.rate = rate
+        self.pitch = pitch
+        self.timeout_seconds = max(3.0, min(60.0, timeout_seconds))
+        self.fallback = fallback
+        self.language = "pt-BR"
+        self.volume = 100
+        self.selected_voice_name = voice
+        self._cancelled = threading.Event()
+        self._finished = threading.Event()
+        self._finished.set()
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._async_task: asyncio.Task | None = None
+
+    def availability(self) -> VoiceAvailability:
+        available = all(
+            importlib.util.find_spec(name) is not None
+            for name in ("edge_tts", "sounddevice", "soundfile")
+        )
+        detail = (
+            f"Edge Neural disponível ({self.voice})"
+            if available
+            else "Edge Neural indisponível; Kokoro local será usado"
+        )
+        return VoiceAvailability(available, detail)
+
+    def speak(self, text: str) -> None:
+        prepared = normalize_text_for_speech(text)
+        if not prepared:
+            return
+        self.cancel()
+        self._cancelled.clear()
+        self._finished.clear()
+        self._thread = threading.Thread(
+            target=self._download_and_play, args=(prepared,), daemon=True
+        )
+        self._thread.start()
+
+    def _download_and_play(self, text: str) -> None:
+        audio_path: Path | None = None
+        try:
+            if not self.availability().available:
+                raise RuntimeError("Edge Neural indisponível")
+            import edge_tts
+            import sounddevice as sd
+            import soundfile as sf
+
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as target:
+                audio_path = Path(target.name)
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+            communication = edge_tts.Communicate(
+                text, self.voice, rate=self.rate, pitch=self.pitch
+            )
+            self._async_task = self._loop.create_task(communication.save(str(audio_path)))
+            self._loop.run_until_complete(
+                asyncio.wait_for(self._async_task, timeout=self.timeout_seconds)
+            )
+            if not self._cancelled.is_set():
+                samples, sample_rate = sf.read(audio_path, dtype="float32")
+                sd.play(samples, samplerate=sample_rate, blocking=True)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Edge Neural falhou; usando fallback local")
+            if self.fallback is not None and not self._cancelled.is_set():
+                self.fallback.speak(text)
+                self.fallback.wait_until_done()
+        finally:
+            if self._loop is not None:
+                self._loop.close()
+            self._loop = None
+            self._async_task = None
+            if audio_path is not None:
+                audio_path.unlink(missing_ok=True)
+            self._finished.set()
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+        loop, task = self._loop, self._async_task
+        if loop is not None and task is not None and loop.is_running():
+            loop.call_soon_threadsafe(task.cancel)
+        with suppress(Exception):
+            if importlib.util.find_spec("sounddevice") is not None:
+                import sounddevice as sd
+
+                sd.stop()
+        if self.fallback is not None:
+            self.fallback.cancel()
+        self._finished.set()
+
+    def wait_until_done(self, timeout_ms: int = 30_000) -> bool:
+        return self._finished.wait(max(0, timeout_ms) / 1_000)
+
+
+class KokoroSynthesizer:
+    """Local neural pt-BR speech with cancellable playback and SAPI fallback."""
+
+    SYSTEM_ESPEAK = Path(r"C:\Program Files\eSpeak NG\libespeak-ng.dll")
+
+    def __init__(
+        self,
+        *,
+        voice: str = "pf_dora",
+        speed: float = 0.94,
+        device: str = "cpu",
+        fallback: SapiSynthesizer | None = None,
+        max_chunk_chars: int = 280,
+    ) -> None:
+        self.voice = voice
+        self.speed = max(0.7, min(1.3, speed))
+        self.device = device
+        self.fallback = fallback
+        self.max_chunk_chars = max(80, min(500, max_chunk_chars))
+        self.language = "pt-BR"
+        self.rate = fallback.rate if fallback is not None else -1
+        self.volume = fallback.volume if fallback is not None else 92
+        self.selected_voice_name = voice
+        self._pipeline = None
+        self._cancelled = threading.Event()
+        self._finished = threading.Event()
+        self._finished.set()
+        self._thread: threading.Thread | None = None
+
+    def availability(self) -> VoiceAvailability:
+        dependencies = all(
+            importlib.util.find_spec(name) is not None for name in ("kokoro", "sounddevice")
+        )
+        espeak = self.SYSTEM_ESPEAK.is_file()
+        available = dependencies and espeak
+        detail = (
+            f"Kokoro local disponível ({self.voice}, {self.language})"
+            if available
+            else "Kokoro indisponível; Windows SAPI será usado"
+        )
+        return VoiceAvailability(available, detail)
+
+    def _get_pipeline(self):
+        if self._pipeline is None:
+            # misaki's portable Windows loader can retain its build-machine data
+            # path. The installed eSpeak NG library discovers its own data safely.
+            from kokoro import KPipeline
+            from phonemizer.backend.espeak.wrapper import EspeakWrapper
+
+            EspeakWrapper.set_library(str(self.SYSTEM_ESPEAK))
+            EspeakWrapper.set_data_path(None)
+            self._pipeline = KPipeline(
+                lang_code="p", repo_id="hexgrad/Kokoro-82M", device=self.device
+            )
+        return self._pipeline
+
+    def speak(self, text: str) -> None:
+        prepared = normalize_text_for_speech(text)
+        if not prepared:
+            return
+        self.cancel()
+        self._cancelled.clear()
+        self._finished.clear()
+        self._thread = threading.Thread(
+            target=self._synthesize_and_play, args=(prepared,), daemon=True
+        )
+        self._thread.start()
+
+    def _synthesize_and_play(self, text: str) -> None:
+        try:
+            if not self.availability().available:
+                raise RuntimeError("Kokoro local indisponível")
+            import sounddevice as sd
+
+            pipeline = self._get_pipeline()
+            for chunk in chunk_text_for_speech(text, self.max_chunk_chars):
+                if self._cancelled.is_set():
+                    break
+                for result in pipeline(chunk, voice=self.voice, speed=self.speed):
+                    if self._cancelled.is_set():
+                        break
+                    audio = result.audio
+                    if audio is None:
+                        continue
+                    samples = audio.detach().cpu().numpy()
+                    sd.play(samples, samplerate=24_000, blocking=True)
+        except Exception:
+            logger.exception("Kokoro falhou; usando Windows SAPI")
+            if self.fallback is not None and not self._cancelled.is_set():
+                self.fallback.speak(text)
+                self.fallback.wait_until_done()
+        finally:
+            self._finished.set()
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+        with suppress(Exception):
+            if importlib.util.find_spec("sounddevice") is not None:
+                import sounddevice as sd
+
+                sd.stop()
+        if self.fallback is not None:
+            self.fallback.cancel()
+        self._finished.set()
+
+    def wait_until_done(self, timeout_ms: int = 30_000) -> bool:
+        return self._finished.wait(max(0, timeout_ms) / 1_000)
 
 
 def normalize_text_for_speech(text: str) -> str:

@@ -43,7 +43,10 @@ class AuditLog:
         entries = self.read(limit=limit)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(
-            "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in reversed(entries))
-            + ("\n" if entries else ""), encoding="utf-8"
+            "\n".join(
+                json.dumps(item, ensure_ascii=False, default=str) for item in reversed(entries)
+            )
+            + ("\n" if entries else ""),
+            encoding="utf-8",
         )
         return len(entries)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,7 @@ class ConversationStore:
     def create(self, title: str = "Nova conversa") -> dict[str, Any]:
         now = datetime.now(UTC).isoformat()
         conversation = {
-            "id": f"conversation-{int(datetime.now(UTC).timestamp() * 1_000_000)}",
+            "id": f"conversation-{uuid.uuid4()}",
             "title": title,
             "updated_at": now,
             "messages": [],
@@ -51,10 +52,18 @@ class ConversationStore:
         if conversation["title"] == "Nova conversa" and author == "Você":
             conversation["title"] = clean[:42]
         conversation["updated_at"] = datetime.now(UTC).isoformat()
-        self._data["conversations"].sort(
-            key=lambda item: item.get("updated_at", ""), reverse=True
-        )
+        self._data["conversations"].sort(key=lambda item: item.get("updated_at", ""), reverse=True)
         self._save()
+
+    def delete(self, conversation_id: str) -> bool:
+        before = len(self._data["conversations"])
+        self._data["conversations"] = [
+            item for item in self._data["conversations"] if item.get("id") != conversation_id
+        ]
+        if len(self._data["conversations"]) == before:
+            return False
+        self._save()
+        return True
 
     def _load(self) -> None:
         try:
@@ -66,7 +75,5 @@ class ConversationStore:
 
     def _save(self) -> None:
         temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        temporary.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(self.path)

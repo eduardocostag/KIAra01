@@ -35,8 +35,11 @@ class MetricsRegistry:
         total = sum(values)
         ordered = sorted(values)
         return MetricSummary(
-            len(values), total, total / len(values) if values else 0.0,
-            max(values, default=0.0), self._percentile(ordered, 0.50),
+            len(values),
+            total,
+            total / len(values) if values else 0.0,
+            max(values, default=0.0),
+            self._percentile(ordered, 0.50),
             self._percentile(ordered, 0.95),
         )
 

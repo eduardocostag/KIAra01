@@ -27,7 +27,9 @@ SENSITIVE_KEYS = {
 def redact_text(value: str) -> str:
     result = value
     for pattern in PATTERNS:
-        result = pattern.sub(lambda m: f"{m.group(1)}=[REDACTED]" if m.lastindex == 2 else "[REDACTED]", result)
+        result = pattern.sub(
+            lambda m: f"{m.group(1)}=[REDACTED]" if m.lastindex == 2 else "[REDACTED]", result
+        )
     return result
 
 

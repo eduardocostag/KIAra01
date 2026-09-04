@@ -1,0 +1,19 @@
+{
+  "created_at": "2026-08-28T14:39:17.749409-03:00",
+  "cases": [
+    {
+      "id": "backup",
+      "prompt": "Compare RAID, snapshot e backup e proponha proteção para um servidor crítico contra falha, exclusão e ransomware.",
+      "latency_seconds": 3.84,
+      "coverage": "4/4",
+      "matched": [
+        "raid",
+        "snapshot",
+        "3-2-1",
+        "imut"
+      ],
+      "error": null,
+      "response": "Para garantir a integridade e disponibilidade de um servidor crítico, é fundamental entender que RAID, Snapshot e Backup resolvem problemas distintos. Aqui está a análise técnica para a sua estratégia de proteção:\n\n### 1. Distinção de Conceitos\n\n*   **RAID (Redundant Array of Independent Disks):**\n    *   **Finalidade:** Disponibilidade e continuidade operacional. Protege contra a falha física de um ou mais discos, permitindo que o servidor continue rodando.\n    *   **Limitação:** Não é proteção contra exclusão acidental, corrupção de dados ou ransomware; a exclusão ou criptografia é replicada instantaneamente para todos os discos do array.\n*   **Snapshot:**\n    *   **Finalidade:** Recuperação de estado pontual (point-in-time) de curto prazo. Permite reverter rapidamente um volume ou máquina virtual para um estado anterior a uma atualização mal-sucedida ou alteração de configuração.\n    *   **Limitação:** **Nunca é um backup.** Depende da integridade do storage original; se o volume ou o arquivo de metadados do snapshot corromper, você perde tanto os dados quanto o snapshot.\n*   **Backup:**\n    *   **Finalidade:** Recuperação de desastres e resiliência a longo prazo. É a cópia íntegra dos dados, armazenada em mídia distinta, preferencialmente imutável.\n    *   **Diferencial:** Única camada capaz de garantir restauração após ataques de ransomware que criptografaram ou apagaram o storage principal.\n\n---\n\n### 2. Proposta de Proteção (Estratégia 3-2-1)\n\nPara um servidor crítico, a proteção deve ser em camadas, tratando os vetores de falha de forma isolada:\n\n| Ameaça | Proteção Recomendada | Justificativa |\n| :--- | :--- | :--- |\n| **Falha de Hardware** | **RAID 10 ou RAID 6** | Garante que a queda de um disco não pare o serviço (Disponibilidade). |\n| **Exclusão Acidental** | **Snapshot + Backup** | Snapshots permitem recuperação rápida (minutos) de arquivos deletados; backups garantem a retenção histórica. |\n| **Ransomware** | **Backup Imutável (Off-site/Cloud)** | O backup imutável impede a alteração ou exclusão dos dados pelo atacante, mesmo que ele obtenha credenciais de admin. |\n\n#### Recomendação de implementação:\n1.  **Imutabilidade:** Utilize soluções de backup que suportem \"Object Lock\" ou \"WORM\" (Write Once, Read Many). Se o ransomware sequestrar o servidor, o backup permanece íntegro.\n2.  **Isolamento de Rede:** O repositório de backup não deve estar no mesmo domínio AD que o servidor de produção. Utilize uma conta de serviço dedicada e isolada.\n3.  **Testes de Restore:** A estratégia de backup só é válida se a restauração for testada periodicamente. Sem teste, o backup é apenas uma promessa de recuperação.\n\n### Resumo Operacional\n*   Use **RAID** para manter o servidor online durante falhas físicas.\n*   Use **Snapshot** para reverter alterações de sistema em minutos.\n*   Use **Backup (Regra 3-2-1)** com foco em imutabilidade para garantir a sobrevivência dos dados contra exclusões maliciosas ou ransomware.\n\nDeseja que eu detalhe como verificar a saúde do seu arranjo de discos atual via PowerShell (ex: `Get-StoragePool` ou `Get-PhysicalDisk`) ou como estruturar uma política de retenção para os seus backups?"
+    }
+  ]
+}

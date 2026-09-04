@@ -1,16 +1,27 @@
 assistant:
   name: Kiara
   language: pt-BR
+leads:
+  database: data/leads.db
+consumers:
+  # Pessoas captadas por formulários e canais oficiais ficam isoladas do pipeline B2B.
+  database: data/consumers.db
 voice:
   # Solicitado pelo usuário: monitor local contínuo, acionado apenas por "Kiara".
-  enabled: true
+  # Perfil SDR limpo: microfone nunca fica ouvindo fora de uma ação explícita.
+  enabled: false
   wake_word: Kiara
   require_wake_word: true
   vad_enabled: true
   continuous_conversation: false
-  always_listen_for_wake_word: true
+  # Escuta passiva local no estilo Alexa; só a palavra de ativação abre um comando.
+  always_listen_for_wake_word: false
   # Protege contra fala ambiente: mesmo no modo conversa, exige "Kiara".
   conversation_requires_wake_word: true
+  # Ao dizer apenas "Kiara", abre uma janela curta para a solicitação seguinte.
+  wake_command_timeout_seconds: 10
+  # Rejeita transcrições incertas que poderiam ativar por ruído.
+  wake_min_confidence: 0.65
   capture_seconds: 5
   sample_rate: 16000
   stt_model: base
@@ -20,37 +31,55 @@ voice:
   tts_volume: 92
   tts_language: pt-BR
   tts_max_chunk_chars: 280
+  tts_engine: edge
+  tts_edge_voice: pt-BR-FranciscaNeural
+  tts_edge_rate: "+0%"
+  tts_edge_pitch: "+0Hz"
+  tts_edge_timeout_seconds: 25
   # Trecho do nome de uma voz SAPI instalada; null usa a voz padrão do Windows.
   tts_voice_name: null
+ui:
+  # Desativado por padrão: uma janela sempre no topo não pode interceptar cliques.
+  # O orbe ainda pode ser ativado manualmente pelo menu da bandeja.
+  overlay_enabled: false
 screen:
-  enabled: true
-  monitor_active_window: true
-  capture_active_window: true
+  # Desligado no perfil comercial: a Kiara não observa outras aplicações.
+  enabled: false
+  monitor_active_window: false
+  capture_active_window: false
   # Mantém o último quadro visual em memória para responder sem nova espera.
-  live_view_enabled: true
+  live_view_enabled: false
   # Mantém um resumo semântico efêmero da janela e do assunto atual para suporte contextual.
   continuous_understanding_enabled: false
   understanding_interval_seconds: 8.0
   poll_interval_seconds: 1.0
-  ui_automation_enabled: true
+  ui_automation_enabled: false
   ocr_enabled: false
   # Amostragem efêmera da janela ativa; nenhum pixel é persistido.
-  content_change_enabled: true
+  content_change_enabled: false
   content_change_threshold: 0.18
   content_change_cooldown_seconds: 5.0
-  error_detection_enabled: true
+  error_detection_enabled: false
   # Limita custo de VRAM sem recortar o desktop; preserva a proporção completa.
   vision_max_edge: 640
 computer_use:
   # UI Automation sem coordenadas: toda alteração exige confirmação humana.
-  enabled: true
+  enabled: false
   vision_fallback_enabled: false
   # Compara apenas assinaturas perceptuais efêmeras antes/depois; não persiste pixels.
   visual_validation_enabled: true
+  # Nunca declara sucesso sem pós-condição e mudança visual observável.
+  require_visual_validation: true
+  # Aguarda a interface estabilizar antes da captura posterior.
+  visual_settle_seconds: 0.25
+  # Ignora pequenas oscilacoes como cursor piscando e animacoes minimas.
+  visual_change_threshold: 0.02
   operation_timeout_seconds: 5.0
 autonomy:
   mode: execute_with_confirmation
 security:
+  # Evita capturar Ctrl+Alt+Esc globalmente no Windows.
+  global_hotkey_enabled: false
   powershell_timeout_seconds: 15
   max_command_output_chars: 16384
   allowlisted_commands: [hostname, whoami, Get-Date, Get-Location, Get-Process, Get-Service]
@@ -87,38 +116,80 @@ llm:
     usage_ledger: data/cloud-usage.json
     fast:
       candidates:
-        - provider: openrouter
-          model: inclusionai/ling-3.0-flash
-        - provider: openrouter
-          model: stealth/ox-alpha
-        - provider: openrouter
+        # Sempre tenta o modelo mais capaz primeiro; cada candidato tem circuito independente.
+        - provider: nvidia
           model: nvidia/nemotron-3-ultra-550b-a55b
+        - provider: nvidia
+          model: nvidia/nemotron-3-super-120b-a12b
+        - provider: gemini
+          model: gemini-3.1-flash-lite
+        - provider: openrouter
+          model: openrouter/free
     reasoning:
       candidates:
-        - provider: openrouter
-          model: inclusionai/ling-3.0-flash
-        - provider: openrouter
-          model: stealth/ox-alpha
-        - provider: openrouter
+        - provider: nvidia
           model: nvidia/nemotron-3-ultra-550b-a55b
+        - provider: nvidia
+          model: nvidia/nemotron-3-super-120b-a12b
+        - provider: gemini
+          model: gemini-3.1-flash-lite
+        - provider: openrouter
+          model: openrouter/free
     # Visão permanece local. Nuvem visual exigirá confirmação explícita por captura.
     cloud_vision_enabled: false
 browser:
-  enabled: false
-  headless: false
+  enabled: true
+  # Pesquisas e varreduras nunca abrem uma janela sobre o trabalho do usuário.
+  headless: true
   timeout_ms: 15000
   allow_private_hosts: false
+  profile_dir: data/browser-profile
 proactivity:
-  level: low
+  # Sem avisos espontâneos: a Kiara só responde quando acionada.
+  level: "off"
+  cooldown_minutes: 10
+  daily_limit: 12
 planning:
   # Só é acionado por pedidos explícitos como "planeje e execute".
-  enabled: true
+  enabled: false
   database: data/planning.db
   max_steps: 5
   max_safe_retries: 1
+  # Acoes planejadas na interface exigem pos-condicao e mudanca visual observada.
+  require_visual_validation: true
+  # Falhas geram uma alternativa persistente que aguarda comando explicito.
+  recovery_on_failure: true
+web_studio:
+  enabled: false
+  # Coloque aqui as imagens que servirao de referencia visual.
+  reference_root: data/site-references
+  output_root: generated-sites
+  max_image_bytes: 10000000
+  preview_timeout_ms: 10000
+mcp:
+  enabled: false
+  max_output_chars: 20000
+  # Cada servidor usa stdio sem shell. Segredos são lidos apenas das env_vars nomeadas.
+  # Exemplo:
+  # servers:
+  #   - name: arquivos
+  #     transport: stdio
+  #     command: python
+  #     args: [scripts/meu_servidor_mcp.py]
+  #     env_vars: []
+  #     allowed_tools: [buscar_arquivo]
+  #     timeout_seconds: 20
+  servers: []
+personal:
+  enabled: false
+  database: data/personal.db
+  # A busca lê apenas nomes de arquivos dentro destas pastas.
+  file_roots:
+    - C:/Users/EduardoGonçalves/Documents
+    - C:/Users/EduardoGonçalves/Desktop
 integrations:
   obsidian:
-    enabled: true
+    enabled: false
     # Caminho absoluto do vault. A integração é somente leitura.
     vault_path: C:/Users/EduardoGonçalves/Documents/Kiara Vault
     state: data/obsidian-index.json
@@ -131,6 +202,9 @@ integrations:
     provider: none
   graph:
     enabled: false
+feedback:
+  # Respostas marcadas como "não ajudou" ficam locais até você anexar o arquivo ao Codex.
+  correction_inbox: data/correction-inbox.jsonl
 knowledge:
   enabled: true
   database: data/knowledge.db
@@ -140,9 +214,16 @@ knowledge:
   max_chunks_per_source: 2
   context_max_chars: 6000
 automation:
-  enabled: true
+  # Automações agendadas/eventos ficam inativos até habilitação explícita.
+  enabled: false
   database: data/automations.db
   tick_seconds: 1.0
+agents:
+  # Não importa os 114 especialistas genéricos do Codex para o produto SDR.
+  load_local_specialists: false
+desktop_tools:
+  # Remove comandos de sistema, captura e PowerShell do perfil comercial.
+  enabled: false
 memory:
   enabled: true
   database: data/kiara-memory.sqlite3

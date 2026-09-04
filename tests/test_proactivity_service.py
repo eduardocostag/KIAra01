@@ -31,3 +31,17 @@ async def test_proactivity_calls_user_notifier():
     service.start()
     await bus.publish("NOTIFICATION_RECEIVED", {"message": "alert"})
     assert notices[0]["payload"]["message"] == "alert"
+
+
+@pytest.mark.asyncio
+async def test_proactive_error_only_offers_help_and_never_requests_action():
+    bus = EventBus()
+    notices = []
+    service = ProactivityService(
+        bus, ProactivityPolicy(ProactivityLevel.HIGH), notify=notices.append
+    )
+    service.start()
+    await bus.publish("APP_NOT_RESPONDING", {"active_application": "Editor"})
+    assert notices[0]["mode"] == "offer_help_only"
+    assert "Quer que eu" in notices[0]["offer_text"]
+    assert set(notices[0]) == {"source", "payload", "offer_text", "mode"}

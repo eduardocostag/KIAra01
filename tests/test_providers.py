@@ -360,3 +360,21 @@ def test_one_openrouter_key_activates_all_declared_models(tmp_path) -> None:
         f"openrouter:{model}" for model in models
     ]
     assert isinstance(fast.providers[-1], OllamaProvider)
+
+
+def test_shipped_config_uses_capability_first_fallback_order() -> None:
+    import yaml
+
+    raw = yaml.safe_load((Path.cwd() / "config" / "kiara.yaml").read_text(encoding="utf-8"))
+    expected = [
+        ("nvidia", "nvidia/nemotron-3-ultra-550b-a55b"),
+        ("nvidia", "nvidia/nemotron-3-super-120b-a12b"),
+        ("gemini", "gemini-3.1-flash-lite"),
+        ("openrouter", "openrouter/free"),
+    ]
+    for profile in ("fast", "reasoning"):
+        candidates = raw["llm"]["routing"][profile]["candidates"]
+        assert [(item["provider"], item["model"]) for item in candidates] == expected
+    assert "Nvidia" in (Path.cwd() / "scripts" / "configure_cloud_ai.ps1").read_text(
+        encoding="utf-8"
+    )

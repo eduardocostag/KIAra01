@@ -27,13 +27,15 @@ def register_computer_use_tools(
     agent = ComputerUseAgent(
         backend or PywinautoBackend(),
         vision_fallback=vision_fallback,
-        allow_vision_fallback=bool(
-            settings.get("computer_use.vision_fallback_enabled", False)
-        ),
+        allow_vision_fallback=bool(settings.get("computer_use.vision_fallback_enabled", False)),
         operation_timeout_seconds=float(
             settings.get("computer_use.operation_timeout_seconds", 5.0)
         ),
         visual_state_verifier=visual_state_verifier,
+        require_visual_validation=bool(
+            settings.get("computer_use.require_visual_validation", True)
+        ),
+        visual_settle_seconds=float(settings.get("computer_use.visual_settle_seconds", 0.25)),
     )
     for tool_type in (UiaLocateTool, UiaClickTool, UiaTypeTextTool, UiaKeyTool, UiaWindowTool):
         registry.register(tool_type(agent))

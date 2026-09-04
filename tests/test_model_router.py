@@ -44,6 +44,19 @@ async def test_model_router_selects_fast_and_reasoning_deterministically():
     assert metrics.summary("model_router.latency.fast").count == 1
 
 
+@pytest.mark.asyncio
+async def test_internal_stage_can_explicitly_use_fast_profile():
+    router = ModelRouter(
+        {"fast": StubProvider("fast"), "reasoning": StubProvider("reasoning")}
+    )
+
+    answer = await router.generate_for_profile("fast", "Analise esta arquitetura")
+
+    assert answer == "fast:Analise esta arquitetura"
+    assert router.last_decision is not None
+    assert router.last_decision.reason == "explicit_internal_stage"
+
+
 def test_policy_reads_user_message_in_structured_specialist_prompt():
     policy = LocalProfilePolicy()
     decision = policy.select_text('{"role":"helpdesk","user_message":"diagnostique o erro"}')
@@ -54,6 +67,9 @@ def test_policy_reads_user_message_in_structured_specialist_prompt():
     ).profile == "reasoning"
     assert policy.select_text(
         '{"user_message":"qual é a diferença entre memória RAM e armazenamento?"}'
+    ).profile == "reasoning"
+    assert policy.select_text(
+        '{"user_message":"Quais hipóteses você investigaria neste diagnóstico?"}'
     ).profile == "reasoning"
 
 

@@ -4,6 +4,7 @@ import re
 from typing import Any, ClassVar
 
 from app.browser import BrowserSession
+from app.leads.policy import ProspectingPolicyEngine
 from app.models import PermissionLevel, ToolResult
 from app.tools.base import Tool
 
@@ -21,8 +22,11 @@ class SendSocialMessageTool(Tool):
         "required": ["platform", "recipient", "text"],
     }
 
-    def __init__(self, browser: BrowserSession) -> None:
+    def __init__(
+        self, browser: BrowserSession, policy_engine: ProspectingPolicyEngine | None = None
+    ) -> None:
         self.browser = browser
+        self.policy_engine = policy_engine
 
     def validate(self, parameters: dict[str, Any]) -> None:
         platform = str(parameters.get("platform", "")).casefold()
@@ -36,7 +40,20 @@ class SendSocialMessageTool(Tool):
             raise ValueError("Mensagem vazia ou acima de 4000 caracteres.")
 
     async def execute(self, *, platform: str, recipient: str, text: str, **_: Any) -> ToolResult:
-        output = await self.browser.send_social_message(
-            platform=platform, recipient=recipient, message=text
-        )
+        reservation_id = ""
+        if self.policy_engine is not None:
+            decision = self.policy_engine.reserve(recipient, operation_id=platform, automatic=False)
+            if not decision.allowed:
+                return ToolResult(False, error=decision.reason)
+            reservation_id = decision.reservation_id
+        try:
+            output = await self.browser.send_social_message(
+                platform=platform, recipient=recipient, message=text
+            )
+        except Exception:
+            if reservation_id:
+                self.policy_engine.complete(reservation_id, sent=False)
+            raise
+        if reservation_id:
+            self.policy_engine.complete(reservation_id, sent=True)
         return ToolResult(True, output=output)

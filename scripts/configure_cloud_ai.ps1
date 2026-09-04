@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('All', 'OpenAI', 'OpenRouter', 'Groq', 'Gemini')]
+    [ValidateSet('All', 'OpenAI', 'OpenRouter', 'Groq', 'Gemini', 'Nvidia')]
     [string]$Provider = 'All',
     [switch]$FromClipboard
 )
@@ -50,6 +50,9 @@ if ($Provider -in @('All', 'Groq')) {
 }
 if ($Provider -in @('All', 'Gemini')) {
     Set-KiaraSecret -Name 'GEMINI_API_KEY' -Label 'Gemini'
+}
+if ($Provider -in @('All', 'Nvidia')) {
+    Set-KiaraSecret -Name 'NVIDIA_API_KEY' -Label 'NVIDIA NIM'
 }
 if ($Provider -in @('All', 'OpenAI')) {
     Set-KiaraSecret -Name 'OPENAI_API_KEY' -Label 'OpenAI'

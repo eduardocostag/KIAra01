@@ -26,6 +26,8 @@ class FakeVoice:
     def cancel(self):
         return None
 
+    always_listen_for_wake_word = False
+
 
 def test_voice_worker_emits_lifecycle_and_transcript():
     worker = VoiceWorker(FakeVoice(), 3)
@@ -55,3 +57,19 @@ def test_voice_worker_reports_speaking_state():
     worker.speak("Olá")
     assert voice.spoken == ["Olá"]
     assert states == ["Falando…", "Pronta"]
+
+
+def test_voice_worker_emits_bare_wake_activation_instead_of_command():
+    class WakeVoice(FakeVoice):
+        always_listen_for_wake_word = True
+
+        def listen(self, seconds, on_state):
+            return Transcript("", "pt", wake_detected=True)
+
+    worker = VoiceWorker(WakeVoice(), 3)
+    wake_events, transcripts = [], []
+    worker.wake_detected.connect(lambda: wake_events.append(True))
+    worker.transcript_ready.connect(transcripts.append)
+    worker.listen()
+    assert wake_events == [True]
+    assert transcripts == []

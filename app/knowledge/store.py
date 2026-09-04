@@ -141,13 +141,21 @@ class KnowledgeStore:
             )
             document_id = int(cursor.lastrowid)
             embeddings = (
-                self._embedding_provider.embed(chunks) if self._embedding_provider is not None else [None] * len(chunks)
+                self._embedding_provider.embed(chunks)
+                if self._embedding_provider is not None
+                else [None] * len(chunks)
             )
             for index, (content, embedding) in enumerate(zip(chunks, embeddings, strict=True)):
                 chunk_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
                 cursor = self._connection.execute(
                     "INSERT OR IGNORE INTO chunks(document_id, chunk_index, content, chunk_hash, embedding) VALUES (?, ?, ?, ?, ?)",
-                    (document_id, index, content, chunk_hash, json.dumps(embedding) if embedding is not None else None),
+                    (
+                        document_id,
+                        index,
+                        content,
+                        chunk_hash,
+                        json.dumps(embedding) if embedding is not None else None,
+                    ),
                 )
                 if self._fts and cursor.rowcount:
                     self._connection.execute(
@@ -165,9 +173,7 @@ class KnowledgeStore:
     ) -> list[KnowledgeResult]:
         if not query.strip() or limit <= 0:
             return []
-        threshold = (
-            self.relevance_threshold if relevance_threshold is None else relevance_threshold
-        )
+        threshold = self.relevance_threshold if relevance_threshold is None else relevance_threshold
         if not 0 <= threshold <= 1:
             raise ValueError("relevance_threshold must be between zero and one")
         lexical: dict[int, float] = {}
@@ -193,7 +199,9 @@ class KnowledgeStore:
             lexical_score = max(lexical.get(int(row["id"]), 0.0), fallback_lexical)
             semantic = 0.0
             if query_embedding is not None and row["embedding"]:
-                semantic = max(0.0, cosine_similarity(query_embedding, json.loads(row["embedding"])))
+                semantic = max(
+                    0.0, cosine_similarity(query_embedding, json.loads(row["embedding"]))
+                )
             score = 0.65 * lexical_score + 0.35 * semantic
             if score >= threshold:
                 metadata = json.loads(row["metadata"])
@@ -304,7 +312,5 @@ class KnowledgeStore:
                     ((int(row["id"]),) for row in chunk_rows),
                 )
             self._connection.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
-            cursor = self._connection.execute(
-                "DELETE FROM documents WHERE id = ?", (document_id,)
-            )
+            cursor = self._connection.execute("DELETE FROM documents WHERE id = ?", (document_id,))
         return cursor.rowcount > 0

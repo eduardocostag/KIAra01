@@ -97,7 +97,10 @@ def test_quick_message_and_response_contract() -> None:
         QApplication.processEvents()
         assert "aberta" in overlay.accessibleDescription().casefold()
         assert overlay.quick_input.hasFocus()
-        assert overlay.response_label.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse
+        assert (
+            overlay.response_label.textInteractionFlags()
+            & Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         overlay.quick_input.setText("  Olá, Kiara  ")
         QTest.keyClick(overlay.quick_input, Qt.Key.Key_Return)
         assert messages == ["Olá, Kiara"]
@@ -113,7 +116,8 @@ def test_quick_message_and_response_contract() -> None:
         assert voice_requests == ["voice"]
         QTest.keyClick(overlay.quick_input, Qt.Key.Key_Escape)
         assert not overlay.is_expanded()
-        assert overlay.hasFocus()
+        assert not overlay.hasFocus()
+        assert overlay.focusPolicy() == Qt.FocusPolicy.NoFocus
     finally:
         overlay.close()
 
@@ -148,6 +152,22 @@ def test_hidden_orb_does_not_accept_input() -> None:
         overlay.close()
 
 
+def test_programmatic_response_never_focuses_orb_or_quick_input() -> None:
+    app = _app()
+    overlay = StatusOverlay()
+    try:
+        overlay.show_discreetly()
+        overlay.show_response("Resposta concluída")
+        app.processEvents()
+
+        assert overlay.is_expanded()
+        assert overlay.focusPolicy() == Qt.FocusPolicy.NoFocus
+        assert not overlay.quick_input.hasFocus()
+        assert not overlay.hasFocus()
+    finally:
+        overlay.close()
+
+
 def test_quick_chat_stays_inside_screen_when_expanded_from_right_edge() -> None:
     app = _app()
     overlay = StatusOverlay()
@@ -155,7 +175,9 @@ def test_quick_chat_stays_inside_screen_when_expanded_from_right_edge() -> None:
         overlay.show_discreetly()
         app.processEvents()
         available = overlay.screen().geometry()
-        overlay.move(available.right() - overlay.width() + 1, available.bottom() - overlay.height() + 1)
+        overlay.move(
+            available.right() - overlay.width() + 1, available.bottom() - overlay.height() + 1
+        )
         overlay.set_expanded(True)
         app.processEvents()
         assert available.contains(overlay.geometry())
@@ -170,3 +192,18 @@ def test_quick_chat_stays_inside_screen_when_expanded_from_right_edge() -> None:
         assert overlay.orb.mapToGlobal(QPoint(0, 0)).x() <= available.left() + 10
     finally:
         overlay.close()
+
+
+def test_idle_orb_is_static_and_timer_runs_only_for_active_states() -> None:
+    _app()
+    overlay = StatusOverlay()
+    assert overlay.orb._state == "pronta"
+    assert overlay.orb._timer.isActive() is False
+
+    overlay.set_state("pensando")
+    assert overlay.orb._timer.isActive() is True
+
+    overlay.set_state("pronta")
+    assert overlay.orb._timer.isActive() is False
+    assert overlay.orb._phase == 0.0
+    overlay.close()

@@ -10,6 +10,7 @@ from app.core.context import ContextManager
 from app.core.event_bus import EventBus
 from app.models import ScreenContext
 from app.perception import PerceptionOptions, ScreenPerception
+from app.perception.analysis import parse_screen_analysis, screen_analysis_is_consistent
 from app.perception.understanding import LiveScreenUnderstanding
 from app.perception.windows import WindowSnapshot
 from app.providers.llm import LLMProvider
@@ -20,6 +21,28 @@ def snapshot(title: str = "Documento") -> WindowSnapshot:
         ScreenContext(active_application="notepad.exe", active_process="42", window_title=title),
         handle=7,
         bounds=(10, 20, 300, 200),
+    )
+
+
+def test_visual_grounding_rejects_mobile_hallucination_for_desktop_window() -> None:
+    analysis = parse_screen_analysis(
+        "The image shows a phone screen with a Spanish chat.", application="Kiara.exe"
+    )
+
+    assert not screen_analysis_is_consistent(
+        analysis, application="Kiara.exe", window_title="Kiara"
+    )
+
+
+def test_visual_grounding_accepts_matching_application() -> None:
+    analysis = parse_screen_analysis(
+        '{"application":"Kiara.exe","subject":"Janela de chat da Kiara",'
+        '"state":"aberta","visible_errors":[],"evidence":["campo de mensagem"],'
+        '"hypotheses":[],"suggested_checks":[],"uncertainty":""}'
+    )
+
+    assert screen_analysis_is_consistent(
+        analysis, application="Kiara.exe", window_title="Kiara"
     )
 
 
@@ -44,6 +67,34 @@ async def test_poll_publishes_only_when_context_changes() -> None:
     assert await perception.poll_once() is False
     assert len(received) == 1
     assert received[0]["window_title"] == "Documento"
+
+
+async def test_not_responding_requires_two_polls_and_resets_after_recovery() -> None:
+    bus = EventBus()
+    notices = []
+
+    async def receive(payload):
+        notices.append(payload)
+
+    titles = iter(
+        (
+            "Editor (Não está respondendo)",
+            "Editor (Não está respondendo)",
+            "Editor",
+            "Editor (Não está respondendo)",
+            "Editor (Não está respondendo)",
+        )
+    )
+    perception = ScreenPerception(bus, inspector=lambda: snapshot(next(titles)))
+    bus.subscribe(ScreenPerception.APP_NOT_RESPONDING, receive)
+    await perception.poll_once()
+    assert notices == []
+    await perception.poll_once()
+    assert len(notices) == 1
+    await perception.poll_once()
+    await perception.poll_once()
+    await perception.poll_once()
+    assert len(notices) == 2
 
 
 async def test_poll_loop_survives_optional_windows_backend_failure(monkeypatch) -> None:

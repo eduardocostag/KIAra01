@@ -29,7 +29,9 @@ class CommunicationsProvider(Protocol):
 
 
 class MicrosoftGraphCommunications:
-    def __init__(self, credentials: CredentialProvider, client: JsonHttpClient | None = None) -> None:
+    def __init__(
+        self, credentials: CredentialProvider, client: JsonHttpClient | None = None
+    ) -> None:
         self.credentials = credentials
         self.client = client or JsonHttpClient()
 
@@ -41,29 +43,36 @@ class MicrosoftGraphCommunications:
 
     async def read_messages(self, limit: int = 20) -> list[dict[str, Any]]:
         response = await self.client.request(
-            "GET", f"https://graph.microsoft.com/v1.0/me/chats?$top={min(max(limit, 1), 50)}",
+            "GET",
+            f"https://graph.microsoft.com/v1.0/me/chats?$top={min(max(limit, 1), 50)}",
             token=self._token(),
         )
         return list(response.body.get("value", []))
 
     async def send_message(self, message: OutboundMessage) -> str:
         response = await self.client.request(
-            "POST", f"https://graph.microsoft.com/v1.0/chats/{message.destination}/messages",
-            token=self._token(), payload={"body": {"content": message.text}},
+            "POST",
+            f"https://graph.microsoft.com/v1.0/chats/{message.destination}/messages",
+            token=self._token(),
+            payload={"body": {"content": message.text}},
             idempotency_key=message.idempotency_key,
         )
         return str(response.body.get("id", message.idempotency_key))
 
     async def read_calendar(self, limit: int = 20) -> list[dict[str, Any]]:
         response = await self.client.request(
-            "GET", f"https://graph.microsoft.com/v1.0/me/events?$top={min(max(limit, 1), 50)}",
+            "GET",
+            f"https://graph.microsoft.com/v1.0/me/events?$top={min(max(limit, 1), 50)}",
             token=self._token(),
         )
         return list(response.body.get("value", []))
 
     async def create_event(self, event: dict[str, Any], idempotency_key: str) -> str:
         response = await self.client.request(
-            "POST", "https://graph.microsoft.com/v1.0/me/events", token=self._token(),
-            payload=event, idempotency_key=idempotency_key,
+            "POST",
+            "https://graph.microsoft.com/v1.0/me/events",
+            token=self._token(),
+            payload=event,
+            idempotency_key=idempotency_key,
         )
         return str(response.body.get("id", idempotency_key))

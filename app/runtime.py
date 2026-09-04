@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from app.automation.engine import AutomationEngine, AutomationStore
@@ -15,6 +16,15 @@ from app.perception.understanding import LiveScreenUnderstanding
 from app.proactivity import ProactivityLevel, ProactivityPolicy, ProactivityService
 from app.providers.llm import LLMProvider
 from app.tools.registry import ToolRegistry
+
+
+def _proactivity_level(value: object) -> ProactivityLevel:
+    if isinstance(value, bool):
+        return ProactivityLevel.LOW if value else ProactivityLevel.OFF
+    try:
+        return ProactivityLevel(str(value).strip().casefold())
+    except ValueError:
+        return ProactivityLevel.OFF
 
 
 class BackgroundServices:
@@ -36,7 +46,11 @@ class BackgroundServices:
         )
         self.proactivity = ProactivityService(
             self.bus,
-            ProactivityPolicy(ProactivityLevel(settings.get("proactivity.level", "low"))),
+            ProactivityPolicy(
+                _proactivity_level(settings.get("proactivity.level", "off")),
+                cooldown=timedelta(minutes=float(settings.get("proactivity.cooldown_minutes", 10))),
+                daily_limit=int(settings.get("proactivity.daily_limit", 12)),
+            ),
         )
         self.automations = AutomationEngine(
             AutomationStore(
@@ -46,6 +60,9 @@ class BackgroundServices:
             event_bus=self.bus,
             tick_seconds=float(settings.get("automation.tick_seconds", 1.0)),
         )
+        # Settings constructed directly by embedders preserve the historical
+        # runtime behavior; the shipped configuration explicitly disables it.
+        self.automation_enabled = bool(settings.get("automation.enabled", True))
         self.screen_understanding = (
             LiveScreenUnderstanding(
                 self.screen,
@@ -128,13 +145,15 @@ class BackgroundServices:
         await self._stop_async()
 
     async def _start_async(self) -> None:
-        self.proactivity.start()
+        if self.proactivity.policy.level != ProactivityLevel.OFF:
+            self.proactivity.start()
         if self.screen_understanding is not None:
             self.screen_understanding.start()
         if self.obsidian is not None:
             self.obsidian.start()
         await self.screen.start()
-        await self.automations.start()
+        if self.automation_enabled:
+            await self.automations.start()
 
     async def _stop_async(self) -> None:
         await self.screen.stop()
@@ -142,7 +161,8 @@ class BackgroundServices:
             await self.screen_understanding.stop()
         if self.obsidian is not None:
             await self.obsidian.stop()
-        await self.automations.stop()
+        if self.automation_enabled:
+            await self.automations.stop()
         self.proactivity.stop()
 
     def set_proactive_notifier(self, callback: Callable[[dict[str, Any]], None] | None) -> None:

@@ -13,6 +13,7 @@ from app.computer_use import (
     UiaTypeTextTool,
     WindowSelector,
 )
+from app.computer_use.visual_validation import EphemeralVisualStateVerifier
 from app.models import PermissionLevel
 
 
@@ -77,7 +78,8 @@ async def test_action_records_ephemeral_before_after_visual_validation() -> None
             return next(self.states)
 
     result = await ComputerUseAgent(FakeBackend(), visual_state_verifier=Verifier()).click(
-        WindowSelector(title="Editor"), ElementSelector(name="Save"),
+        WindowSelector(title="Editor"),
+        ElementSelector(name="Save"),
         PostCondition(PostConditionKind.EXISTS),
     )
     assert result.metadata["visual_validation_available"] is True
@@ -85,12 +87,77 @@ async def test_action_records_ephemeral_before_after_visual_validation() -> None
     assert "before-hash" not in result.metadata
 
 
+async def test_required_visual_validation_marks_unavailable_evidence_inconclusive() -> None:
+    result = await ComputerUseAgent(FakeBackend(), require_visual_validation=True).click(
+        WindowSelector(title="Editor"),
+        ElementSelector(name="Save"),
+        PostCondition(PostConditionKind.EXISTS),
+    )
+    assert result.success is False
+    assert result.metadata["post_condition_passed"] is True
+    assert result.metadata["verification_status"] == "inconclusive_visual_unavailable"
+
+
+async def test_required_visual_validation_rejects_unchanged_screen() -> None:
+    class UnchangedVerifier:
+        async def signature(self):
+            return "same"
+
+    result = await ComputerUseAgent(
+        FakeBackend(),
+        visual_state_verifier=UnchangedVerifier(),
+        require_visual_validation=True,
+    ).click(
+        WindowSelector(title="Editor"),
+        ElementSelector(name="Save"),
+        PostCondition(PostConditionKind.EXISTS),
+    )
+    assert result.success is False
+    assert result.metadata["verification_status"] == "inconclusive_no_visual_change"
+
+
+async def test_required_visual_validation_confirms_changed_screen() -> None:
+    class ChangedVerifier:
+        def __init__(self):
+            self.states = iter(["before", "after"])
+
+        async def signature(self):
+            return next(self.states)
+
+    result = await ComputerUseAgent(
+        FakeBackend(),
+        visual_state_verifier=ChangedVerifier(),
+        require_visual_validation=True,
+    ).click(
+        WindowSelector(title="Editor"),
+        ElementSelector(name="Save"),
+        PostCondition(PostConditionKind.EXISTS),
+    )
+    assert result.success is True
+    assert result.metadata["verification_status"] == ("confirmed_post_condition_and_visual_change")
+
+
+def test_visual_change_threshold_ignores_tiny_screen_noise() -> None:
+    verifier = EphemeralVisualStateVerifier(  # type: ignore[arg-type]
+        object(), change_threshold=0.02
+    )
+    before = bytes([0] * 256).hex()
+    one_changed_bit = bytes([1, *([0] * 255)]).hex()
+    six_changed_bits = bytes([1] * 6 + [0] * 250).hex()
+
+    assert verifier.changed(before, one_changed_bit) is False
+    assert verifier.changed(before, six_changed_bits) is True
+
+
 async def test_type_requires_verified_result() -> None:
     backend = FakeBackend()
     agent = ComputerUseAgent(backend)
     result = await agent.type_text(
-        WindowSelector(title="Editor"), ElementSelector(name="Body"), "Olá",
-        replace=True, post=PostCondition(PostConditionKind.VALUE_EQUALS, "Olá"),
+        WindowSelector(title="Editor"),
+        ElementSelector(name="Body"),
+        "Olá",
+        replace=True,
+        post=PostCondition(PostConditionKind.VALUE_EQUALS, "Olá"),
     )
     assert result.success is True
     assert result.metadata["verified"] is True
@@ -99,7 +166,8 @@ async def test_type_requires_verified_result() -> None:
 async def test_failed_post_condition_is_reported() -> None:
     backend = FakeBackend()
     result = await ComputerUseAgent(backend).click(
-        WindowSelector(title="Editor"), ElementSelector(name="Save"),
+        WindowSelector(title="Editor"),
+        ElementSelector(name="Save"),
         PostCondition(PostConditionKind.WINDOW_TITLE_CONTAINS, "Browser"),
     )
     assert result.success is False

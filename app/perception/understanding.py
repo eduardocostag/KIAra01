@@ -79,3 +79,13 @@ class LiveScreenUnderstanding:
                 "pixels_persisted": False,
             }
         )
+        if analysis.visible_errors:
+            await self.perception.event_bus.publish(
+                "SCREEN_IMPORTANT_CHANGE",
+                {
+                    "active_application": payload.get("active_application"),
+                    "importance": 0.9,
+                    "state": "visible_error_detected",
+                    "details_persisted": False,
+                },
+            )

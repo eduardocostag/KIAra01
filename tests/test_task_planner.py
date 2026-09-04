@@ -10,7 +10,14 @@ from app.core.agent_core import AgentCore
 from app.core.context import ContextManager
 from app.memory import MemoryEngine
 from app.models import AutonomyMode, PermissionLevel, ScreenContext, ToolResult
-from app.planning import PlanRejected, TaskPlanner
+from app.planning import (
+    GoalStatus,
+    PlanRejected,
+    PlanStep,
+    PlanStore,
+    TaskPlan,
+    TaskPlanner,
+)
 from app.providers.llm import LLMProvider
 from app.security.audit import AuditLog
 from app.security.permissions import PermissionGate
@@ -55,6 +62,16 @@ class SensitiveSchemaTool(SchemaTool):
     permission_level = PermissionLevel.SENSITIVE_ACTION
 
 
+class CriticalSchemaTool(SchemaTool):
+    name = "critical_action"
+    permission_level = PermissionLevel.CRITICAL_ACTION
+
+
+class VisualSchemaTool(SchemaTool):
+    name = "uia_click"
+    permission_level = PermissionLevel.SENSITIVE_ACTION
+
+
 def make_registry(tmp_path, tool: Tool) -> ToolRegistry:
     registry = ToolRegistry(
         PermissionGate(AutonomyMode.AUTONOMOUS, confirm=lambda _: True),
@@ -90,6 +107,187 @@ async def test_full_goal_plan_action_observation_validation_loop(tmp_path) -> No
     assert provider.prompts[0]["phase"] == "GOAL_TO_PLAN"
     assert provider.prompts[1]["status"] == "completed"
     assert provider.prompts[1]["observations"][0]["validated"] is True
+
+
+async def test_run_persists_checkpoints_and_completion_when_store_exists(tmp_path) -> None:
+    provider = SequenceProvider(plan(), "concluÃ­do com checkpoint")
+    tool = SchemaTool()
+    store = PlanStore(tmp_path / "planning.db")
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, tool),
+        AgentRouter(provider),
+        store=store,
+    )
+
+    response = await planner.run("objetivo persistente", {})
+    goal = store.get(1)
+
+    assert response == "concluÃ­do com checkpoint"
+    assert goal is not None
+    assert goal.status is GoalStatus.COMPLETED
+    assert goal.next_step == 1
+    assert provider.prompts[-1]["goal_id"] == 1
+
+
+async def test_critical_action_is_classified_as_high_risk(tmp_path) -> None:
+    provider = SequenceProvider(plan("critical_action"))
+    store = PlanStore(tmp_path / "planning.db")
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, CriticalSchemaTool()),
+        AgentRouter(provider),
+        store=store,
+    )
+
+    identifier = await planner.create_persistent_goal("mensagem externa", {})
+
+    assert store.get(identifier).risk == "high"  # type: ignore[union-attr]
+
+
+async def test_visual_operator_rejects_ui_plan_without_before_after_evidence(
+    tmp_path,
+) -> None:
+    provider = SequenceProvider(plan("uia_click"))
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, VisualSchemaTool()),
+        AgentRouter(provider),
+        require_visual_validation=True,
+    )
+
+    with pytest.raises(PlanRejected, match="visual-change evidence"):
+        await planner.create_plan("clique e confirme visualmente", {})
+
+
+async def test_visual_operator_accepts_and_checks_complete_visual_evidence(
+    tmp_path,
+) -> None:
+    visual_result = ToolResult(
+        True,
+        output="Post-condition verified",
+        metadata={
+            "verified": True,
+            "visual_validation_available": True,
+            "visual_changed": True,
+        },
+    )
+    raw_plan = json.dumps(
+        {
+            "steps": [
+                {
+                    "tool": "uia_click",
+                    "parameters": {"value": "x"},
+                    "validation": {
+                        "metadata_equals": {
+                            "verified": True,
+                            "visual_validation_available": True,
+                            "visual_changed": True,
+                        }
+                    },
+                }
+            ]
+        }
+    )
+    provider = SequenceProvider(raw_plan, "mudanca visual confirmada")
+    tool = VisualSchemaTool([visual_result])
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, tool),
+        AgentRouter(provider),
+        require_visual_validation=True,
+    )
+
+    response = await planner.run("clique e confirme visualmente", {})
+
+    assert response == "mudanca visual confirmada"
+    assert provider.prompts[-1]["observations"][0]["validated"] is True
+
+
+async def test_failure_creates_different_recovery_plan_without_executing_it(
+    tmp_path,
+) -> None:
+    recovery_plan = json.dumps(
+        {
+            "steps": [
+                {
+                    "tool": "schema_action",
+                    "parameters": {"value": "alternative"},
+                    "validation": {"metadata_equals": {"verified": True}},
+                }
+            ]
+        }
+    )
+    provider = SequenceProvider(plan(), recovery_plan, "primeira tentativa interrompida")
+    tool = SchemaTool([ToolResult(False, error="falhou")])
+    store = PlanStore(tmp_path / "planning.db")
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, tool),
+        AgentRouter(provider),
+        store=store,
+        recovery_on_failure=True,
+    )
+
+    response = await planner.run("objetivo com recuperacao", {})
+    original = store.get(1)
+    recovery = store.get(2)
+
+    assert original is not None and original.status is GoalStatus.STOPPED
+    assert recovery is not None and recovery.status is GoalStatus.PENDING
+    assert recovery.plan.steps[0].parameters == {"value": "alternative"}
+    assert tool.calls == 1
+    assert "Plano de recuperação 2 criado" in response
+    assert provider.prompts[1]["context"]["recovery_evidence"]["failed_observation"]
+
+
+async def test_recovery_plan_cannot_repeat_identical_failed_action(tmp_path) -> None:
+    provider = SequenceProvider(plan(), plan(), "sem alternativa segura")
+    tool = SchemaTool([ToolResult(False, error="falhou")])
+    store = PlanStore(tmp_path / "planning.db")
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, tool),
+        AgentRouter(provider),
+        store=store,
+        recovery_on_failure=True,
+    )
+
+    response = await planner.run("objetivo sem alternativa", {})
+
+    assert store.get(2) is None
+    assert "Plano de recuperação" not in response
+
+
+async def test_explicit_resume_executes_pending_recovery_with_checkpoint(tmp_path) -> None:
+    provider = SequenceProvider("recuperacao concluida")
+    tool = SchemaTool()
+    store = PlanStore(tmp_path / "planning.db")
+    identifier = store.create(
+        TaskPlan(
+            "alternativa",
+            (
+                PlanStep(
+                    "schema_action",
+                    {"value": "alternative"},
+                    {"metadata_equals": {"verified": True}},
+                ),
+            ),
+        ),
+        risk="medium",
+    )
+    planner = TaskPlanner(
+        provider,
+        make_registry(tmp_path, tool),
+        AgentRouter(provider),
+        store=store,
+    )
+
+    response = await planner.resume_goal(identifier)
+
+    assert response == "recuperacao concluida"
+    assert store.get(identifier).status is GoalStatus.COMPLETED  # type: ignore[union-attr]
+    assert tool.calls == 1
 
 
 async def test_safe_retry_is_bounded_and_sensitive_action_never_auto_retries(tmp_path) -> None:

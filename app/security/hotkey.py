@@ -26,7 +26,9 @@ class EmergencyHotkey:
         if platform.system() != "Windows" or self._thread is not None:
             return False
         ready = threading.Event()
-        self._thread = threading.Thread(target=self._run, args=(ready,), daemon=True, name="kiara-hotkey")
+        self._thread = threading.Thread(
+            target=self._run, args=(ready,), daemon=True, name="kiara-hotkey"
+        )
         self._thread.start()
         ready.wait(timeout=1)
         return self.registered
@@ -35,7 +37,9 @@ class EmergencyHotkey:
         user32 = ctypes.windll.user32
         self._thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
         self.registered = bool(
-            user32.RegisterHotKey(None, self.HOTKEY_ID, self.MOD_ALT | self.MOD_CONTROL, self.VK_ESCAPE)
+            user32.RegisterHotKey(
+                None, self.HOTKEY_ID, self.MOD_ALT | self.MOD_CONTROL, self.VK_ESCAPE
+            )
         )
         ready.set()
         if not self.registered:

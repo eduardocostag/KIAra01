@@ -20,6 +20,17 @@ dist/
 # Logs
 *.log
 
+# Perfil autenticado do navegador da Kiara (cookies e sessoes locais)
+data/browser-profile/
+
+# Conversas rejeitadas aguardando revisão manual (podem conter dados pessoais)
+data/correction-inbox.jsonl
+
+# Entradas e saídas locais do Web Studio
+data/site-references/*
+!data/site-references/.gitkeep
+generated-sites/
+
 # VS Code
 .vscode/
 

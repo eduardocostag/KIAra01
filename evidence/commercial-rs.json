@@ -1,0 +1,18 @@
+{
+  "executed_at": "2026-09-03T19:55:22.613391+00:00",
+  "niche": "estética",
+  "location": "Rio Grande do Sul",
+  "safety": "somente leitura; nenhuma mensagem enviada",
+  "b2b": {
+    "count": 0,
+    "results": [],
+    "error": "TimeoutError: "
+  },
+  "b2c": {
+    "public_results_read": 0,
+    "qualified_signals": 0,
+    "results": [],
+    "contacts_created": 0,
+    "messages_sent": 0
+  }
+}

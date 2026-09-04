@@ -19,7 +19,10 @@ class PermissionGate:
             raise PermissionDenied("Modo OBSERVE impede ações.")
         if self.mode == AutonomyMode.ASSIST and level != PermissionLevel.READ_ONLY:
             raise PermissionDenied("Modo ASSIST apenas sugere ações.")
-        needs_confirmation = level in {PermissionLevel.SENSITIVE_ACTION, PermissionLevel.CRITICAL_ACTION}
+        needs_confirmation = level in {
+            PermissionLevel.SENSITIVE_ACTION,
+            PermissionLevel.CRITICAL_ACTION,
+        }
         if needs_confirmation and (self.confirm is None or not self.confirm(summary)):
             raise PermissionDenied("Ação não confirmada pelo usuário.")
         return True

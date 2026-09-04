@@ -160,7 +160,9 @@ class AutomationStore:
                 (automation_id, run_key),
             ).fetchone()
 
-    def list_runs(self, automation_id: str | None = None, *, limit: int = 100) -> list[dict[str, Any]]:
+    def list_runs(
+        self, automation_id: str | None = None, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
         """Return bounded execution history without exposing a live database cursor."""
         limit = min(500, max(1, int(limit)))
         query = "SELECT * FROM automation_runs"
@@ -213,19 +215,25 @@ class AutomationEngine:
         if spec.trigger_kind == TriggerKind.RECURRING:
             if spec.interval_seconds is None or spec.interval_seconds < 1:
                 raise ValueError("Recurring automation requires a minimum one-second interval")
-            spec.next_run_at = spec.next_run_at or (
-                datetime.now(UTC) + timedelta(seconds=spec.interval_seconds)
-            ).isoformat()
+            spec.next_run_at = (
+                spec.next_run_at
+                or (datetime.now(UTC) + timedelta(seconds=spec.interval_seconds)).isoformat()
+            )
         if spec.trigger_kind == TriggerKind.SCHEDULED:
             if not spec.next_run_at:
                 raise ValueError("Scheduled automation requires next_run_at")
             datetime.fromisoformat(spec.next_run_at)
         self._validate_trigger(spec)
         return {
-            "id": spec.id, "name": spec.name, "trigger": spec.trigger_kind.value,
-            "trigger_value": spec.trigger_value, "interval_seconds": spec.interval_seconds,
-            "next_run_at": spec.next_run_at, "action": spec.action,
-            "parameters": spec.action_parameters, "enabled": spec.enabled,
+            "id": spec.id,
+            "name": spec.name,
+            "trigger": spec.trigger_kind.value,
+            "trigger_value": spec.trigger_value,
+            "interval_seconds": spec.interval_seconds,
+            "next_run_at": spec.next_run_at,
+            "action": spec.action,
+            "parameters": spec.action_parameters,
+            "enabled": spec.enabled,
             "max_attempts": spec.max_retries + 1,
             "effect": "validate_and_save_only; execution waits for its trigger",
         }

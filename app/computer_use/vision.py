@@ -50,7 +50,11 @@ class ProviderVisionFallback:
             payload = json.loads(raw)
             if not isinstance(payload, dict) or set(payload) - self.ALLOWED_KEYS:
                 return None
-            cleaned = {key: value for key, value in payload.items() if isinstance(value, str) and value.strip()}
+            cleaned = {
+                key: value
+                for key, value in payload.items()
+                if isinstance(value, str) and value.strip()
+            }
             if not cleaned:
                 return None
             selector = ElementSelector(**cleaned)

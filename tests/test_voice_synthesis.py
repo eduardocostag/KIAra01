@@ -1,4 +1,6 @@
 from app.voice.adapters import (
+    EdgeNeuralSynthesizer,
+    KokoroSynthesizer,
     SapiSynthesizer,
     chunk_text_for_speech,
     normalize_text_for_speech,
@@ -66,6 +68,15 @@ def test_voice_factory_uses_gentle_default_profile(tmp_path):
 
     service = build_voice_service(Settings({"voice": {"enabled": True}}, tmp_path))
     assert service is not None
-    assert service.synthesizer.rate == -1
-    assert service.synthesizer.volume == 92
+    assert isinstance(service.synthesizer, EdgeNeuralSynthesizer)
+    assert service.synthesizer.voice == "pt-BR-FranciscaNeural"
+    assert service.synthesizer.rate == "+0%"
+    assert service.synthesizer.pitch == "+0Hz"
     assert service.synthesizer.language == "pt-BR"
+    assert isinstance(service.synthesizer.fallback, KokoroSynthesizer)
+    assert service.synthesizer.fallback.voice == "pf_dora"
+
+
+def test_kokoro_profile_clamps_unsafe_speed_values():
+    assert KokoroSynthesizer(speed=0.1).speed == 0.7
+    assert KokoroSynthesizer(speed=4).speed == 1.3

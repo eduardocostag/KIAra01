@@ -36,7 +36,9 @@ class ComputerUseTool(Tool):
         unknown = set(parameters) - set(self.schema["properties"])
         missing = set(self.schema.get("required", ())) - set(parameters)
         if unknown or missing:
-            raise ValueError(f"Invalid parameters; missing={sorted(missing)}, unknown={sorted(unknown)}")
+            raise ValueError(
+                f"Invalid parameters; missing={sorted(missing)}, unknown={sorted(unknown)}"
+            )
         if not isinstance(parameters.get("window"), dict):
             raise TypeError("window must be an object")
         _window(parameters["window"]).validate()
@@ -102,7 +104,8 @@ class UiaClickTool(ComputerUseTool):
 
     async def execute(self, **parameters: Any) -> ToolResult:
         return await self.agent.click(
-            _window(parameters["window"]), _element(parameters["element"]),
+            _window(parameters["window"]),
+            _element(parameters["element"]),
             _post(parameters["post_condition"]),  # type: ignore[arg-type]
         )
 
@@ -125,8 +128,11 @@ class UiaTypeTextTool(ComputerUseTool):
 
     async def execute(self, **parameters: Any) -> ToolResult:
         return await self.agent.type_text(
-            _window(parameters["window"]), _element(parameters["element"]), parameters["text"],
-            replace=parameters.get("replace", False), post=_post(parameters["post_condition"]),
+            _window(parameters["window"]),
+            _element(parameters["element"]),
+            parameters["text"],
+            replace=parameters.get("replace", False),
+            post=_post(parameters["post_condition"]),
         )  # type: ignore[arg-type]
 
 
@@ -149,8 +155,10 @@ class UiaKeyTool(ComputerUseTool):
 
     async def execute(self, **parameters: Any) -> ToolResult:
         return await self.agent.send_key(
-            _window(parameters["window"]), _element(parameters.get("element")),
-            parameters["key"].upper(), _post(parameters["post_condition"]),
+            _window(parameters["window"]),
+            _element(parameters.get("element")),
+            parameters["key"].upper(),
+            _post(parameters["post_condition"]),
         )
 
 
@@ -169,6 +177,7 @@ class UiaWindowTool(ComputerUseTool):
 
     async def execute(self, **parameters: Any) -> ToolResult:
         return await self.agent.operate_window(
-            _window(parameters["window"]), WindowOperation(parameters["operation"]),
+            _window(parameters["window"]),
+            WindowOperation(parameters["operation"]),
             _post(parameters["post_condition"]),
         )

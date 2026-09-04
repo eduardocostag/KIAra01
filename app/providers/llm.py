@@ -24,7 +24,9 @@ class LLMProvider(ABC):
         suffix = ".png" if media_type == "image/png" else ".img"
         path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(prefix="kiara-vision-", suffix=suffix, delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(
+                prefix="kiara-vision-", suffix=suffix, delete=False
+            ) as tmp:
                 tmp.write(image)
                 path = Path(tmp.name)
             return await self.vision(prompt, path)
@@ -80,7 +82,9 @@ class FallbackProvider(LLMProvider):
                 return await provider.vision_bytes(prompt, image, media_type=media_type)
             except Exception as exc:  # noqa: BLE001 - fallback boundary
                 errors.append(exc)
-        raise RuntimeError("Nenhum provedor visual conseguiu responder.") from (errors[-1] if errors else None)
+        raise RuntimeError("Nenhum provedor visual conseguiu responder.") from (
+            errors[-1] if errors else None
+        )
 
     async def _try(self, method: str, prompt: str) -> str:
         errors: list[Exception] = []
@@ -89,7 +93,9 @@ class FallbackProvider(LLMProvider):
                 return await getattr(provider, method)(prompt)
             except Exception as exc:  # noqa: BLE001 - fallback boundary
                 errors.append(exc)
-        raise RuntimeError("Nenhum provedor de IA conseguiu responder.") from (errors[-1] if errors else None)
+        raise RuntimeError("Nenhum provedor de IA conseguiu responder.") from (
+            errors[-1] if errors else None
+        )
 
 
 class LocalFallbackProvider(LLMProvider):
