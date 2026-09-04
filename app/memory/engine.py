@@ -117,6 +117,7 @@ class MemoryEngine:
         provenance: str = "user",
         parent_id: int | None = None,
         version: int = 1,
+        _commit: bool = True,
     ) -> int:
         content = content.strip()
         if not content:
@@ -148,7 +149,8 @@ class MemoryEngine:
                 version,
             ),
         )
-        self._connection.commit()
+        if _commit:
+            self._connection.commit()
         return int(cursor.lastrowid)
 
     @_serialized
@@ -236,22 +238,27 @@ class MemoryEngine:
         ).fetchone()
         if row is None or row["superseded_by"] is not None:
             raise KeyError(identifier)
-        new_id = self.remember(
-            MemoryKind(row["kind"]),
-            content,
-            metadata=json.loads(row["metadata"]),
-            importance=float(row["importance"]),
-            expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
-            profile=MemoryProfile(row["profile"]),
-            provenance=provenance,
-            parent_id=identifier,
-            version=int(row["version"]) + 1,
-        )
-        self._connection.execute(
-            "UPDATE memories SET superseded_by = ? WHERE id = ?", (new_id, identifier)
-        )
-        self._connection.commit()
-        return new_id
+        try:
+            new_id = self.remember(
+                MemoryKind(row["kind"]),
+                content,
+                metadata=json.loads(row["metadata"]),
+                importance=float(row["importance"]),
+                expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
+                profile=MemoryProfile(row["profile"]),
+                provenance=provenance,
+                parent_id=identifier,
+                version=int(row["version"]) + 1,
+                _commit=False,
+            )
+            self._connection.execute(
+                "UPDATE memories SET superseded_by = ? WHERE id = ?", (new_id, identifier)
+            )
+            self._connection.commit()
+            return new_id
+        except Exception:
+            self._connection.rollback()
+            raise
 
     @_serialized
     def consolidate(self, identifiers: Iterable[int], content: str) -> int:
@@ -265,19 +272,25 @@ class MemoryEngine:
             raise KeyError("Memory missing or already superseded")
         if len({row["profile"] for row in rows}) != 1:
             raise ValueError("Cannot consolidate across profiles")
-        new_id = self.remember(
-            MemoryKind.FACT,
-            content,
-            metadata={"consolidated_from": list(ids)},
-            importance=max(float(row["importance"]) for row in rows),
-            profile=MemoryProfile(rows[0]["profile"]),
-            provenance="consolidation",
-        )
-        self._connection.executemany(
-            "UPDATE memories SET superseded_by = ? WHERE id = ?", ((new_id, item) for item in ids)
-        )
-        self._connection.commit()
-        return new_id
+        try:
+            new_id = self.remember(
+                MemoryKind.FACT,
+                content,
+                metadata={"consolidated_from": list(ids)},
+                importance=max(float(row["importance"]) for row in rows),
+                profile=MemoryProfile(rows[0]["profile"]),
+                provenance="consolidation",
+                _commit=False,
+            )
+            self._connection.executemany(
+                "UPDATE memories SET superseded_by = ? WHERE id = ?",
+                ((new_id, item) for item in ids),
+            )
+            self._connection.commit()
+            return new_id
+        except Exception:
+            self._connection.rollback()
+            raise
 
     @_serialized
     def list_records(self, *, limit: int = 100) -> list[MemoryRecord]:

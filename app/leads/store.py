@@ -177,6 +177,13 @@ class LeadStore:
               ON leads(company, whatsapp, location);
             CREATE INDEX IF NOT EXISTS idx_leads_stage ON leads(stage);
             CREATE INDEX IF NOT EXISTS idx_leads_next_action ON leads(next_action_at);
+            CREATE INDEX IF NOT EXISTS idx_leads_score_updated
+              ON leads(score DESC, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_leads_stage_score_updated
+              ON leads(stage, score DESC, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_leads_due_actions
+              ON leads(next_action_at, score DESC)
+              WHERE next_action_at != '' AND stage NOT IN ('convertido','perdido');
             CREATE TABLE IF NOT EXISTS commercial_profile (
               id INTEGER PRIMARY KEY CHECK(id=1), business_name TEXT NOT NULL,
               service TEXT NOT NULL, target_niches TEXT NOT NULL, target_locations TEXT NOT NULL,
@@ -342,6 +349,63 @@ class LeadStore:
             )
         self._connection.commit()
         return cursor.rowcount > 0
+
+    @_serialized
+    def undo_last_stage_change(self, identifier: str) -> bool:
+        """Compensate the latest stage transition without overwriting concurrent work.
+
+        The compensation is append-only: the original event remains in the ledger and a
+        ``stage_change_undone`` event records the reversal. A second undo, a lead whose
+        current stage no longer matches the event, or any version change observed during
+        the operation fails closed.
+        """
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            current = self._connection.execute(
+                "SELECT stage,updated_at FROM leads WHERE id=?", (identifier,)
+            ).fetchone()
+            if current is None:
+                self._connection.rollback()
+                return False
+
+            event = self._connection.execute(
+                """SELECT id,event_type,from_stage,to_stage FROM lead_events
+                   WHERE lead_id=? AND from_stage != to_stage
+                   ORDER BY id DESC LIMIT 1""",
+                (identifier,),
+            ).fetchone()
+            if (
+                event is None
+                or str(event["event_type"]) == "stage_change_undone"
+                or str(current["stage"]) != str(event["to_stage"])
+            ):
+                self._connection.rollback()
+                return False
+
+            now = datetime.now(UTC).isoformat()
+            cursor = self._connection.execute(
+                """UPDATE leads SET stage=?,updated_at=?
+                   WHERE id=? AND stage=? AND updated_at=?""",
+                (str(event["from_stage"]), now, identifier, str(event["to_stage"]),
+                 str(current["updated_at"])),
+            )
+            if cursor.rowcount != 1:
+                self._connection.rollback()
+                return False
+
+            self._connection.execute(
+                """INSERT INTO lead_events(
+                     lead_id,event_type,from_stage,to_stage,payload,occurred_at
+                   ) VALUES(?,?,?,?,?,?)""",
+                (identifier, "stage_change_undone", str(event["to_stage"]),
+                 str(event["from_stage"]),
+                 json.dumps({"compensates_event_id": int(event["id"])}, sort_keys=True), now),
+            )
+            self._connection.commit()
+            return True
+        except Exception:
+            self._connection.rollback()
+            raise
 
     @_serialized
     def metrics(self) -> dict[str, int]:

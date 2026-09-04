@@ -151,6 +151,7 @@ def test_copilot_first_shell_shows_navigation_and_context_on_desktop(monkeypatch
         app.processEvents()
         assert window.workspace_stack.currentIndex() == 1
         assert window.sidebar.isVisible()
+        assert window.rail.isHidden()
         assert window.context_panel.isVisible()
         assert window.context_panel.accessibleName() == "Contexto comercial da conversa"
         assert window.transcript.isVisible()
@@ -158,6 +159,7 @@ def test_copilot_first_shell_shows_navigation_and_context_on_desktop(monkeypatch
         window.resize(900, 680)
         app.processEvents()
         assert window.sidebar.isHidden()
+        assert window.rail.isVisible()
         assert window.context_panel.isHidden()
         assert window.input.width() > 200
     finally:

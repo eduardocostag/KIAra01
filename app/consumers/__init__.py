@@ -1,5 +1,7 @@
 """Consumer (B2C) qualification domain."""
 
+from app.consumers.hunter import HunterDecision, HunterIntent, HunterPromptContract, HunterRequest
+from app.consumers.hunter_service import GovernedHunterDecision, GovernedHunterService
 from app.consumers.ingestion import (
     ConsumerIngestionError,
     ConsumerLeadPayload,
@@ -10,6 +12,12 @@ from app.consumers.ingestion import (
     TikTokLeadAdapter,
     normalize_consumer_payload,
 )
+from app.consumers.instagram_flow import (
+    InstagramB2CFlow,
+    InstagramDraft,
+    InstagramFlowResult,
+)
+from app.consumers.instagram_pilot import InstagramPilotItem, InstagramPilotService
 from app.consumers.intelligence import (
     ConsentGate,
     ConsumerClaim,
@@ -37,7 +45,18 @@ __all__ = [
     "ConsumerStore",
     "CustomerRoom",
     "GenericFormAdapter",
+    "GovernedHunterDecision",
+    "GovernedHunterService",
     "HandoffBrief",
+    "HunterDecision",
+    "HunterIntent",
+    "HunterPromptContract",
+    "HunterRequest",
+    "InstagramB2CFlow",
+    "InstagramDraft",
+    "InstagramFlowResult",
+    "InstagramPilotItem",
+    "InstagramPilotService",
     "LinkedInLeadAdapter",
     "MetaLeadAdapter",
     "OrganicIntentClassifier",

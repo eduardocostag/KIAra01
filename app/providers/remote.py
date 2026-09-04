@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import mimetypes
 import urllib.error
 import urllib.request
@@ -116,6 +117,8 @@ class OpenAICompatibleProvider(LLMProvider):
     ) -> None:
         if not api_key:
             raise ProviderConfigurationError("A chave do provedor remoto não foi definida.")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ProviderConfigurationError("O timeout do provedor deve ser positivo e finito.")
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -195,14 +198,32 @@ class OpenAICompatibleProvider(LLMProvider):
             ),
             timeout=self.timeout_seconds,
         )
+        if not isinstance(result, dict):
+            raise TypeError("O provedor remoto retornou um envelope inválido.")
         choices = result.get("choices", [])
         if not choices or not isinstance(choices[0], dict):
             raise RuntimeError("O provedor remoto retornou uma resposta vazia.")
         message = choices[0].get("message", {})
-        content = message.get("content") if isinstance(message, dict) else None
-        if not content:
+        content = _extract_message_content(message)
+        if not content.strip():
             raise RuntimeError("O provedor remoto não retornou conteúdo.")
-        return str(content)
+        return content
+
+
+def _extract_message_content(message: Any) -> str:
+    """Normalize supported OpenAI-compatible content shapes without stringifying JSON."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for item in content:
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            parts.append(item["text"])
+    return "".join(parts)
 
 
 def _post_json(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -331,7 +352,12 @@ class OllamaProvider(LLMProvider):
             ),
             timeout=self.timeout_seconds,
         )
-        return str(result.get("response", ""))
+        if not isinstance(result, dict):
+            raise TypeError("Ollama retornou um envelope inválido.")
+        response = result.get("response")
+        if not isinstance(response, str) or not response.strip():
+            raise RuntimeError("Ollama não retornou conteúdo.")
+        return response
 
     async def _chat(self, payload: dict[str, Any]) -> str:
         result = await asyncio.wait_for(
@@ -343,10 +369,15 @@ class OllamaProvider(LLMProvider):
             ),
             timeout=self.timeout_seconds,
         )
+        if not isinstance(result, dict):
+            raise TypeError("Ollama retornou um envelope inválido.")
         message = result.get("message", {})
-        if isinstance(message, dict) and "content" in message:
-            return str(message["content"])
-        return str(result.get("response", ""))
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            content = result.get("response")
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("Ollama não retornou conteúdo.")
+        return content
 
     async def generate(self, prompt: str) -> str:
         return await self._generate(self._payload(prompt))

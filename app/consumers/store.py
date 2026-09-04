@@ -64,6 +64,10 @@ class ConsumerStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_consumer_people_stage
                   ON consumer_people(stage, updated_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_consumer_people_updated
+                  ON consumer_people(updated_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_consumer_people_retention
+                  ON consumer_people(retained_until) WHERE retained_until<>'';
                 CREATE TABLE IF NOT EXISTS consumer_contacts (
                   person_id TEXT NOT NULL, kind TEXT NOT NULL, normalized_value TEXT NOT NULL,
                   declared_at TEXT NOT NULL, PRIMARY KEY(kind, normalized_value),

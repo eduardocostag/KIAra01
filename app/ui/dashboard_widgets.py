@@ -12,7 +12,8 @@ class WeeklyPerformanceChart(QWidget):
 
     def __init__(self) -> None:
         super().__init__(objectName="weeklyPerformanceChart")
-        self._values = (18, 22, 42, 54, 31, 57, 68)
+        self._values = (0, 0, 0, 0, 0, 0, 0)
+        self._labels = ("—",) * 7
         self.setMinimumHeight(125)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAccessibleName("Desempenho semanal das oportunidades")
@@ -20,6 +21,15 @@ class WeeklyPerformanceChart(QWidget):
     def set_values(self, values: Iterable[int]) -> None:
         cleaned = tuple(max(0, int(value)) for value in values)
         self._values = cleaned or (0,)
+        self.update()
+
+    def set_series(self, values: Iterable[int], labels: Iterable[str]) -> None:
+        self._values = tuple(max(0, int(value)) for value in values) or (0,)
+        cleaned_labels = tuple(str(label)[:8] for label in labels)
+        self._labels = cleaned_labels if len(cleaned_labels) == len(self._values) else ("—",) * len(self._values)
+        self.setAccessibleDescription(
+            ", ".join(f"{label}: {value}" for label, value in zip(self._labels, self._values, strict=True))
+        )
         self.update()
 
     def paintEvent(self, _event) -> None:  # type: ignore[no-untyped-def]
@@ -57,14 +67,14 @@ class WeeklyPerformanceChart(QWidget):
             painter.drawText(
                 QRectF(area.left() + index * step - 10, area.bottom() + 6, 20, 14),
                 Qt.AlignmentFlag.AlignCenter,
-                f"{index + 1:02d}",
+                self._labels[index] if index < len(self._labels) else "—",
             )
 
 
 class FunnelDonut(QWidget):
     def __init__(self) -> None:
         super().__init__(objectName="funnelDonut")
-        self._values = (60, 25, 10, 5)
+        self._values = (0, 0, 0, 0, 0, 0)
         self._colors = ("#7C5CFF", "#38A4FF", "#43D697", "#F2B84B")
         self.setMinimumSize(120, 120)
         self.setAccessibleName("Distribuição percentual do funil")

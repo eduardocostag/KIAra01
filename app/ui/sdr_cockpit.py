@@ -8,6 +8,7 @@ from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -401,6 +402,9 @@ class SdrCockpit(QWidget):
     opportunity_selected = Signal(str)
     action_requested = Signal(str)
     stage_change_requested = Signal(str, str)
+    filters_changed = Signal(int, str)
+    import_requested = Signal()
+    export_requested = Signal()
 
     _SECTIONS = (
         ("hoje", "Hoje"),
@@ -484,12 +488,22 @@ class SdrCockpit(QWidget):
         ))
         header.addLayout(heading_copy)
         header.addStretch(1)
-        period = QPushButton("Últimos 7 dias  ⌄", objectName="periodButton")
-        period.setAccessibleName("Selecionar período do resumo")
-        filter_button = QPushButton("⌁", objectName="filterButton")
-        filter_button.setAccessibleName("Filtrar visão geral")
-        header.addWidget(period)
-        header.addWidget(filter_button)
+        self.period_filter = QComboBox(objectName="periodFilter")
+        self.period_filter.setAccessibleName("Selecionar período do resumo")
+        for label, days in (("Últimos 7 dias", 7), ("Últimos 30 dias", 30),
+                            ("Últimos 90 dias", 90), ("Todo o período", 0)):
+            self.period_filter.addItem(label, days)
+        self.stage_filter = QComboBox(objectName="stageFilter")
+        self.stage_filter.setAccessibleName("Filtrar visão geral por etapa")
+        for label, value in (("Todas as etapas", ""), ("Descobertos", "descobertos"),
+                             ("Qualificados", "qualificados"), ("Contato", "contato"),
+                             ("Discovery", "discovery"), ("Proposta", "proposta"),
+                             ("Fechamento", "fechamento")):
+            self.stage_filter.addItem(label, value)
+        self.period_filter.currentIndexChanged.connect(self._emit_filters)
+        self.stage_filter.currentIndexChanged.connect(self._emit_filters)
+        header.addWidget(self.period_filter)
+        header.addWidget(self.stage_filter)
         layout.addLayout(header)
         self.metrics_host = QWidget(objectName="cockpitMetrics")
         self.metrics_layout = QHBoxLayout(self.metrics_host)
@@ -521,18 +535,9 @@ class SdrCockpit(QWidget):
         sources = QFrame(objectName="dashboardPanel")
         sources_layout = QVBoxLayout(sources)
         sources_layout.addWidget(QLabel("Top fontes de leads", objectName="dashboardPanelTitle"))
-        for label, value, tone in (
-            ("Google Maps", 58, "violet"), ("Site oficial", 34, "cyan"),
-            ("Indicação", 21, "emerald"), ("Redes sociais", 15, "amber"),
-        ):
-            row = QHBoxLayout()
-            row.addWidget(QLabel(label, objectName="sourceLabel"))
-            bar = QFrame(objectName="sourceBar")
-            bar.setProperty("tone", tone)
-            bar.setFixedWidth(max(22, value * 2))
-            row.addWidget(bar, 1)
-            row.addWidget(QLabel(str(value), objectName="sourceValue"))
-            sources_layout.addLayout(row)
+        self.sources_layout = QVBoxLayout()
+        self.sources_layout.setContentsMargins(0, 0, 0, 0)
+        sources_layout.addLayout(self.sources_layout, 1)
 
         funnel = QFrame(objectName="dashboardPanel")
         funnel_layout = QVBoxLayout(funnel)
@@ -540,12 +545,9 @@ class SdrCockpit(QWidget):
         funnel_body = QHBoxLayout()
         self.funnel_donut = FunnelDonut()
         funnel_body.addWidget(self.funnel_donut, 1)
-        legend = QLabel(
-            "●  Descobertos   60%\n●  Qualificados   25%\n●  Proposta       10%\n●  Fechamento      5%",
-            objectName="funnelLegend",
-        )
-        legend.setWordWrap(True)
-        funnel_body.addWidget(legend, 1)
+        self.funnel_legend = QLabel("Sem dados no período", objectName="funnelLegend")
+        self.funnel_legend.setWordWrap(True)
+        funnel_body.addWidget(self.funnel_legend, 1)
         funnel_layout.addLayout(funnel_body, 1)
 
         dashboard.addWidget(actions_panel, 0, 0)
@@ -558,6 +560,50 @@ class SdrCockpit(QWidget):
         dashboard.setRowStretch(1, 4)
         layout.addLayout(dashboard, 1)
         return page
+
+    def _emit_filters(self) -> None:
+        self.filters_changed.emit(
+            int(self.period_filter.currentData() or 0),
+            str(self.stage_filter.currentData() or ""),
+        )
+
+    def set_dashboard_data(
+        self,
+        *,
+        performance: Iterable[tuple[str, int]],
+        sources: Iterable[tuple[str, int]],
+        funnel: Iterable[tuple[str, int]],
+    ) -> None:
+        performance_values = tuple(performance)
+        self.performance_chart.set_series(
+            (value for _label, value in performance_values),
+            (label for label, _value in performance_values),
+        )
+        self._clear_layout(self.sources_layout)
+        source_values = tuple(sources)
+        maximum = max((value for _label, value in source_values), default=1)
+        tones = ("violet", "cyan", "emerald", "amber")
+        if not source_values:
+            self.sources_layout.addWidget(QLabel("Sem fontes no período", objectName="cockpitMuted"))
+        for index, (label, value) in enumerate(source_values):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label, objectName="sourceLabel"))
+            bar = QFrame(objectName="sourceBar")
+            bar.setProperty("tone", tones[index % len(tones)])
+            bar.setFixedWidth(max(12, round(150 * value / maximum)))
+            row.addWidget(bar)
+            row.addStretch(1)
+            row.addWidget(QLabel(str(value), objectName="sourceValue"))
+            self.sources_layout.addLayout(row)
+        funnel_values = tuple(funnel)
+        self.funnel_donut.set_values(value for _label, value in funnel_values)
+        total = sum(value for _label, value in funnel_values)
+        self.funnel_legend.setText(
+            "\n".join(
+                f"●  {label}: {((value / total) * 100 if total else 0):.0f}% · {value}"
+                for label, value in funnel_values
+            ) or "Sem dados no período"
+        )
 
     def _build_opportunities_page(self) -> QWidget:
         page, layout = self._page(
@@ -598,13 +644,23 @@ class SdrCockpit(QWidget):
         page, layout = self._page(
             "Pipeline", "Acompanhe o avanço das oportunidades sem perder a próxima ação."
         )
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        import_button = QPushButton("Importar CSV", objectName="cockpitSecondaryAction")
+        import_button.setAccessibleName("Importar leads de um arquivo CSV")
+        import_button.clicked.connect(self.import_requested)
+        export_button = QPushButton("Exportar visão", objectName="cockpitSecondaryAction")
+        export_button.setAccessibleName("Exportar os leads visíveis em CSV")
+        export_button.clicked.connect(self.export_requested)
+        actions.addWidget(import_button)
+        actions.addWidget(export_button)
+        layout.addLayout(actions)
         self.pipeline_summary = QLabel(
             "Nenhuma oportunidade no pipeline.", objectName="cockpitEmptyState"
         )
         self.pipeline_summary.setAccessibleName("Resumo do pipeline")
         self.pipeline_summary.setWordWrap(True)
         self.pipeline_summary.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.pipeline_summary.setVisible(False)
 
         pipeline_scroll = QScrollArea(objectName="cockpitPipelineScroll")
         pipeline_scroll.setAccessibleName("Quadro Kanban do pipeline")

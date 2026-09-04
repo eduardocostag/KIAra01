@@ -1,0 +1,30 @@
+{
+  "description": "Fixture sanitizada de DM inbound usada pelo gate local; não foi capturada da Meta.",
+  "request": {
+    "object": "instagram",
+    "entry": [
+      {
+        "id": "business-e2e",
+        "messaging": [
+          {
+            "sender": {"id": "ig-person-42"},
+            "recipient": {"id": "business-e2e"},
+            "timestamp": 1788500000000,
+            "message": {"mid": "evt-full-story", "text": "Oi, qual o preço?"}
+          }
+        ]
+      }
+    ]
+  },
+  "expected_local_outcome": {
+    "outcome": "pending_approval",
+    "qualification_status": "research",
+    "draft_requires_human_approval": true,
+    "http_calls_before_approval": 0
+  },
+  "not_evidence_of": [
+    "webhook entregue pela Meta",
+    "permissões aprovadas pela Meta",
+    "envio ou recebimento em uma conta real"
+  ]
+}

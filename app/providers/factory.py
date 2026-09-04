@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Mapping
 from urllib.parse import urlsplit
@@ -23,6 +24,8 @@ def build_llm_provider(
     env = os.environ if environ is None else environ
     provider = env.get("KIARA_LLM_PROVIDER", str(settings.get("llm.provider", "local"))).casefold()
     timeout = float(settings.get("llm.timeout_seconds", 30))
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ProviderConfigurationError("llm.timeout_seconds deve ser positivo e finito.")
     model = env.get("KIARA_LLM_MODEL", str(settings.get("llm.model") or ""))
     primary = _build_provider(provider, settings, env, timeout, model)
     routing_mode = str(settings.get("llm.routing.mode", "local")).casefold()
@@ -216,6 +219,13 @@ def _build_hybrid_router(
             try:
                 remote = _build_provider(provider_name, settings, env, timeout, model)
             except ProviderConfigurationError:
+                continue
+            required = candidate.get("required_capabilities", ["generate"])
+            if not isinstance(required, list) or not all(
+                isinstance(capability, str) for capability in required
+            ):
+                continue
+            if not set(required).issubset(remote.capabilities):
                 continue
             providers.append(
                 GuardedRemoteProvider(

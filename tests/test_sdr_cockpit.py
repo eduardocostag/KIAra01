@@ -136,6 +136,33 @@ def test_pipeline_forwards_stage_change_from_drop_column():
     assert observed == [("lead-42", "proposta")]
 
 
+def test_dashboard_filters_emit_and_charts_use_supplied_data():
+    _app()
+    from PySide6.QtWidgets import QLabel
+
+    from app.ui.sdr_cockpit import SdrCockpit
+
+    cockpit = SdrCockpit()
+    observed: list[tuple[int, str]] = []
+    cockpit.filters_changed.connect(lambda days, stage: observed.append((days, stage)))
+    cockpit.period_filter.setCurrentIndex(1)
+    cockpit.stage_filter.setCurrentIndex(2)
+    assert observed[-1] == (30, "qualificados")
+
+    cockpit.set_dashboard_data(
+        performance=(("01/09", 1), ("02/09", 2), ("03/09", 3), ("04/09", 4),
+                     ("05/09", 5), ("06/09", 6), ("07/09", 7)),
+        sources=(("Google Maps", 3), ("Instagram", 1)),
+        funnel=(("Descobertos", 2), ("Qualificados", 1)),
+    )
+    assert cockpit.performance_chart._values == (1, 2, 3, 4, 5, 6, 7)
+    assert cockpit.performance_chart._labels[0] == "01/09"
+    assert cockpit.funnel_donut._values == (2, 1)
+    source_values = cockpit.findChildren(QLabel, "sourceValue")
+    assert [label.text() for label in source_values] == ["3", "1"]
+    assert "67%" in cockpit.funnel_legend.text()
+
+
 def test_deal_room_presents_sales_ready_briefing():
     _app()
     from app.ui.sdr_cockpit import LeadDetail, SdrCockpit

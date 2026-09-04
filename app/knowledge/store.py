@@ -93,6 +93,9 @@ class KnowledgeStore:
     def _initialize(self) -> bool:
         self._connection.executescript(
             """
+            PRAGMA journal_mode=WAL;
+            PRAGMA foreign_keys=ON;
+            PRAGMA busy_timeout=5000;
             CREATE TABLE IF NOT EXISTS documents (
                 id INTEGER PRIMARY KEY, source TEXT NOT NULL, content_hash TEXT NOT NULL UNIQUE,
                 metadata TEXT NOT NULL

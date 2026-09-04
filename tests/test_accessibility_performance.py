@@ -70,6 +70,16 @@ def test_ui_accessibility_names_shortcuts_and_bounded_history(monkeypatch):
         assert window.send.shortcut().toString() == "Alt+E"
         assert window.talk.shortcut().toString() == "Alt+F"
         assert window.stop.shortcut().toString() == "Esc"
+        assert window.stop.isHidden()
+        window._set_busy(True)
+        assert not window.stop.isHidden()
+        assert window.stop.focusPolicy() != Qt.FocusPolicy.NoFocus
+        window._set_busy(False)
+        assert window.stop.isHidden()
+        window._set_voice_state("Ouvindo…")
+        assert not window.stop.isHidden()
+        window._set_voice_state("Pronta")
+        assert window.stop.isHidden()
         # The full SDR workspace needs a real desktop minimum; accepting 440px
         # compressed the inspector controls until they overlapped.
         assert window.minimumWidth() == 900
@@ -97,13 +107,16 @@ def test_ui_accessibility_names_shortcuts_and_bounded_history(monkeypatch):
         # enabled; interactive focus transfer is covered by the overlay tests.
         assert window.input.focusPolicy() != Qt.FocusPolicy.NoFocus
         assert not window.sidebar.isVisible()
+        assert window.rail.isVisible()
         window.workspace_stack.setCurrentIndex(1)
         app.processEvents()
         assert not window.sidebar.isVisible()
+        assert window.rail.isVisible()
         window.workspace_stack.setCurrentIndex(0)
         window.resize(900, 600)
         app.processEvents()
         assert not window.sidebar.isVisible()
+        assert window.rail.isVisible()
         for index in range(510):
             window.transcript.append_message("Kiara", f"linha {index}")
         assert len(window.transcript.cards) <= 500

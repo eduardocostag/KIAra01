@@ -5,9 +5,11 @@ import contextlib
 import logging
 import sys
 import threading
+from collections import Counter
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PySide6.QtCore import QLockFile, QObject, QStandardPaths, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -38,7 +41,7 @@ from PySide6.QtWidgets import (
 
 from app.consumers import ConsumerIntelligenceService, ConsumerStatus
 from app.core.agent_core import AgentCore
-from app.leads import LeadStage
+from app.leads import LeadCsvService, LeadStage
 from app.security.kill_switch import KillSwitch
 from app.ui.chat_widgets import ChatTranscript
 from app.ui.commercial_settings import CommercialSettingsDialog
@@ -282,6 +285,8 @@ class KiaraWindow(QMainWindow):
         self._shutdown_complete = False
         self._request_origin = "main"
         self._voice_listen_pending = False
+        self._request_busy = False
+        self._voice_active = False
         settings = getattr(core, "settings", None)
         data_root = getattr(settings, "root", Path.cwd())
         self._overlay_enabled = bool(settings and settings.get("ui.overlay_enabled", False))
@@ -566,6 +571,9 @@ class KiaraWindow(QMainWindow):
         self.cockpit.opportunity_selected.connect(self._show_cockpit_lead)
         self.cockpit.action_requested.connect(self._run_cockpit_action)
         self.cockpit.stage_change_requested.connect(self._move_pipeline_lead)
+        self.cockpit.filters_changed.connect(lambda _days, _stage: self._refresh_leads())
+        self.cockpit.import_requested.connect(self._import_leads_csv)
+        self.cockpit.export_requested.connect(self._export_visible_leads_csv)
         cockpit_navigation = self.cockpit.findChild(QFrame, "cockpitNavigation")
         if cockpit_navigation is not None:
             cockpit_navigation.hide()
@@ -586,11 +594,11 @@ class KiaraWindow(QMainWindow):
         self.header_status = QLabel("●  Pronta para leads", objectName="headerStatus")
         self.header_status.setAccessibleName("Estado da pesquisa comercial")
         self.rail = self._build_navigation_rail()
-        self.rail.hide()
         self.sidebar = self._build_navigation_sidebar()
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
+        body.addWidget(self.rail)
         body.addWidget(self.sidebar)
         content_shell = QFrame(objectName="contentShell")
         content_layout = QVBoxLayout(content_shell)
@@ -709,8 +717,17 @@ class KiaraWindow(QMainWindow):
         self.nav_consumers.setAccessibleName("Abrir inteligência de consumidores")
         self.nav_consumers.setCheckable(True)
         self.nav_consumers.clicked.connect(self._open_consumers)
+        nav_campaigns = QPushButton("03", objectName="railButton")
+        nav_campaigns.setToolTip("Campanhas e resultados")
+        nav_campaigns.setAccessibleName("Abrir campanhas e resultados")
+        nav_campaigns.setCheckable(True)
+        nav_campaigns.clicked.connect(lambda: self._open_workspace("resultados"))
         for button in (
-            self.nav_overview, self.nav_pipeline, self.nav_consumers, self.nav_copilot
+            self.nav_overview,
+            self.nav_pipeline,
+            nav_campaigns,
+            self.nav_consumers,
+            self.nav_copilot,
         ):
             button.setFixedSize(48, 48)
             layout.addWidget(button)
@@ -936,11 +953,20 @@ class KiaraWindow(QMainWindow):
         if self._lead_store is None:
             self._visible_leads = []
             return
-        selected_stage = str(self.lead_filter.currentData() or "")
-        self._visible_leads = [
-            lead for lead in self._lead_store.list()
-            if not selected_stage or lead.stage.value == selected_stage
-        ]
+        period_days = int(self.cockpit.period_filter.currentData() or 0)
+        selected_group = str(self.cockpit.stage_filter.currentData() or "")
+        cutoff = datetime.now(UTC) - timedelta(days=period_days) if period_days else None
+        self._visible_leads = []
+        for lead in self._lead_store.list(limit=1000):
+            try:
+                activity_at = self._utc_datetime(lead.updated_at)
+            except (TypeError, ValueError, OverflowError):
+                activity_at = datetime.min.replace(tzinfo=UTC)
+            if cutoff is not None and activity_at < cutoff:
+                continue
+            if selected_group and self._visual_pipeline_stage(lead.stage.value) != selected_group:
+                continue
+            self._visible_leads.append(lead)
         self.lead_table.setRowCount(len(self._visible_leads))
         for row, lead in enumerate(self._visible_leads):
             reputation = (
@@ -952,7 +978,10 @@ class KiaraWindow(QMainWindow):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, lead.id)
                 self.lead_table.setItem(row, column, item)
-        metrics = self._lead_store.metrics()
+        metrics = {stage.value: 0 for stage in LeadStage}
+        for lead in self._visible_leads:
+            metrics[lead.stage.value] += 1
+        metrics["total"] = len(self._visible_leads)
         self.kpi_total.setText(str(metrics["total"]))
         qualified_total = sum(
             metrics[key] for key in (
@@ -975,14 +1004,23 @@ class KiaraWindow(QMainWindow):
         self.kpi_qualified.setText(str(qualified_total))
         self.kpi_contacted.setText(str(contacted_total))
         self.kpi_meetings.setText(str(meeting_total))
-        all_leads = self._lead_store.list(limit=1000)
-        funnel = self._lead_store.funnel_metrics()
-        due = self._lead_store.due_actions(through=datetime.now(UTC).isoformat(), limit=20)
+        contact_rate = contacted_total / max(metrics["total"], 1) * 100
+        replied_total = sum(metrics[key] for key in (
+            "respondeu", "reuniao", "discovery", "proposta", "negociacao",
+            "contrato", "assinatura", "convertido",
+        ))
+        reply_rate = replied_total / max(contacted_total, 1) * 100
+        meeting_rate = meeting_total / max(contacted_total, 1) * 100
+        visible_ids = {lead.id for lead in self._visible_leads}
+        due = [lead for lead in self._lead_store.due_actions(
+            through=datetime.now(UTC).isoformat(), limit=100
+        ) if lead.id in visible_ids][:20]
+        period_label = self.cockpit.period_filter.currentText().casefold()
         self.cockpit.set_metrics((
-            CockpitMetric("Leads gerais", str(metrics["total"]), "+12% esta semana"),
-            CockpitMetric("Qualificados", str(qualified_total), "+8% esta semana"),
-            CockpitMetric("Reuniões", str(meeting_total), "+5% esta semana"),
-            CockpitMetric("Taxa de resposta", f"{funnel['reply_rate']:.1f}%", "+3% esta semana"),
+            CockpitMetric("Leads gerais", str(metrics["total"]), period_label),
+            CockpitMetric("Qualificados", str(qualified_total), period_label),
+            CockpitMetric("Reuniões", str(meeting_total), period_label),
+            CockpitMetric("Taxa de resposta", f"{reply_rate:.1f}%", period_label),
         ))
         self.cockpit.set_actions(
             CockpitAction(
@@ -998,15 +1036,100 @@ class KiaraWindow(QMainWindow):
                 readiness_score=self._readiness_score(lead.qualification_data),
                 readiness=str(lead.qualification_data.get("status", "")),
             )
-            for lead in all_leads
+            for lead in self._visible_leads
+        )
+        self.cockpit.set_dashboard_data(
+            performance=self._performance_buckets(self._visible_leads, period_days),
+            sources=self._source_breakdown(self._visible_leads),
+            funnel=self._funnel_breakdown(self._visible_leads),
         )
         self.cockpit.set_results_summary(
             f"Contatados: {metrics['contatado']}\nRespostas: {metrics['respondeu']}\n"
             f"Reuniões: {metrics['reuniao']}\nConversões: {metrics['convertido']}\n\n"
-            f"Taxa de contato: {funnel['contact_rate']:.1f}%\n"
-            f"Taxa de resposta: {funnel['reply_rate']:.1f}%\n"
-            f"Avanço para reunião: {funnel['meeting_rate']:.1f}%"
+            f"Taxa de contato: {contact_rate:.1f}%\n"
+            f"Taxa de resposta: {reply_rate:.1f}%\n"
+            f"Avanço para reunião: {meeting_rate:.1f}%\n\n"
+            f"Filtro: {self.cockpit.period_filter.currentText()} · "
+            f"{self.cockpit.stage_filter.currentText()}"
         )
+
+    @staticmethod
+    def _visual_pipeline_stage(stage: str) -> str:
+        stage = stage.casefold()
+        if stage in {"negociacao", "contrato", "assinatura", "convertido"}:
+            return "fechamento"
+        if stage == "proposta":
+            return "proposta"
+        if stage in {"reuniao", "discovery"}:
+            return "discovery"
+        if stage in {"contatado", "respondeu"}:
+            return "contato"
+        if stage == "qualificado":
+            return "qualificados"
+        return "descobertos"
+
+    @classmethod
+    def _funnel_breakdown(cls, leads) -> tuple[tuple[str, int], ...]:
+        counts = Counter(cls._visual_pipeline_stage(lead.stage.value) for lead in leads)
+        return tuple((label, counts[key]) for key, label in (
+            ("descobertos", "Descobertos"), ("qualificados", "Qualificados"),
+            ("contato", "Contato"), ("discovery", "Discovery"),
+            ("proposta", "Proposta"), ("fechamento", "Fechamento"),
+        ))
+
+    @staticmethod
+    def _source_breakdown(leads) -> tuple[tuple[str, int], ...]:
+        counts: Counter[str] = Counter()
+        for lead in leads:
+            host = (urlparse(lead.source_url).hostname or "").casefold()
+            if "google." in host or "goo.gl" in host:
+                label = "Google Maps"
+            elif "instagram." in host:
+                label = "Instagram"
+            elif "facebook." in host:
+                label = "Facebook"
+            elif "linkedin." in host:
+                label = "LinkedIn"
+            elif "tiktok." in host:
+                label = "TikTok"
+            elif host:
+                label = "Site / web"
+            else:
+                label = "Não informada"
+            counts[label] += 1
+        return tuple(counts.most_common(5))
+
+    def _performance_buckets(self, leads, period_days: int) -> tuple[tuple[str, int], ...]:
+        days = period_days or 90
+        now = datetime.now(UTC)
+        bucket_days = max(1, (days + 6) // 7)
+        values = [0] * 7
+        timestamps = []
+        for lead in leads:
+            try:
+                timestamps.append(self._utc_datetime(lead.created_at))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            for interaction in self._lead_store.interactions(lead.id):
+                try:
+                    timestamps.append(self._utc_datetime(interaction.occurred_at))
+                except (TypeError, ValueError, OverflowError):
+                    continue
+        for occurred_at in timestamps:
+            age = max(0, (now - occurred_at).days)
+            if period_days and age >= period_days:
+                continue
+            values[6 - min(6, age // bucket_days)] += 1
+        labels = []
+        for index in range(7):
+            days_ago = (6 - index) * bucket_days
+            labels.append((now - timedelta(days=days_ago)).strftime("%d/%m"))
+        return tuple(zip(labels, values, strict=True))
+
+    @staticmethod
+    def _utc_datetime(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value)
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
     @Slot(str)
     def _show_cockpit_lead(self, identifier: str) -> None:
@@ -1096,13 +1219,16 @@ class KiaraWindow(QMainWindow):
         self._populate_context_lead(lead)
 
     @staticmethod
-    def _readiness_score(payload: object) -> int:
+    def _readiness_score(payload: object) -> int | None:
         if not isinstance(payload, dict):
-            return 0
+            return None
+        value = payload.get("readiness_score")
+        if value is None or value == "":
+            return None
         try:
-            return max(0, min(100, int(float(payload.get("readiness_score", 0) or 0))))
+            return max(0, min(100, int(float(value))))
         except (TypeError, ValueError):
-            return 0
+            return None
 
     @Slot(str)
     def _run_cockpit_action(self, identifier: str) -> None:
@@ -1129,7 +1255,15 @@ class KiaraWindow(QMainWindow):
         }.get(visual_stage)
         if stage is None:
             return
-        self._lead_store.update(identifier, stage=stage)
+        lead = self._lead_store.get(identifier)
+        if lead is None:
+            self.header_status.setText("●  Não foi possível localizar o lead")
+            return
+        if self._visual_pipeline_stage(lead.stage.value) == visual_stage:
+            return
+        if not self._lead_store.update(identifier, stage=stage):
+            self.header_status.setText("●  Não foi possível persistir a movimentação")
+            return
         self.header_status.setText(f"●  Lead movido para {stage.value.replace('_', ' ').title()}")
         self._refresh_leads()
 
@@ -1229,12 +1363,14 @@ class KiaraWindow(QMainWindow):
 
     @Slot()
     def _update_sidebar_visibility(self) -> None:
-        """Show conversation navigation only in the Copilot desktop workspace."""
+        """Keep one usable primary navigation visible at every supported width."""
         if hasattr(self, "sidebar"):
             copilot_active = (
                 hasattr(self, "workspace_stack") and self.workspace_stack.currentIndex() == 1
             )
-            self.sidebar.setVisible(self.width() >= 1020)
+            expanded = self.width() >= 1020
+            self.sidebar.setVisible(expanded)
+            self.rail.setVisible(not expanded)
             if hasattr(self, "nav_copilot"):
                 self.nav_copilot.setChecked(copilot_active)
             if hasattr(self, "nav_consumers"):
@@ -1432,6 +1568,48 @@ class KiaraWindow(QMainWindow):
         if self._voice_worker is not None:
             self.speak_requested.emit(response)
 
+    @Slot()
+    def _import_leads_csv(self) -> None:
+        if self._lead_store is None:
+            return
+        path, _selected = QFileDialog.getOpenFileName(
+            self, "Importar leads", "", "Arquivos CSV (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            imported, errors = LeadCsvService().import_file(self._lead_store, path)
+        except (OSError, UnicodeError, ValueError) as exc:
+            QMessageBox.critical(self, "Não foi possível importar", str(exc))
+            return
+        self._refresh_leads()
+        detail = f"{imported} lead(s) importado(s)."
+        if errors:
+            detail += f"\n{len(errors)} linha(s) ignorada(s):\n" + "\n".join(errors[:8])
+        QMessageBox.information(self, "Importação concluída", detail)
+
+    @Slot()
+    def _export_visible_leads_csv(self) -> None:
+        if self._lead_store is None:
+            return
+        path, _selected = QFileDialog.getSaveFileName(
+            self, "Exportar visão do pipeline", "leads-kiara.csv", "Arquivos CSV (*.csv)"
+        )
+        if not path:
+            return
+        if not path.casefold().endswith(".csv"):
+            path += ".csv"
+        try:
+            count = LeadCsvService().export_file(
+                self._lead_store, path, leads=self._visible_leads
+            )
+        except OSError as exc:
+            QMessageBox.critical(self, "Não foi possível exportar", str(exc))
+            return
+        QMessageBox.information(
+            self, "Exportação concluída", f"{count} lead(s) visível(is) exportado(s)."
+        )
+
     def _receive_proactive_notice(self, notice: dict[str, object]) -> None:
         offer = notice.get("offer_text")
         if isinstance(offer, str) and offer.strip():
@@ -1461,6 +1639,8 @@ class KiaraWindow(QMainWindow):
         ):
             return
         self._voice_listen_pending = True
+        self._voice_active = True
+        self._update_stop_visibility()
         self.talk.setEnabled(False)
         self._voice.cancel()
         self.listen_requested.emit()
@@ -1493,6 +1673,8 @@ class KiaraWindow(QMainWindow):
     def _set_voice_state(self, state: str) -> None:
         self.status.setText(state)
         normalized = state.casefold()
+        self._voice_active = normalized != "pronta"
+        self._update_stop_visibility()
         # Transcription processes an already captured buffer; it is not live
         # microphone recording and must not be represented as such.
         self.overlay.set_listening(normalized.startswith("ouvindo"))
@@ -1513,6 +1695,8 @@ class KiaraWindow(QMainWindow):
         self.status.setText("Pronta")
         self.overlay.set_listening(False)
         self._voice_listen_pending = False
+        self._voice_active = False
+        self._update_stop_visibility()
         self.talk.setEnabled(self._voice_worker is not None)
         if (
             self._voice is not None
@@ -1567,6 +1751,8 @@ class KiaraWindow(QMainWindow):
 
     @Slot(bool)
     def _set_busy(self, busy: bool) -> None:
+        self._request_busy = busy
+        self._update_stop_visibility()
         self.send.setEnabled(not busy)
         self.input.setEnabled(not busy)
         self.delete_conversation_button.setEnabled(not busy)
@@ -1587,11 +1773,18 @@ class KiaraWindow(QMainWindow):
         if not busy and self.isActiveWindow():
             self.input.setFocus()
 
+    def _update_stop_visibility(self) -> None:
+        """Expose the emergency stop whenever work or voice activity is live."""
+        self.stop.setVisible(self._request_busy or self._voice_active)
+
     @Slot()
     def stop_actions(self) -> None:
         if self._voice is not None:
             self._voice.cancel()
         self._kill_switch.trigger()
+        self._voice_listen_pending = False
+        self._voice_active = False
+        self._update_stop_visibility()
         self.status.setText("Ações interrompidas")
         self._append_message("Kiara", "Todas as novas ações foram bloqueadas.", kind="notice")
         self.overlay.set_state("ações interrompidas")

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
+
+import pytest
 
 from app.core.context import ContextManager, ConversationSession
 from app.memory import MemoryEngine, MemoryKind
@@ -33,6 +36,24 @@ def test_expired_memories_are_hidden_and_purged(tmp_path) -> None:
     assert engine.search("expirou") == []
     assert engine.purge_expired() == 1
     assert engine.forget(identifier) is False
+
+
+def test_revision_rolls_back_new_version_when_superseding_fails(tmp_path) -> None:
+    engine = MemoryEngine(tmp_path / "memory.db")
+    identifier = engine.remember(MemoryKind.FACT, "versão original")
+    engine._connection.execute(
+        f"""CREATE TRIGGER reject_supersede BEFORE UPDATE OF superseded_by ON memories
+            WHEN OLD.id = {identifier}
+            BEGIN SELECT RAISE(ABORT, 'simulated failure'); END"""
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="simulated failure"):
+        engine.revise(identifier, "versão nova")
+
+    records = engine.list_records()
+    assert [(record.id, record.content, record.superseded_by) for record in records] == [
+        (identifier, "versão original", None)
+    ]
 
 
 class TinyEmbeddings:

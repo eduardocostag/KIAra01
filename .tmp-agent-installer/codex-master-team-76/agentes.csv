@@ -1,0 +1,77 @@
+﻿numero;categoria;slug;origem
+1;Coordenação e Engenharia;agents-orchestrator;specialized/agents-orchestrator.md
+2;Coordenação e Engenharia;software-architect;engineering/engineering-software-architect.md
+3;Coordenação e Engenharia;senior-developer;engineering/engineering-senior-developer.md
+4;Coordenação e Engenharia;incident-response-commander;engineering/engineering-incident-response-commander.md
+5;Coordenação e Engenharia;rag-pipeline-engineer;engineering/engineering-rag-pipeline-engineer.md
+6;Coordenação e Engenharia;multi-agent-systems-architect;engineering/engineering-multi-agent-systems-architect.md
+7;Coordenação e Engenharia;technical-writer;engineering/engineering-technical-writer.md
+8;Coordenação e Engenharia;evidence-collector;testing/testing-evidence-collector.md
+9;Coordenação e Engenharia;project-manager-senior;project-management/project-manager-senior.md
+10;Coordenação e Engenharia;project-shepherd;project-management/project-management-project-shepherd.md
+11;Coordenação e Engenharia;jira-workflow-steward;project-management/project-management-jira-workflow-steward.md
+12;Desenvolvimento e Qualidade;code-reviewer;engineering/engineering-code-reviewer.md
+13;Desenvolvimento e Qualidade;appsec-engineer;security/security-appsec-engineer.md
+14;Desenvolvimento e Qualidade;frontend-developer;engineering/engineering-frontend-developer.md
+15;Desenvolvimento e Qualidade;test-automation-engineer;testing/testing-test-automation-engineer.md
+16;Desenvolvimento e Qualidade;reality-checker;testing/testing-reality-checker.md
+17;Desenvolvimento e Qualidade;devops-automator;engineering/engineering-devops-automator.md
+18;Desenvolvimento e Qualidade;data-visualization-engineer;engineering/engineering-data-visualization-engineer.md
+19;Desenvolvimento e Qualidade;api-tester;testing/testing-api-tester.md
+20;Desenvolvimento e Qualidade;database-optimizer;engineering/engineering-database-optimizer.md
+21;Desenvolvimento e Qualidade;identity-access-engineer;engineering/engineering-identity-access-engineer.md
+22;Desenvolvimento e Qualidade;minimal-change-engineer;engineering/engineering-minimal-change-engineer.md
+23;Desenvolvimento e Qualidade;codebase-onboarding-engineer;engineering/engineering-codebase-onboarding-engineer.md
+24;IA e Automação;ai-engineer;engineering/engineering-ai-engineer.md
+25;IA e Automação;prompt-engineer;engineering/engineering-prompt-engineer.md
+26;IA e Automação;autonomous-optimization-architect;engineering/engineering-autonomous-optimization-architect.md
+27;IA e Automação;automation-governance-architect;specialized/automation-governance-architect.md
+28;IA e Automação;workflow-optimizer;testing/testing-workflow-optimizer.md
+29;IA e Automação;email-intelligence-engineer;engineering/engineering-email-intelligence-engineer.md
+30;IA e Automação;ai-data-remediation-engineer;engineering/engineering-ai-data-remediation-engineer.md
+31;IA e Automação;voice-ai-integration-engineer;engineering/engineering-voice-ai-integration-engineer.md
+32;IA e Automação;data-engineer;engineering/engineering-data-engineer.md
+33;IA e Automação;data-consolidation-agent;specialized/data-consolidation-agent.md
+34;IA e Automação;api-platform-engineer;engineering/engineering-api-platform-engineer.md
+35;IA e Automação;developer-tooling-engineer;engineering/engineering-developer-tooling-engineer.md
+36;IA e Automação;agentic-identity-trust;specialized/agentic-identity-trust.md
+37;IA e Automação;sre;engineering/engineering-sre.md
+38;IA e Automação;threat-detection-engineer;security/security-threat-detection-engineer.md
+39;IA e Automação;it-service-manager;engineering/engineering-it-service-manager.md
+40;IA e Automação;support-analytics-reporter;support/support-analytics-reporter.md
+41;IA e Automação;executive-summary-generator;support/support-executive-summary-generator.md
+42;Assistente Operacional;desktop-app-engineer;engineering/engineering-desktop-app-engineer.md
+43;Assistente Operacional;mcp-builder;specialized/specialized-mcp-builder.md
+44;Assistente Operacional;realtime-collaboration-engineer;engineering/engineering-realtime-collaboration-engineer.md
+45;Assistente Operacional;video-streaming-engineer;engineering/engineering-video-streaming-engineer.md
+46;Assistente Operacional;mobile-app-builder;engineering/engineering-mobile-app-builder.md
+47;Assistente Operacional;privacy-engineer;engineering/engineering-privacy-engineer.md
+48;Assistente Operacional;secrets-credential-hygiene-engineer;security/security-secrets-credential-engineer.md
+49;Assistente Operacional;model-qa-specialist;specialized/specialized-model-qa.md
+50;Assistente Operacional;search-relevance-engineer;engineering/engineering-search-relevance-engineer.md
+51;Assistente Operacional;database-reliability-engineer;engineering/engineering-database-reliability-engineer.md
+52;Assistente Operacional;network-engineer;engineering/engineering-network-engineer.md
+53;Assistente Operacional;rapid-prototyper;engineering/engineering-rapid-prototyper.md
+54;Assistente Operacional;data-privacy-officer;specialized/data-privacy-officer.md
+55;Aplicações Complexas;product-manager;product/product-manager.md
+56;Aplicações Complexas;ux-researcher;design/design-ux-researcher.md
+57;Aplicações Complexas;ux-architect;design/design-ux-architect.md
+58;Aplicações Complexas;ui-designer;design/design-ui-designer.md
+59;Aplicações Complexas;ui-finish-gate-reviewer;design/design-ui-finish-gate-reviewer.md
+60;Aplicações Complexas;backend-architect;engineering/engineering-backend-architect.md
+61;Aplicações Complexas;workflow-architect;specialized/specialized-workflow-architect.md
+62;Aplicações Complexas;security-architect;security/security-architect.md
+63;Aplicações Complexas;cloud-security-architect;security/security-cloud-security-architect.md
+64;Aplicações Complexas;penetration-tester;security/security-penetration-tester.md
+65;Aplicações Complexas;performance-benchmarker;testing/testing-performance-benchmarker.md
+66;Aplicações Complexas;accessibility-auditor;testing/testing-accessibility-auditor.md
+67;Aplicações Complexas;git-workflow-master;engineering/engineering-git-workflow-master.md
+68;Aplicações Complexas;finops-engineer;engineering/engineering-finops-engineer.md
+69;Extras Essenciais;ai-generated-code-auditor;security/security-ai-generated-code-auditor.md
+70;Extras Essenciais;test-results-analyzer;testing/testing-test-results-analyzer.md
+71;Extras Essenciais;tool-evaluator;testing/testing-tool-evaluator.md
+72;Extras Essenciais;product-sprint-prioritizer;product/product-sprint-prioritizer.md
+73;Extras Essenciais;compliance-auditor;security/security-compliance-auditor.md
+74;Extras Essenciais;mobile-release-engineer;engineering/engineering-mobile-release-engineer.md
+75;Extras Essenciais;payments-billing-engineer;engineering/engineering-payments-billing-engineer.md
+76;Customizado;visual-operations-copilot;Criado pelo instalador

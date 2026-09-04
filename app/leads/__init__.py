@@ -1,3 +1,4 @@
+from app.leads.csv_io import LeadCsvService
 from app.leads.intelligence import (
     ApprovalGate,
     ClaimKind,
@@ -42,6 +43,7 @@ __all__ = [
     "IntelligenceClaim",
     "Interaction",
     "Lead",
+    "LeadCsvService",
     "LeadDossier",
     "LeadScore",
     "LeadScoringPolicy",
