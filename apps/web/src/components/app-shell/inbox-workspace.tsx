@@ -31,7 +31,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import type { InboxConversationDTO, InboxViewDTO } from "@/lib/api/inbox"
+import type { InboxConversationDTO } from "@/lib/api/inbox"
 import { cn } from "@/lib/utils"
 
 const filters = ["Todas", "Novas", "Aprovação", "Aguardando cliente"] as const
@@ -203,13 +203,12 @@ function QualificationPanel({ conversation }: { conversation: InboxConversationD
   )
 }
 
-function Composer({ conversation, source, session, onChange }: { conversation: InboxConversationDTO; source: InboxViewDTO["source"]; session: ComposerSession; onChange: (session: ComposerSession) => void }) {
-  const isDemo = source === "demo"
+function Composer({ conversation, session, onChange }: { conversation: InboxConversationDTO; session: ComposerSession; onChange: (session: ComposerSession) => void }) {
   if (session.phase === "empty") return (
     <div className="space-y-3 border-t bg-[var(--surface-2)] p-4">
-      <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">Próximo passo seguro</p><p className="mt-1 text-xs text-muted-foreground">{isDemo ? "Gere uma prévia fictícia para revisar o fluxo." : "Nenhum rascunho foi retornado pela API."}</p></div><Badge variant="outline">Não enviado</Badge></div>
-      <Button type="button" className="h-11 w-full" disabled={!isDemo || !conversation.suggestedDraft} onClick={() => onChange({ draft: conversation.suggestedDraft, phase: "draft" })}><Sparkles />Preparar resposta</Button>
-      {!isDemo ? <p className="text-xs text-muted-foreground">A criação persistente ainda não está conectada nesta tela.</p> : null}
+      <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">Próximo passo seguro</p><p className="mt-1 text-xs text-muted-foreground">Nenhum rascunho foi retornado pela API.</p></div><Badge variant="outline">Não enviado</Badge></div>
+      <Button type="button" className="h-11 w-full" disabled={!conversation.suggestedDraft} onClick={() => onChange({ draft: conversation.suggestedDraft, phase: "draft" })}><Sparkles />Preparar resposta</Button>
+      <p className="text-xs text-muted-foreground">A criação persistente ainda não está conectada nesta tela.</p>
     </div>
   )
   return (
@@ -218,13 +217,13 @@ function Composer({ conversation, source, session, onChange }: { conversation: I
       <Textarea value={session.draft} disabled={session.phase !== "draft"} onChange={(event) => onChange({ draft: event.target.value, phase: "draft" })} className="min-h-24 resize-none bg-background" aria-label={`Rascunho de resposta para ${conversation.name}`} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck aria-hidden="true" className="size-3.5" />Envio continua desativado</p>
-        {session.phase === "draft" ? <div className="flex gap-2"><Button type="button" variant="ghost" onClick={() => onChange({ draft: "", phase: "empty" })}><FileEdit />Descartar</Button><Button type="button" disabled={!isDemo || !session.draft.trim()} onClick={() => onChange({ ...session, phase: "approval" })}><Check />Solicitar aprovação</Button></div> : <Button type="button" variant="outline" onClick={() => onChange({ ...session, phase: "draft" })}><FileEdit />Editar rascunho</Button>}
+        {session.phase === "draft" ? <div className="flex gap-2"><Button type="button" variant="ghost" onClick={() => onChange({ draft: "", phase: "empty" })}><FileEdit />Descartar</Button><Button type="button" disabled={!session.draft.trim()} onClick={() => onChange({ ...session, phase: "approval" })}><Check />Solicitar aprovação</Button></div> : <Button type="button" variant="outline" onClick={() => onChange({ ...session, phase: "draft" })}><FileEdit />Editar rascunho</Button>}
       </div>
     </div>
   )
 }
 
-function ConversationThread({ conversation, source, session, onSession, mobileBackHref }: { conversation: InboxConversationDTO; source: InboxViewDTO["source"]; session: ComposerSession; onSession: (session: ComposerSession) => void; mobileBackHref?: string }) {
+function ConversationThread({ conversation, session, onSession, mobileBackHref }: { conversation: InboxConversationDTO; session: ComposerSession; onSession: (session: ComposerSession) => void; mobileBackHref?: string }) {
   return (
     <section className="flex min-h-0 flex-col bg-card" aria-label={`Conversa com ${conversation.name}`}>
       <header className="flex min-h-16 items-center gap-3 border-b bg-card/95 p-3 backdrop-blur-sm">
@@ -246,12 +245,12 @@ function ConversationThread({ conversation, source, session, onSession, mobileBa
           <p className="flex items-center gap-2 text-xs font-semibold text-primary"><Sparkles aria-hidden="true" className="size-3.5" />Análise da Kiara</p><p className="mt-2 text-sm leading-6"><strong>{conversation.intent}.</strong> {conversation.gaps[0] ? `Ainda falta confirmar: ${conversation.gaps[0].toLowerCase()}.` : "A API não retornou lacunas estruturadas."}</p>
         </div>
       </div>
-      <Composer conversation={conversation} source={source} session={session} onChange={onSession} />
+      <Composer conversation={conversation} session={session} onChange={onSession} />
     </section>
   )
 }
 
-export function InboxWorkspace({ initialConversations, source, initialConversationId, initialQuery = "", initialFilter = "Todas" }: { initialConversations: readonly InboxConversationDTO[]; source: InboxViewDTO["source"]; initialConversationId?: string; initialQuery?: string; initialFilter?: string }) {
+export function InboxWorkspace({ initialConversations, initialConversationId, initialQuery = "", initialFilter = "Todas" }: { initialConversations: readonly InboxConversationDTO[]; initialConversationId?: string; initialQuery?: string; initialFilter?: string }) {
   const isDesktop = useSyncExternalStore(subscribeDesktop, getDesktopSnapshot, getServerSnapshot)
   const [selected, setSelected] = useState(initialConversationId ?? initialConversations[0]?.id ?? "")
   const [query, setQuery] = useState(initialQuery)
@@ -267,13 +266,13 @@ export function InboxWorkspace({ initialConversations, source, initialConversati
   const list = <ConversationList conversations={conversations} selectedId={active.id} query={query} filter={filter} onQuery={setQuery} onFilter={setFilter} onDesktopSelect={isDesktop ? setSelected : undefined} />
 
   if (!isDesktop && !initialConversationId) return <div className="min-h-[calc(100dvh-12rem)] overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-1)]">{list}</div>
-  if (!isDesktop) return <div className="min-h-[calc(100dvh-8rem)] overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-1)]"><ConversationThread conversation={active} source={source} session={session} onSession={updateSession} mobileBackHref={inboxHref(query, filter)} /></div>
+  if (!isDesktop) return <div className="min-h-[calc(100dvh-8rem)] overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-1)]"><ConversationThread conversation={active} session={session} onSession={updateSession} mobileBackHref={inboxHref(query, filter)} /></div>
 
   return (
     <div className="h-[calc(100dvh-12rem)] min-h-[660px] max-h-[940px] overflow-hidden rounded-[var(--radius-panel)] border bg-card shadow-[var(--shadow-1)]">
       <div className="grid h-full grid-cols-[minmax(320px,360px)_minmax(480px,1fr)_minmax(320px,360px)] divide-x">
         {list}
-        <ConversationThread conversation={active} source={source} session={session} onSession={updateSession} />
+        <ConversationThread conversation={active} session={session} onSession={updateSession} />
         <div className="min-h-0 overflow-y-auto"><QualificationPanel conversation={active} /></div>
       </div>
     </div>

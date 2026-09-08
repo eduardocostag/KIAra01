@@ -62,7 +62,6 @@ export default async function InboxConversationPage({
       />
       <InboxWorkspace
         initialConversations={inbox.conversations}
-        source={inbox.source}
         initialConversationId={conversationId}
         initialQuery={first(query.q)}
         initialFilter={first(query.filter) || "Todas"}

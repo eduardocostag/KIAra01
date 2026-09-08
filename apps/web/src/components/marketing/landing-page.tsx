@@ -148,7 +148,7 @@ export function LandingPage() {
 
         <section className="mx-auto max-w-[1440px] px-5 py-20 sm:px-8 sm:py-28">
           <div className="flex flex-col items-start justify-between gap-8 rounded-[24px] border border-primary/22 bg-primary/10 p-7 sm:p-10 lg:flex-row lg:items-center">
-            <div><p className="eyebrow">Kiara no navegador</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">Seu próximo atendimento começa com clareza.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">Conheça a experiência B2C Instagram em um workspace demonstrativo e controlado.</p></div>
+            <div><p className="eyebrow">Kiara no navegador</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">Seu próximo atendimento começa com clareza.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">Crie seu workspace e prepare sua operação B2C para atender pelo Instagram.</p></div>
             <Button asChild size="lg" className="h-12 shrink-0 rounded-xl px-6 hover:bg-[var(--primary-hover)]"><Link href="/sign-up">Criar workspace <ArrowRight aria-hidden="true" /></Link></Button>
           </div>
         </section>

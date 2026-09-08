@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
-import { resolveAuthMode } from "@/lib/auth-config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -44,9 +43,6 @@ const themeBootScript = `
 })();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Resolve once on the server so client and server cannot disagree about
-  // truthy demo values (for example `1` or `yes`). No secret is serialized.
-  const authMode = resolveAuthMode();
   return (
     <html
       lang="pt-BR"
@@ -58,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script id="kiara-theme-boot" dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
       <body className={`${geistSans.className} flex min-h-full flex-col`}>
-        <AuthProvider mode={authMode}>{children}</AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

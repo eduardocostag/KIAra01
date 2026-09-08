@@ -11,7 +11,7 @@ export function SignalPreview() {
           <span className="text-xs font-semibold tracking-[-0.01em] text-white">Inbox assistida</span>
         </div>
         <span className="rounded-full border border-amber-300/22 bg-amber-300/8 px-2.5 py-1 text-[10px] font-medium text-amber-200">
-          Prévia demonstrativa
+          Exemplo do fluxo
         </span>
       </div>
 

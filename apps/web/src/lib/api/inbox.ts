@@ -3,7 +3,6 @@ import "server-only"
 import { auth } from "@clerk/nextjs/server"
 
 import { requireWorkspace } from "@/lib/auth"
-import { demoConversations } from "@/lib/mock-data"
 
 export type InboxMessageDTO = Readonly<{
   id: string
@@ -34,7 +33,7 @@ export type InboxConversationDTO = Readonly<{
 }>
 
 export type InboxViewDTO = Readonly<{
-  source: "demo" | "api"
+  source: "api"
   conversations: readonly InboxConversationDTO[]
 }>
 
@@ -177,19 +176,8 @@ function parseDetail(value: unknown): InboxConversationDTO {
   }
 }
 
-function demoInbox(): InboxViewDTO {
-  return {
-    source: "demo",
-    conversations: demoConversations.map((conversation) => ({
-      ...conversation,
-      savedDraft: null,
-    })),
-  }
-}
-
 export async function getInboxDTO(): Promise<InboxViewDTO> {
-  const workspace = await requireWorkspace()
-  if (workspace.mode === "demo") return demoInbox()
+  await requireWorkspace()
 
   const session = await auth()
   const token = await session.getToken()

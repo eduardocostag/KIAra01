@@ -2,11 +2,7 @@ import { OrganizationList } from "@clerk/nextjs"
 import { auth } from "@clerk/nextjs/server"
 import { redirect } from "next/navigation"
 
-import { resolveAuthMode } from "@/lib/auth-config"
-
 export default async function OnboardingPage() {
-  if (resolveAuthMode() === "demo") redirect("/app")
-
   const session = await auth()
   if (!session.userId) redirect("/sign-in")
   if (session.orgId) redirect("/app")

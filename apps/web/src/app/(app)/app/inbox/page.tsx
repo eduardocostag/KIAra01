@@ -26,7 +26,7 @@ export default async function InboxPage() {
           title="Inbox do Instagram"
           description="Qualifique conversas inbound, prepare rascunhos e mantenha aprovação e envio como etapas separadas."
         />
-        <InboxWorkspace initialConversations={inbox.conversations} source={inbox.source} />
+        <InboxWorkspace initialConversations={inbox.conversations} />
       </div>
     )
   }
