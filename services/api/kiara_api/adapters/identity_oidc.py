@@ -67,7 +67,7 @@ class OidcIdentityVerifier:
 
             jwk = await self._key_for(kid)
             key = jwt.PyJWK.from_dict(dict(jwk), algorithm="RS256").key
-            decode_options = {"require": ["exp", "iss", "sub", "org_id", "org_role"]}
+            decode_options = {"require": ["exp", "iss", "sub"]}
             if not self._audience:
                 decode_options["verify_aud"] = False
             claims = jwt.decode(
@@ -129,8 +129,13 @@ def _principal_from_claims(claims: Mapping[str, Any]) -> IdentityPrincipal:
     claimed_user = claims.get("user_id")
     if claimed_user is not None and claimed_user != subject:
         raise jwt.InvalidTokenError("user identity mismatch")
-    organization_id = _required_text(claims, "org_id")
-    provider_role = _required_text(claims, "org_role")
+    organization = claims.get("o")
+    if isinstance(organization, Mapping):
+        organization_id = _required_text(organization, "id")
+        provider_role = _required_text(organization, "rol")
+    else:
+        organization_id = _required_text(claims, "org_id")
+        provider_role = _required_text(claims, "org_role")
     role = _ROLE_MAP.get(provider_role)
     if role is None:
         raise jwt.InvalidTokenError("unsupported organization role")

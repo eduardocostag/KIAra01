@@ -1,0 +1,14 @@
+.git
+.cache
+.pytest_cache
+.ruff_cache
+.test-artifacts
+.tmp-*
+.venv
+build
+dist
+evidence
+node_modules
+**/node_modules
+**/.next
+**/__pycache__
