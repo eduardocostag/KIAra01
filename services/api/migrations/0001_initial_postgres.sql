@@ -150,7 +150,7 @@ CREATE TABLE pipeline_entries (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   consumer_id uuid NOT NULL,
   stage text NOT NULL DEFAULT 'new'
-    CHECK (stage IN ('new', 'qualifying', 'qualified', 'proposal', 'won', 'lost')),
+    CHECK (stage IN ('new', 'qualified', 'contacted', 'opportunity', 'won', 'lost')),
   owner_membership_id uuid,
   next_action text,
   next_action_at timestamptz,
@@ -182,6 +182,21 @@ CREATE TABLE pipeline_stage_events (
 );
 CREATE INDEX pipeline_stage_events_entry_idx
   ON pipeline_stage_events (organization_id, pipeline_entry_id, created_at DESC, id);
+
+CREATE TABLE qualifications (
+  organization_id uuid NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  thread_id uuid NOT NULL,
+  score integer NOT NULL CHECK (score BETWEEN 0 AND 100),
+  temperature text NOT NULL CHECK (temperature IN ('cold', 'warm', 'hot')),
+  recommendation text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (organization_id, id),
+  FOREIGN KEY (organization_id, thread_id)
+    REFERENCES conversation_threads (organization_id, id) ON DELETE CASCADE
+);
+CREATE INDEX qualifications_thread_idx
+  ON qualifications (organization_id, thread_id, created_at DESC, id);
 
 CREATE TABLE jobs (
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
@@ -263,7 +278,7 @@ DECLARE table_name text;
 BEGIN
   FOREACH table_name IN ARRAY ARRAY[
     'memberships', 'consumers', 'conversation_threads', 'messages',
-    'message_drafts', 'approvals', 'pipeline_entries', 'pipeline_stage_events',
+    'message_drafts', 'approvals', 'pipeline_entries', 'pipeline_stage_events', 'qualifications',
     'jobs', 'outbox_events', 'audit_events'
   ]
   LOOP

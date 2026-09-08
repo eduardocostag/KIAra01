@@ -85,11 +85,21 @@ def create_app(
             )
         else:
             identity_verifier = UnconfiguredIdentityVerifier()
-    repository = inbox_repository or InMemoryInboxRepository()
-    conversation_commands_repository = (
-        conversation_repository or InMemoryConversationCommandRepository()
-    )
-    pipeline_entries_repository = pipeline_repository or InMemoryPipelineRepository()
+    if config.database_url and not any(
+        (inbox_repository, conversation_repository, pipeline_repository)
+    ):
+        from .adapters.postgres import PostgresRepository
+
+        postgres = PostgresRepository(config.database_url)
+        repository = postgres
+        conversation_commands_repository = postgres
+        pipeline_entries_repository = postgres
+    else:
+        repository = inbox_repository or InMemoryInboxRepository()
+        conversation_commands_repository = (
+            conversation_repository or InMemoryConversationCommandRepository()
+        )
+        pipeline_entries_repository = pipeline_repository or InMemoryPipelineRepository()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

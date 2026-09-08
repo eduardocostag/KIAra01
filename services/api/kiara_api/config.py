@@ -13,6 +13,7 @@ class ApiSettings:
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
     oidc_jwks_cache_ttl_seconds: int = 300
+    database_url: str | None = None
 
     @classmethod
     def from_env(cls) -> ApiSettings:
@@ -33,21 +34,23 @@ class ApiSettings:
             oidc_jwks_cache_ttl_seconds=int(
                 os.getenv("KIARA_OIDC_JWKS_CACHE_TTL_SECONDS", "300")
             ),
+            database_url=os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or None,
         )
 
     @property
     def oidc_configured(self) -> bool:
-        return all((self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url))
+        return bool(self.oidc_issuer and self.oidc_jwks_url)
 
     def validate(self) -> None:
         if self.demo_auth_enabled and self.environment not in {"development", "test"}:
             raise RuntimeError("Demo authentication is forbidden outside development/test")
         if "*" in self.cors_origins:
             raise RuntimeError("Wildcard CORS origins are forbidden")
-        oidc_values = (self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url)
-        if any(oidc_values) and not all(oidc_values):
-            raise RuntimeError("OIDC issuer, audience and JWKS URL must be configured together")
+        if bool(self.oidc_issuer) != bool(self.oidc_jwks_url):
+            raise RuntimeError("OIDC issuer and JWKS URL must be configured together")
         if self.oidc_jwks_url and not self.oidc_jwks_url.startswith("https://"):
             raise RuntimeError("OIDC JWKS URL must use HTTPS")
         if not 30 <= self.oidc_jwks_cache_ttl_seconds <= 3600:
             raise RuntimeError("OIDC JWKS cache TTL must be between 30 and 3600 seconds")
+        if self.environment == "production" and not self.database_url:
+            raise RuntimeError("POSTGRES_URL is required in production")

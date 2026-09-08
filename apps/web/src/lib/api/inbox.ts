@@ -87,9 +87,14 @@ async function apiGet(path: string, token: string): Promise<unknown> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs())
   try {
+    const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
     const response = await fetch(`${apiUrl()}${path}`, {
       cache: "no-store",
-      headers: { Authorization: `Bearer ${token}`, "X-Correlation-ID": correlationId },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Correlation-ID": correlationId,
+        ...(protectionBypass ? { "x-vercel-protection-bypass": protectionBypass } : {}),
+      },
       signal: controller.signal,
     })
     const responseCorrelation = response.headers.get("x-correlation-id") ?? correlationId

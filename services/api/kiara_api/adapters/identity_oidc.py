@@ -34,14 +34,14 @@ class OidcIdentityVerifier:
         self,
         *,
         issuer: str,
-        audience: str,
+        audience: str | None,
         jwks_url: str,
         cache_ttl_seconds: int = 300,
         fetcher: JwksFetcher | None = None,
         clock_skew_seconds: int = 30,
     ) -> None:
-        if not issuer or not audience or not jwks_url:
-            raise ValueError("issuer, audience and jwks_url are required")
+        if not issuer or not jwks_url:
+            raise ValueError("issuer and jwks_url are required")
         if not 30 <= cache_ttl_seconds <= 3600:
             raise ValueError("cache_ttl_seconds must be between 30 and 3600")
         if not 0 <= clock_skew_seconds <= 120:
@@ -67,6 +67,9 @@ class OidcIdentityVerifier:
 
             jwk = await self._key_for(kid)
             key = jwt.PyJWK.from_dict(dict(jwk), algorithm="RS256").key
+            decode_options = {"require": ["exp", "iss", "sub", "org_id", "org_role"]}
+            if not self._audience:
+                decode_options["verify_aud"] = False
             claims = jwt.decode(
                 bearer_token,
                 key=key,
@@ -74,7 +77,7 @@ class OidcIdentityVerifier:
                 issuer=self._issuer,
                 audience=self._audience,
                 leeway=self._clock_skew_seconds,
-                options={"require": ["exp", "iss", "aud", "sub", "org_id", "org_role"]},
+                options=decode_options,
             )
             return _principal_from_claims(claims)
         except ApiError:
