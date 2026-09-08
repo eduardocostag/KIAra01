@@ -1,0 +1,384 @@
+openapi: 3.1.0
+info:
+  title: Kiara Lead Intelligence API
+  version: 1.0.0
+  description: Tenant is derived from the verified bearer token and membership; clients never supply organization_id.
+servers:
+  - url: https://api.example.invalid
+security:
+  - bearerAuth: []
+paths:
+  /health/live:
+    get:
+      operationId: getLiveness
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Healthy" }
+  /health/ready:
+    get:
+      operationId: getReadiness
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Healthy" }
+        "503": { $ref: "#/components/responses/Error" }
+  /v1/me:
+    get:
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: Verified identity and active organization
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentUser" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/inbox/threads:
+    get:
+      operationId: listInboxThreads
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Cursor page scoped to the active tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadPage" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/inbox/threads/{thread_id}:
+    get:
+      operationId: getInboxThread
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+      responses:
+        "200":
+          description: Thread, messages, consumer and qualification
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThreadDetail" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/inbox/threads/{thread_id}/drafts:
+    post:
+      operationId: createMessageDraft
+      description: Creates a draft and never sends a message.
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DraftCreate" }
+      responses:
+        "201":
+          description: Created or original response on identical retry
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageDraft" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/drafts/{draft_id}/approve:
+    post:
+      operationId: approveMessageDraft
+      description: Approval binds to the current version and content hash; it does not send.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Approved or original response on identical retry
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageDraft" }
+        "409": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+        "428": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/threads/{thread_id}/qualify:
+    post:
+      operationId: qualifyThread
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QualificationRequest" }
+      responses:
+        "200":
+          description: Qualification completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Qualification" }
+        "202":
+          description: Qualification queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobReference" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/pipeline:
+    get:
+      operationId: listPipelineEntries
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Cursor page scoped to active tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelinePage" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/pipeline/{entry_id}:
+    patch:
+      operationId: updatePipelineEntry
+      parameters:
+        - $ref: "#/components/parameters/PipelineEntryId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema: { $ref: "#/components/schemas/PipelineUpdate" }
+      responses:
+        "200":
+          description: Updated or original response on identical retry
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineEntry" }
+        "409": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+        "428": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string, minLength: 1, maxLength: 512 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    ThreadId:
+      name: thread_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/OpaqueId" }
+    DraftId:
+      name: draft_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/OpaqueId" }
+    PipelineEntryId:
+      name: entry_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/OpaqueId" }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique per tenant and operation; retained at least 24 hours.
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: "^[A-Za-z0-9._~-]+$" }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Strong ETag from the previous read or mutation.
+      schema: { type: string }
+  headers:
+    ETag:
+      description: Strong resource-version ETag.
+      schema: { type: string }
+    RateLimitInteger:
+      schema: { type: integer }
+  responses:
+    Healthy:
+      description: Healthy
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/HealthStatus" }
+    Error:
+      description: Error; HTTP status retains standard meaning
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit: { $ref: "#/components/headers/RateLimitInteger" }
+        X-RateLimit-Remaining: { $ref: "#/components/headers/RateLimitInteger" }
+        X-RateLimit-Reset: { $ref: "#/components/headers/RateLimitInteger" }
+        Retry-After: { $ref: "#/components/headers/RateLimitInteger" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    OpaqueId: { type: string, minLength: 10, maxLength: 64, pattern: "^[A-Za-z0-9_-]+$" }
+    Timestamp: { type: string, format: date-time }
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok] }
+    CurrentUser:
+      type: object
+      additionalProperties: false
+      required: [user_id, membership_id, organization, role, capabilities]
+      properties:
+        user_id: { $ref: "#/components/schemas/OpaqueId" }
+        membership_id: { $ref: "#/components/schemas/OpaqueId" }
+        organization: { $ref: "#/components/schemas/Organization" }
+        role: { type: string, enum: [owner, admin, operator, viewer] }
+        capabilities:
+          type: array
+          description: Extensible; clients must tolerate unknown values.
+          items: { type: string }
+    Organization:
+      type: object
+      additionalProperties: false
+      required: [id, name, slug]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        slug: { type: string }
+    Consumer:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, instagram_username]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        display_name: { type: string, maxLength: 120 }
+        instagram_username: { type: string, maxLength: 64 }
+    ThreadSummary:
+      type: object
+      additionalProperties: false
+      required: [id, consumer, status, unread_count, updated_at, version]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        consumer: { $ref: "#/components/schemas/Consumer" }
+        status: { type: string, enum: [open, waiting_customer, waiting_operator, resolved] }
+        unread_count: { type: integer, minimum: 0 }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+        version: { type: integer, minimum: 1 }
+    ThreadPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ThreadSummary" } }
+        next_cursor: { type: [string, "null"] }
+        has_more: { type: boolean }
+    ThreadDetail:
+      allOf:
+        - { $ref: "#/components/schemas/ThreadSummary" }
+        - type: object
+          required: [messages, drafts]
+          properties:
+            messages: { type: array, items: { $ref: "#/components/schemas/Message" } }
+            drafts: { type: array, items: { $ref: "#/components/schemas/MessageDraft" } }
+            qualification:
+              oneOf: [{ $ref: "#/components/schemas/Qualification" }, { type: "null" }]
+    Message:
+      type: object
+      required: [id, direction, text, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        direction: { type: string, enum: [inbound, outbound] }
+        text: { type: string, maxLength: 4000 }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    DraftCreate:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 1000 }
+    MessageDraft:
+      type: object
+      required: [id, thread_id, text, status, version, content_hash, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        thread_id: { $ref: "#/components/schemas/OpaqueId" }
+        text: { type: string, maxLength: 1000 }
+        status: { type: string, enum: [draft, approved, invalidated] }
+        version: { type: integer, minimum: 1 }
+        content_hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    QualificationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        force_refresh: { type: boolean, default: false }
+    Qualification:
+      type: object
+      required: [id, thread_id, score, temperature, recommendation, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        thread_id: { $ref: "#/components/schemas/OpaqueId" }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        temperature: { type: string, enum: [cold, warm, hot] }
+        recommendation: { type: string, maxLength: 500 }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    JobReference:
+      type: object
+      required: [job_id, status]
+      properties:
+        job_id: { $ref: "#/components/schemas/OpaqueId" }
+        status: { type: string, enum: [queued] }
+    PipelineStage: { type: string, enum: [new, qualified, contacted, opportunity, won, lost] }
+    PipelineEntry:
+      type: object
+      required: [id, consumer, stage, version, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/OpaqueId" }
+        consumer: { $ref: "#/components/schemas/Consumer" }
+        stage: { $ref: "#/components/schemas/PipelineStage" }
+        next_action: { type: [string, "null"], maxLength: 500 }
+        version: { type: integer, minimum: 1 }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    PipelinePage:
+      type: object
+      required: [items, has_more]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/PipelineEntry" } }
+        next_cursor: { type: [string, "null"] }
+        has_more: { type: boolean }
+    PipelineUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        stage: { $ref: "#/components/schemas/PipelineStage" }
+        next_action: { type: [string, "null"], maxLength: 500 }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/ApiError" }
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id]
+      properties:
+        code: { type: string, pattern: "^[a-z][a-z0-9_]*$" }
+        message: { type: string, maxLength: 500 }
+        request_id: { type: string, minLength: 10, maxLength: 64 }
+        details: { type: object, additionalProperties: true }
