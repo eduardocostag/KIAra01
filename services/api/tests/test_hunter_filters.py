@@ -5,9 +5,10 @@ constraints. Labels judge evidence satisfaction, not an unsupported claim that
 the source covers every business or that a website can never exist elsewhere.
 """
 import asyncio
+import sys
 from copy import deepcopy
 from pathlib import Path
-import sys
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -15,8 +16,15 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from kiara_api import hunter
 from kiara_api.hunter import SearchCreate, execute_research, research_query
-from kiara_api.hunter_research import (clean_summary, extract_contacts, filter_results,
-    maps_detail_result, normalize_result, research_options, whatsapp_link)
+from kiara_api.hunter_research import (
+    clean_summary,
+    extract_contacts,
+    filter_results,
+    maps_detail_result,
+    normalize_result,
+    research_options,
+    whatsapp_link,
+)
 
 
 def search(query="psicólogos sem site", **options):
@@ -198,3 +206,100 @@ def test_filter_applied_before_result_limit_and_web_crawl_skipped_for_no_site(mo
     outcome = asyncio.run(execute_research(request.model_dump()))
     assert [row["title"] for row in outcome["results"]] == ["accept"]
     assert outcome["validation"]["excluded"] == 1
+
+
+def test_editorial_pages_and_social_posts_are_not_crm_contacts():
+    items = [
+        {"source": "web", "title": "10 melhores psicólogos: como escolher", "url": "https://portal.example/blog/melhores-psicologos"},
+        {"source": "instagram", "title": "Conheça nossa equipe", "url": "https://instagram.com/p/abc123"},
+        {"source": "linkedin", "title": "Notícia da empresa", "url": "https://linkedin.com/posts/example"},
+        {"source": "web", "title": "Como Psicologia — Clínica", "url": "https://clinica.example/equipe"},
+        {"source": "instagram", "title": "Clínica", "url": "https://instagram.com/clinica"},
+        {"source": "linkedin", "title": "Empresa", "url": "https://linkedin.com/company/empresa"},
+    ]
+    kept, stats = filter_results(items, search("psicólogos"))
+    assert [item["title"] for item in kept] == ["Como Psicologia — Clínica", "Clínica", "Empresa"]
+    assert stats["excluded"] == 3
+
+
+def test_malformed_provider_url_does_not_strand_a_search(monkeypatch):
+    async def malformed(*args):
+        return [{"source": "web", "title": "Broken", "url": "https://[broken", "summary": ""}]
+    monkeypatch.setattr(hunter, "exa_search", malformed)
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "unit-test-placeholder")
+    outcome = asyncio.run(execute_research(SearchCreate(market="b2b", query="padarias", sources=["web"]).model_dump()))
+    assert outcome["results"] == []
+    assert outcome["validation"]["excluded"] == 1
+    assert outcome["error"] is None
+
+
+def test_unexpected_provider_processing_error_is_finished_not_left_running(monkeypatch):
+    async def broken(*args):
+        raise KeyError("unexpected provider shape")
+    monkeypatch.setattr(hunter, "execute_research", broken)
+    class Repository:
+        async def claim_confirmation(self, *args):
+            return search()
+        async def finish(self, context, search_id, results, error, **options):
+            return {"id": search_id, "status": "failed" if error else "completed", "results": results, **options}
+    router = hunter.create_hunter_router(Repository())
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/confirm"))
+    response = asyncio.run(endpoint("search-id", None, "test-idempotency", None))
+    assert response["status"] == "failed"
+    assert response["results"] == []
+    assert response["warnings"]
+
+
+def test_browser_cleanup_failure_does_not_erase_completed_maps_results(monkeypatch):
+    import playwright.async_api
+    class Locator:
+        async def evaluate_all(self, script):
+            return [{"title": "Business", "url": "https://www.google.com/maps/place/Business"}]
+        async def count(self):
+            return 1
+    class Page:
+        async def goto(self, *args, **kwargs):
+            pass
+        async def wait_for_selector(self, *args, **kwargs):
+            pass
+        async def wait_for_function(self, *args, **kwargs):
+            pass
+        def locator(self, selector):
+            return Locator()
+        async def evaluate(self, script):
+            return {"title": "Business", "loaded": True, "phone": "11912345678", "links": []}
+        async def close(self):
+            pass
+    class Context:
+        pages = (Page(),)
+        async def new_page(self):
+            return Page()
+    class Browser:
+        contexts = (Context(),)
+        async def close(self):
+            raise RuntimeError("CDP transport already disconnected")
+    class Chromium:
+        async def connect_over_cdp(self, *args, **kwargs):
+            return Browser()
+    class Manager:
+        async def __aenter__(self):
+            return SimpleNamespace(chromium=Chromium())
+        async def __aexit__(self, *args):
+            pass
+    monkeypatch.setattr(playwright.async_api, "async_playwright", Manager)
+    rows = asyncio.run(hunter._read_maps_session(SimpleNamespace(connect_url="fixture"), "business", 1))
+    assert len(rows) == 1
+    assert rows[0]["public_data"]["phone"] == "11912345678"
+
+
+def test_legacy_no_site_history_hides_unverified_websites_without_mutating_records():
+    original = {"id": "legacy-row", "source": "web", "title": "Psicóloga", "url": "https://clinic.example", "summary": "", "public_data": {}}
+    results = [deepcopy(original)]
+    response = hunter.HunterRepository._search({"id": "legacy-search", "market": "b2b", "query": "psicólogos sem site",
+        "location": "São Paulo", "sources": ["web"], "result_limit": 10, "status": "completed",
+        "confirmed_at": None, "created_at": None, "error_code": None}, results)
+    assert response["website_filter"] == "without_website"
+    assert response["results"] == []
+    assert response["validation"]["excluded"] == 1
+    assert any("Pesquisa antiga" in warning for warning in response["warnings"])
+    assert results == [original]

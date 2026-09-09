@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { BriefcaseBusiness, Check, ChevronRight, Globe2, Loader2, MapPinned, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,6 +26,7 @@ const websiteLabels = { any: "Qualquer presença digital", without_website: "Sem
 const contactLabels = { any: "Todos os contatos disponíveis", phone: "Somente com telefone público", whatsapp: "Somente com WhatsApp identificado" }
 
 export function HunterClient() {
+  const router = useRouter()
   const [market, setMarket] = useState<"b2c" | "b2b">("b2c")
   const [query, setQuery] = useState("")
   const [researchMode, setResearchMode] = useState<"broad" | "focused">("broad")
@@ -94,6 +96,9 @@ export function HunterClient() {
       setStage("Consultando fontes e verificando os critérios…")
       const completed = parseHunterJob(await requestHunter(`/api/hunter/searches/${encodeURIComponent(job.id)}/confirm`, { method: "POST" }, 210_000))
       setJobs((current) => [completed, ...current.filter((item) => item.id !== completed.id)])
+      // The same completion may have created/updated CRM rows. Invalidate any
+      // prefetched server pages so Dashboard, Pipeline and Inbox read them.
+      router.refresh()
     } catch (e) { setError(e instanceof Error ? e.message : "Falha ao pesquisar. Atualize os resultados para consultar a pesquisa salva.") }
     finally { setBusy(false); inFlight.current = false; focusResults() }
   }

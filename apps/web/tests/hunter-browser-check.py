@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
-URL = "http://localhost:3100/hunter-verification"
-JOB = {"id": "search-test", "market": "b2b", "query": "Clínicas de teste", "location": "São Paulo", "sources": ["web"], "result_limit": 10, "status": "completed", "results": [{"id": "lead-test", "source": "web", "title": "Clínica de teste — evidência", "url": "https://example.com", "summary": "Dados de teste para verificação da interface."}]}
+URL = "http://localhost:3100/ui-verification"
+JOB = {"id": "search-test", "market": "b2b", "query": "Clínicas de teste", "location": "São Paulo", "sources": ["google_maps"], "result_limit": 10, "website_filter": "without_website", "contact_filter": "whatsapp", "validation": {"checked": 3, "accepted": 1, "excluded": 2, "unknown": 1, "source_failures": 0}, "warnings": ["1 candidato excluído por falta de evidência."], "sync_summary": {"created": 1, "existing": 0, "skipped": 0}, "status": "completed", "results": [{"id": "lead-test", "source": "google_maps", "title": "Clínica de teste — evidência", "url": "https://www.google.com/maps/place/test", "summary": "Atendimento psicológico.", "public_data": {"phone": "+5511987654321", "whatsapp_url": "https://wa.me/5511987654321", "website_status": "not_listed", "website_evidence": "Campo Site não informado no perfil inspecionado.", "address": "São Paulo", "criterion_status": "verified", "lead_id": "lead-1", "pipeline_entry_id": "pipeline-1", "crm_status": "synced"}}]}
 
 
 def main():
@@ -41,14 +41,16 @@ def main():
             state["mode"] = mode
             page.goto(URL)
             expect(page.get_by_text("Nenhuma pesquisa registrada", exact=True)).to_be_visible()
-            page.get_by_label("Público, nicho ou assunto").fill("Clínicas de teste")
+            page.get_by_label("Quem você quer encontrar?").fill("Clínicas de teste")
             state["initial_gets"] = state["gets"]
             page.get_by_role("button", name="Revisar pesquisa", exact=True).click()
             page.get_by_role("button", name="Confirmar e pesquisar", exact=True).click()
 
         run_search("success")
         expect(page.get_by_role("heading", name="Pesquisa concluída: 1 resultado", exact=True)).to_be_visible()
-        expect(page.get_by_role("link", name="Clínica de teste")).to_be_visible()
+        expect(page.get_by_role("article", name="Clínica de teste — evidência")).to_be_visible()
+        expect(page.get_by_role("link", name="Abrir WhatsApp")).to_be_visible()
+        expect(page.get_by_text("No pipeline", exact=True)).to_be_visible()
         assert state["gets"] == state["initial_gets"], "Result rendering must not depend on a second history request"
         assert state["confirms"] == 1
         panel_top = page.get_by_label("Acompanhamento e resultados da pesquisa").evaluate("el => el.getBoundingClientRect().top")

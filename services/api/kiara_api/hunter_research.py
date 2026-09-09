@@ -87,7 +87,7 @@ def safe_public_url(value: Any) -> str | None:
         parts = urlsplit(value)
         if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
             return None
-        parts.port
+        _ = parts.port
     except ValueError:
         return None
     return value[:3000]
@@ -201,7 +201,7 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
     if item.get("source") == "web":
         title = folded(str(item.get("title") or ""))
         return bool(re.search(r"/(?:blog|artigos?|noticias?|news|posts?)(?:/|$)", path)
-                    or re.match(r"^(?:\d+\s+(?:melhores|dicas|motivos|passos)|como\s|o que\s)", title))
+                    or re.match(r"^(?:\d+\s+(?:melhores|dicas|motivos|passos)|como\s+(?:escolher|encontrar|contratar|abrir|criar|saber|funciona|atrair|conseguir)|o que\s+(?:e|sao|faz))\b", title))
     return False
 
 

@@ -4,10 +4,11 @@ import asyncio
 import json
 import logging
 import os
-from urllib.parse import quote, urlsplit
 from dataclasses import dataclass
 from typing import Any, Literal
-from urllib.request import Request as UrlRequest, urlopen
+from urllib.parse import quote
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -18,8 +19,15 @@ from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .hunter_crm import sync_hunter_results
-from .hunter_research import (clean_summary, extract_contacts, filter_results, maps_detail_result,
-                              normalize_result, research_options, safe_public_url)
+from .hunter_research import (
+    clean_summary,
+    extract_contacts,
+    filter_results,
+    maps_detail_result,
+    normalize_result,
+    research_options,
+    safe_public_url,
+)
 
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "linkedin"}
 DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "linkedin": "linkedin.com"}
@@ -193,7 +201,7 @@ class HunterRepository:
     @staticmethod
     def _search(row: dict[str, Any], results: list[dict[str, Any]]) -> dict[str, Any]:
         options = row.get("search_options") or {}
-        return {"id": str(row["id"]), "market": row["market"], "query": row["query"],
+        payload = {"id": str(row["id"]), "market": row["market"], "query": row["query"],
                 "research_mode": options.get("research_mode", "broad"),
                 "objective": options.get("objective", ""),
                 "website_filter": options.get("website_filter", "any"),
@@ -203,6 +211,20 @@ class HunterRepository:
                 "location": row["location"], "sources": row["sources"], "result_limit": row["result_limit"],
                 "status": row["status"], "confirmed_at": _iso(row["confirmed_at"]),
                 "created_at": _iso(row["created_at"]), "error_code": row["error_code"], "results": results}
+        inferred = research_options(payload)
+        payload["website_filter"] = inferred["website_filter"]
+        payload["contact_filter"] = inferred["contact_filter"]
+        legacy = any(item.get("public_data", {}).get("verification_version") != 1 for item in results)
+        if legacy and row["status"] == "completed":
+            # Read-time compatibility only: do not delete historical records or
+            # quietly import them into CRM as newly verified discoveries.
+            if inferred["website_filter"] != "any" or inferred["contact_filter"] != "any":
+                payload["results"], payload["validation"] = filter_results(results, payload)
+            for item in payload["results"]:
+                item["public_data"].update({"criterion_status": "not_verified", "verification_version": 0})
+            payload["warnings"] = [*payload["warnings"],
+                "Pesquisa antiga: resultados sem evidência para os filtros foram ocultados. Execute uma nova pesquisa para validar contatos e importar para o CRM."]
+        return payload
 
 
 def _post_json(url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
@@ -251,7 +273,7 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
                 item["summary"] = clean_summary(content)
             else:
                 item.setdefault("public_data", {})["enrichment"] = "unavailable"
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError):
             item.setdefault("public_data", {})["enrichment"] = "unavailable"
 
     await asyncio.gather(*(enrich(item) for item in candidates))
@@ -259,8 +281,8 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
 
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     try:
-        from browserbase import Browserbase
         import playwright.async_api  # noqa: F401 — check optional dependency before creating a paid session
+        from browserbase import Browserbase
     except ImportError as exc:
         raise RuntimeError("browser_provider_unavailable") from exc
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
@@ -274,12 +296,14 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         try:
             await asyncio.wait_for(asyncio.to_thread(client.sessions.update, session.id,
                 project_id=project, status="REQUEST_RELEASE", timeout=4), timeout=5)
-        except Exception:
-            pass  # Best-effort release also covers CDP connection failure.
+        except Exception as exc:  # noqa: BLE001 — a cleanup failure must not erase completed research
+            logger.warning("hunter.maps.session_release_failed", extra={"error_class": type(exc).__name__})
         client.close()
 
 
 async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[str, Any]]:
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
 
     async with async_playwright() as playwright:
@@ -292,7 +316,7 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
             # Allow the business list, not just the Maps application shell, to load.
             try:
                 await page.wait_for_selector('a[href*="/maps/place/"], h1.DUwDvf', timeout=6_000)
-            except Exception:
+            except PlaywrightTimeoutError:
                 if await page.locator('[role="feed"]').count() == 0:
                     raise RuntimeError("maps_results_unavailable")
             items = await page.locator('a[href*="/maps/place/"]').evaluate_all(
@@ -316,7 +340,7 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
                         }""", timeout=5_000)
                         detail = await detail_page.evaluate(MAPS_DETAIL_SCRIPT)
                         return maps_detail_result(item, detail)
-                    except Exception:
+                    except (PlaywrightError, TimeoutError, ValueError, TypeError):
                         return maps_detail_result(item, {})
                     finally:
                         await detail_page.close()
@@ -333,7 +357,7 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
         finally:
             try:
                 await asyncio.wait_for(browser.close(), timeout=5)
-            except Exception:
+            except (PlaywrightError, TimeoutError, RuntimeError):
                 logger.warning("hunter.maps.browser_cleanup_failed")
 
 
@@ -403,7 +427,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
             await asyncio.wait_for(enrich_results(candidates), timeout=ENRICHMENT_TIMEOUT_SECONDS)
         except TimeoutError:
             warnings.append("O enriquecimento atingiu o limite de tempo; somente os contatos já encontrados foram mantidos.")
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
             warnings.append("O enriquecimento não foi concluído; os resultados originais foram preservados.")
     results, validation = filter_results(candidates, search)
     validation["source_failures"] = len(failures)
@@ -429,22 +453,22 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
     router = APIRouter(prefix="/v1/hunter", tags=["hunter"])
 
     @router.post("/searches", status_code=201)
-    async def create_search(payload: SearchCreate, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:
+    async def create_search(payload: SearchCreate, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         return await repository.create(context, payload)
 
     @router.get("/searches")
-    async def list_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:
+    async def list_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         return {"items": await repository.list(context)}
 
     @router.post("/searches/{search_id}/confirm")
     async def confirm_search(search_id: str, request: Request,
                              idempotency_key: str = Header(min_length=8, max_length=200),
-                             context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:
+                             context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         del request, idempotency_key
         search = await repository.claim_confirmation(context, search_id)
         try:
             outcome = await execute_research(search)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — persist a terminal state at the external-provider boundary
             logger.warning("hunter.research.unexpected_error", extra={"error_class": type(exc).__name__})
             outcome = {"results": [], "error": "provider_error", "validation": {},
                        "warnings": ["A pesquisa não pôde ser concluída. Tente novamente; nenhum contato foi inventado."]}
