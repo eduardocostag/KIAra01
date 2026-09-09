@@ -8,7 +8,11 @@ export type HunterPublicData = {
   website_url?: string | null
   website_evidence?: string | null
   phone?: string | null
+  email?: string | null
   whatsapp_url?: string | null
+  website_quality_score?: number | null
+  website_quality_signals?: string[]
+  match_reasons?: string[]
   address?: string | null
   source_url?: string | null
   lead_id?: string | null
@@ -81,10 +85,12 @@ export function parseHunterJob(value: unknown): HunterJob {
         if (result.public_data != null) {
           if (typeof result.public_data !== "object" || Array.isArray(result.public_data)) return false
           const data = result.public_data
-          const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.whatsapp_url, data.address, data.source_url, data.lead_id, data.pipeline_entry_id, data.crm_status]
+          const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.email, data.whatsapp_url, data.address, data.source_url, data.lead_id, data.pipeline_entry_id, data.crm_status]
           if (!textFields.every((field) => field == null || typeof field === "string")) return false
           if (data.website_status && !["present", "not_listed", "unknown"].includes(data.website_status)) return false
           if (data.criterion_status && !["verified", "not_verified", "not_requested"].includes(data.criterion_status)) return false
+          if (data.website_quality_score != null && (typeof data.website_quality_score !== "number" || data.website_quality_score < 0 || data.website_quality_score > 100)) return false
+          if (data.match_reasons != null && (!Array.isArray(data.match_reasons) || !data.match_reasons.every(item => typeof item === "string"))) return false
         }
         try { return ["https:", "http:"].includes(new URL(result.url).protocol) } catch { return false }
       })) throw new Error("A API retornou dados incompletos. Tente atualizar os resultados.")

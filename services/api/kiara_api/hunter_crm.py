@@ -82,9 +82,12 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
         "research_objective": options.get("objective", ""),
         "website_status": data.get("website_status", "unknown"),
     }
-    for key in ("phone", "address", "website_evidence", "criterion_status", "place_id"):
+    for key in ("phone", "email", "address", "website_evidence", "criterion_status", "place_id"):
         if isinstance(data.get(key), str) and data[key].strip():
             metadata[key] = data[key][:3000]
+    for key in ("website_quality_score", "website_quality_signals", "match_reasons"):
+        if data.get(key) is not None:
+            metadata[key] = data[key]
     for key in ("website_url", "whatsapp_url"):
         value = _public_url(data.get(key))
         if value and (key != "whatsapp_url" or (urlsplit(value).hostname or "").lower()

@@ -28,6 +28,7 @@ from .hunter_research import (
     normalize_result,
     research_options,
     safe_public_url,
+    website_opportunity,
 )
 
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "linkedin"}
@@ -250,26 +251,34 @@ async def exa_search(query: str, source: str, limit: int) -> list[dict[str, Any]
 
 
 async def enrich_results(results: list[dict[str, Any]]) -> None:
-    """Enrich up to three public websites, preserving results on provider failure."""
+    """Enrich public websites with contacts and observable opportunity signals."""
     key = os.getenv("FIRECRAWL_API_KEY", "").strip()
     if not key:
         return
-    candidates = [item for item in results if item.get("source") == "web"
-                  and (safe_public_url(item.get("url")) or "").startswith("https://")][:3]
+    candidates = []
+    for item in results:
+        data = item.setdefault("public_data", {})
+        target = safe_public_url(data.get("website_url")) or (safe_public_url(item.get("url")) if item.get("source") == "web" else None)
+        if target and len(candidates) < 20:
+            data["enrichment_url"] = target
+            candidates.append(item)
 
     async def enrich(item: dict[str, Any]) -> None:
         try:
             response = await asyncio.to_thread(
                 _post_json, "https://api.firecrawl.dev/v2/scrape",
                 {"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
-                {"url": item["url"], "formats": ["markdown", "links"], "onlyMainContent": True,
+                {"url": item["public_data"]["enrichment_url"], "formats": ["markdown", "links"], "onlyMainContent": True,
                  "timeout": 20000},
             )
             content = (response.get("data") or {}).get("markdown")
             if response.get("success") and isinstance(content, str) and content.strip():
-                contacts = extract_contacts(content[:40000], (response.get("data") or {}).get("links") or [])
+                links = (response.get("data") or {}).get("links") or []
+                contacts = extract_contacts(content[:40000], links)
+                quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
                 item.setdefault("public_data", {}).update({
-                    "enrichment": "completed", "provider": "firecrawl", "source_url": item["url"], **contacts,
+                    "enrichment": "completed", "provider": "firecrawl", **contacts,
+                    "website_quality_score": quality, "website_quality_signals": signals,
                 })
                 item["summary"] = clean_summary(content)
             else:
@@ -327,6 +336,16 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
             if not items and await page.locator('h1.DUwDvf').count():
                 items = [{"title": await page.locator('h1.DUwDvf').first.inner_text(), "url": page.url}]
             items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, 30)]
+            feed = page.locator('[role="feed"]')
+            attempts = 0
+            while len(items) < min(limit, 30) and await feed.count() and attempts < 8:
+                attempts += 1
+                await feed.evaluate("element => element.scrollBy(0, Math.max(element.clientHeight * 1.8, 900))")
+                await page.wait_for_timeout(700)
+                items = await page.locator('a[href*="/maps/place/"]').evaluate_all(
+                    "els => [...new Map(els.map(e => [e.href, {title: e.getAttribute('aria-label') || e.textContent.trim(), url: e.href}])).values()]"
+                )
+                items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, 30)]
             slots = asyncio.Semaphore(3)
 
             async def inspect(item: dict[str, Any]) -> dict[str, Any]:
@@ -412,7 +431,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
     query = research_query(search)
-    strict = options["website_filter"] != "any" or options["contact_filter"] != "any"
+    strict = any(options[key] != "any" for key in ("website_filter", "contact_filter", "email_filter", "website_quality_filter"))
     # Filter after recall: never spend the user's result allowance on rejects.
     per_source = min(30, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
     tasks = {source: asyncio.create_task(maps_search(query, per_source) if source == "google_maps"
@@ -439,7 +458,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
                 warnings.append(f"{SOURCE_LABELS[source]} retornou dados inválidos. Os resultados das outras fontes foram preservados.")
     # A known external website can never pass without_website. Avoid paying
     # to crawl pages which this explicit constraint will discard anyway.
-    if options["website_filter"] != "without_website":
+    if options["website_filter"] != "without_website" or options["email_filter"] != "any" or options["website_quality_filter"] != "any":
         try:
             await asyncio.wait_for(enrich_results(candidates), timeout=ENRICHMENT_TIMEOUT_SECONDS)
         except TimeoutError:
@@ -456,6 +475,10 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
             warnings.append("Selecione Google Maps para verificar o filtro sem site. Outras fontes sem evidência foram excluídas.")
     if options["contact_filter"] == "whatsapp":
         warnings.append("WhatsApp exige um link público explícito. Um número de celular isolado não confirma WhatsApp.")
+    if options["email_filter"] == "without_email":
+        warnings.append("Sem e-mail significa que nenhum endereço foi encontrado nas fontes e páginas inspecionadas; não prova ausência em toda a internet.")
+    if options["website_quality_filter"] == "opportunity":
+        warnings.append("Oportunidade digital usa sinais técnicos verificáveis; a Kiara não classifica gosto visual como fato.")
     if validation["unknown"]:
         warnings.append(f"{validation['unknown']} candidato(s) excluído(s) por falta de evidência para os filtros solicitados.")
     if options["unsupported_criterion"]:

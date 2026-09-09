@@ -34,6 +34,14 @@ _PHONE = re.compile(
     r"\b(?:com|(?:que\s+)?(?:tem|tenham)|somente|apenas)\s+"
     r"(?:(?:numero|contato)\s+de\s+)?(?:telefone|celular)\b"
 )
+_NO_EMAIL = re.compile(
+    r"\b(?:(?:que\s+)?nao\s+(?:tem|tenham|tenha|possui|possuem|possuam)|sem)\s+"
+    r"(?:(?:um|uma|o|a)\s+)?(?:e-?mail|correio eletronico)\b"
+)
+_WEAK_WEBSITE = re.compile(
+    r"\b(?:site|website|pagina)\s+(?:feio|ruim|fraco|antigo|desatualizado|lento|precario|amador)\b|"
+    r"\b(?:site|website)\s+(?:que\s+)?(?:nao\s+)?(?:e\s+)?(?:bonito|moderno|responsivo|profissional)\b"
+)
 _CRITERION_HINT = re.compile(r"\b(?:sem|com|que|apenas|somente|aceita|aceitem|atendem|atendam)\b")
 
 
@@ -67,7 +75,9 @@ def research_options(search: dict[str, Any]) -> dict[str, Any]:
         contact = "whatsapp"
     elif contact == "any" and _PHONE.search(combined):
         contact = "phone"
-    patterns = [_NO_SITE, _HAS_SITE, _WHATSAPP, _PHONE]
+    email = "without_email" if _NO_EMAIL.search(combined) else "any"
+    website_quality = "opportunity" if _WEAK_WEBSITE.search(combined) else "any"
+    patterns = [_NO_SITE, _HAS_SITE, _WHATSAPP, _PHONE, _NO_EMAIL, _WEAK_WEBSITE]
     niche = _strip_spans(query, patterns)
     remainder = _strip_spans(objective, patterns)
     # Connectors left after supported criteria are not a new requirement.
@@ -75,6 +85,7 @@ def research_options(search: dict[str, Any]) -> dict[str, Any]:
         remainder = ""
     unsupported = bool(remainder or _CRITERION_HINT.search(folded(niche)))
     return {"website_filter": website, "contact_filter": contact,
+            "email_filter": email, "website_quality_filter": website_quality,
             "provider_query": niche or query, "remaining_objective": remainder,
             "unsupported_criterion": unsupported, "objective": objective}
 
@@ -146,7 +157,29 @@ def extract_contacts(text: str, links: list[str] | None = None) -> dict[str, Any
     tel = tel or (phone_number(match.group(1)) if match else None)
     if not tel and whatsapp:
         tel = "+" + urlsplit(whatsapp).path.strip("/")
-    return {"phone": tel, "whatsapp_url": whatsapp}
+    email_match = re.search(r"(?<![\w.+-])([\w.+-]{1,64}@[\w.-]+\.[a-zA-Z]{2,24})(?![\w.-])", html.unescape(text))
+    email = email_match.group(1).lower() if email_match else None
+    result = {"phone": tel, "whatsapp_url": whatsapp}
+    if email:
+        result["email"] = email
+    return result
+
+
+def website_opportunity(url: str, content: str, links: list[str]) -> tuple[int, list[str]]:
+    """Score observable homepage signals; never claim subjective visual quality."""
+    score, signals = 100, []
+    if urlsplit(url).scheme != "https":
+        score -= 25; signals.append("Site sem HTTPS")
+    words = len(clean_summary(content, 5000).split())
+    if words < 80:
+        score -= 30; signals.append("Pouco conteúdo público na página analisada")
+    contacts = extract_contacts(content, links)
+    if not any(contacts.values()):
+        score -= 25; signals.append("Nenhum telefone, WhatsApp ou e-mail identificado no site")
+    internal = [link for link in links if safe_public_url(link) and urlsplit(link).hostname == urlsplit(url).hostname]
+    if len(internal) < 2:
+        score -= 20; signals.append("Estrutura de navegação pública limitada")
+    return max(0, score), signals
 
 
 _PROFILE_DOMAINS = {
@@ -169,6 +202,7 @@ def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
     contacts = extract_contacts(text)
     data["phone"] = phone_number(data.get("phone")) or contacts["phone"]
     data["whatsapp_url"] = whatsapp_link(data.get("whatsapp_url")) or contacts["whatsapp_url"]
+    data["email"] = (str(data.get("email") or "").strip().lower() or contacts.get("email"))
     data["source_url"] = safe_public_url(item.get("url"))
     data["website_url"] = safe_public_url(data.get("website_url"))
     if data["website_url"]:
@@ -231,13 +265,26 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             unknown = True
         if contact == "phone" and not data["phone"]:
             unknown = True
+        if options["email_filter"] == "without_email":
+            rejected = rejected or bool(data["email"])
+            unknown = unknown or (not data["email"] and data.get("enrichment") != "completed" and item["source"] != "google_maps")
+        if options["website_quality_filter"] == "opportunity":
+            rejected = rejected or data.get("website_quality_score", 100) > 55
+            unknown = unknown or data.get("website_quality_score") is None
         if rejected or unknown:
             counts["excluded"] += 1
             counts["unknown"] += int(unknown and not rejected)
             continue
         seen.add(data["source_url"])
         data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] else
-                                    "verified" if website != "any" or contact != "any" else "not_requested")
+                                    "verified" if website != "any" or contact != "any" or options["email_filter"] != "any" or options["website_quality_filter"] != "any" else "not_requested")
+        reasons = []
+        if website == "without_website": reasons.append("Site não informado no perfil inspecionado")
+        if options["email_filter"] == "without_email": reasons.append("E-mail não encontrado nas fontes inspecionadas")
+        if options["website_quality_filter"] == "opportunity": reasons.extend(data.get("website_quality_signals") or [])
+        if contact == "phone": reasons.append("Telefone público confirmado")
+        if contact == "whatsapp": reasons.append("WhatsApp público confirmado")
+        data["match_reasons"] = list(dict.fromkeys(reasons))
         data["research_objective"] = options["objective"]
         data["verification_version"] = 1
         accepted.append(item)
