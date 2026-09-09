@@ -14,6 +14,7 @@ class ApiSettings:
     oidc_jwks_url: str | None = None
     oidc_jwks_cache_ttl_seconds: int = 300
     database_url: str | None = None
+    integration_encryption_key: str | None = None
 
     @classmethod
     def from_env(cls) -> ApiSettings:
@@ -35,6 +36,7 @@ class ApiSettings:
                 os.getenv("KIARA_OIDC_JWKS_CACHE_TTL_SECONDS", "300")
             ),
             database_url=os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or None,
+            integration_encryption_key=os.getenv("KIARA_INTEGRATION_ENCRYPTION_KEY") or None,
         )
 
     @property
@@ -54,3 +56,5 @@ class ApiSettings:
             raise RuntimeError("OIDC JWKS cache TTL must be between 30 and 3600 seconds")
         if self.environment == "production" and not self.database_url:
             raise RuntimeError("POSTGRES_URL is required in production")
+        if self.environment == "production" and not self.integration_encryption_key:
+            raise RuntimeError("KIARA_INTEGRATION_ENCRYPTION_KEY is required in production")

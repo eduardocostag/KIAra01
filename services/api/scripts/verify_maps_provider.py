@@ -32,5 +32,10 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as error:
-        print(json.dumps({"error_type": type(error).__name__}))
+        message = str(error)
+        safe_code = message if message in {
+            "maps_results_unavailable", "browserbase_not_configured",
+            "browser_provider_unavailable",
+        } else "unclassified_provider_error"
+        print(json.dumps({"error_type": type(error).__name__, "error_code": safe_code}))
         sys.exit(1)

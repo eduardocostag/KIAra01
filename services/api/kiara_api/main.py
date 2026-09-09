@@ -31,6 +31,7 @@ from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .hunter import HunterRepository, create_hunter_router
+from .integrations import IntegrationRepository, create_integration_router
 
 
 class CorrelationMiddleware(BaseHTTPMiddleware):
@@ -196,5 +197,7 @@ def create_app(
     app.include_router(create_pipeline_router(pipeline_entries_repository))
     if config.database_url:
         app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
+        if config.integration_encryption_key:
+            app.include_router(create_integration_router(IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key)))
 
     return app

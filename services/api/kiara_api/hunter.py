@@ -4,9 +4,10 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 from uuid import UUID
@@ -311,7 +312,8 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
         try:
             context = browser.contexts[0]
             page = context.pages[0]
-            await page.goto(f"https://www.google.com/maps/search/{quote(query, safe='')}?hl=pt-BR", wait_until="domcontentloaded", timeout=25_000)
+            await page.goto(f"https://www.google.com/maps/search/?api=1&query={quote(query, safe='')}&hl=pt-BR", wait_until="domcontentloaded", timeout=25_000)
+            await _dismiss_google_consent(page)
             await page.wait_for_selector('a[href*="/maps/place/"], h1.DUwDvf, [role="feed"], [role="main"]', timeout=8_000)
             # Allow the business list, not just the Maps application shell, to load.
             try:
@@ -359,6 +361,21 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
                 await asyncio.wait_for(browser.close(), timeout=5)
             except (PlaywrightError, TimeoutError, RuntimeError):
                 logger.warning("hunter.maps.browser_cleanup_failed")
+
+
+async def _dismiss_google_consent(page: Any) -> None:
+    """Continue past Google's regional consent screen when it is presented.
+
+    The action is scoped to the Browserbase research session. It stores no
+    customer identity and does not weaken browser or application security.
+    """
+    if (urlsplit(getattr(page, "url", "")).hostname or "").lower() == "consent.google.com":
+        buttons = page.get_by_role("button", name=re.compile(
+            r"^(?:Aceitar tudo|Accept all|Concordo|I agree)$", re.IGNORECASE,
+        ))
+        if await buttons.count():
+            await buttons.first.click(timeout=5_000)
+            await page.wait_for_load_state("domcontentloaded", timeout=12_000)
 
 
 MAPS_DETAIL_SCRIPT = """() => {
