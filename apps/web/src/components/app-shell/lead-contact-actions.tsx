@@ -2,14 +2,14 @@
 
 import { useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { AtSign, Check, Copy, ExternalLink, LoaderCircle, MessageCircle, Phone, Send, ShieldCheck, Sparkles } from "lucide-react"
+import { AtSign, Check, Copy, ExternalLink, LoaderCircle, MessageCircle, Send, ShieldCheck, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { instagramProfileUrl, phoneHref, safePublicUrl, type PipelineEntry, whatsappComposerUrl } from "@/lib/api/pipeline"
+import { instagramProfileUrl, safePublicUrl, type PipelineEntry, whatsappComposerUrl } from "@/lib/api/pipeline"
 import { salesRequest, type SalesProfile, templateLabels } from "@/lib/api/sales"
 
 const FALLBACK = "Olá! Tudo bem? Meu nome é {remetente} e encontrei {nome} durante uma pesquisa sobre {nicho} em {cidade}. Posso compartilhar uma sugestão breve?"
@@ -34,7 +34,7 @@ export function LeadContactActions({ entry, onRecorded }: { entry: PipelineEntry
   const message = personalize(template, sender, profile, consumer)
   const whatsapp = useMemo(() => whatsappComposerUrl(consumer.phone, consumer.whatsapp_url, message), [consumer.phone, consumer.whatsapp_url, message])
   const instagram = instagramProfileUrl(consumer.instagram_username)
-  const phone = phoneHref(consumer.phone), source = safePublicUrl(consumer.source_url)
+  const source = safePublicUrl(consumer.source_url)
   const ready = Boolean(sender.trim() && message.trim())
 
   async function loadProfile(open: boolean) {
@@ -74,9 +74,8 @@ export function LeadContactActions({ entry, onRecorded }: { entry: PipelineEntry
         <DialogFooter className="flex-wrap"><Button variant="outline" onClick={() => void copyMessage()} disabled={!message.trim()}>{copied ? <Check /> : <Copy />}{copied ? "Copiada" : "Copiar"}</Button>{instagram ? <Button variant="outline" disabled={!ready} onClick={() => openChannel("instagram", instagram)}><AtSign />Copiar e abrir Instagram</Button> : null}{whatsapp ? <Button disabled={!ready} onClick={() => openChannel("whatsapp", whatsapp.url)}><MessageCircle />{whatsapp.confirmed ? "Abrir WhatsApp" : "Tentar no WhatsApp"}</Button> : null}{openedChannel ? <Button onClick={() => void confirmSent()} disabled={saving}>{saving ? <LoaderCircle className="animate-spin" /> : <Check />}Confirmar que enviei</Button> : null}</DialogFooter>
       </DialogContent>
     </Dialog>
-    {phone ? <Button asChild variant="outline" size="sm"><a href={phone} aria-label={`Ligar para ${consumer.display_name}`}><Phone />Ligar</a></Button> : null}
     {source ? <Button asChild variant="ghost" size="sm"><a href={source} target="_blank" rel="noreferrer" aria-label={`Ver fonte de ${consumer.display_name}`}>Fonte<ExternalLink className="size-3" /></a></Button> : null}
-    {!whatsapp && !instagram && !phone ? <span className="text-xs text-muted-foreground">Contato não publicado</span> : null}
+    {!whatsapp && !instagram ? <span className="text-xs text-muted-foreground">WhatsApp ou Instagram não encontrados</span> : null}
   </div>
 }
 

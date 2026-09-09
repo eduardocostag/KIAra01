@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import { KSignal } from "./k-signal"
+import { KiaraOrb } from "./kiara-orb"
 
 type KiaraBrandProps = {
   className?: string
@@ -10,7 +10,7 @@ type KiaraBrandProps = {
 export function KiaraBrand({ className, compact = false, inverse = false }: KiaraBrandProps) {
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-3", className)}>
-      <KSignal className={inverse ? "bg-white text-[#16152a]" : undefined} />
+      <KiaraOrb size="sm" />
       {compact ? null : (
         <span className="min-w-0 leading-none">
           <span

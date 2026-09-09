@@ -2,6 +2,7 @@ import { CheckCircle2, KeyRound, ShieldCheck } from "lucide-react"
 
 import { IntegrationSettings } from "@/components/app-shell/integration-settings"
 import { PageHeader } from "@/components/app-shell/page-header"
+import { CopilotIntro } from "@/components/app-shell/copilot-intro"
 
 const steps = [
   { icon: KeyRound, number: "01", title: "Gere suas credenciais", description: "Use os atalhos oficiais do Google ou da Meta." },
@@ -20,6 +21,7 @@ export default function IntegrationsPage() {
       </div>)}
     </section>
 
+    <CopilotIntro title="Conecte somente o que você precisa agora." description="Eu verifico cada integração e mantenho credenciais, status e próximos passos no mesmo lugar." />
     <IntegrationSettings />
 
     <div className="flex items-start gap-3 rounded-2xl border bg-muted/30 p-4 text-xs leading-5 text-muted-foreground">

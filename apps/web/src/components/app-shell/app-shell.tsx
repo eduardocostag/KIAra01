@@ -43,13 +43,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = nav.find((item) => item.href !== "/app" && pathname.startsWith(item.href))?.label ?? (pathname.startsWith("/app/settings") ? "Configurações" : "Visão geral")
   return <div className="kiara-workspace min-h-screen bg-background text-foreground">
     <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-52 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
       <Link href="/app" className="mb-9 flex min-h-10 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
       <p className="mb-3 px-3 text-[9px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/40">Workspace comercial</p>
       <Navigation />
       <SidebarFooter />
     </aside>
-    <div className="min-w-0 lg:pl-60">
+    <div className="min-w-0 lg:pl-52">
       <header className="app-shell-header sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 lg:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
@@ -65,7 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Button asChild variant="outline" size="icon" className="size-9 rounded-lg"><Link href="/app/settings" aria-label="Configurações do workspace"><Settings className="size-4" /></Link></Button>
         </div>
       </header>
-      <main id="conteudo" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-[1600px] p-4 outline-none sm:p-6 lg:p-8">{children}</main>
+      <main id="conteudo" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-[1540px] p-4 outline-none sm:p-7 lg:p-10">{children}</main>
     </div>
   </div>
 }
