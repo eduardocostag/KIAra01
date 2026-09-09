@@ -53,6 +53,28 @@ export function phoneHref(value: string | null | undefined): string | null {
   return /^\+?\d{8,15}$/.test(digits) ? `tel:${digits}` : null
 }
 
+export function whatsappComposerUrl(
+  phone: string | null | undefined,
+  confirmedUrl: string | null | undefined,
+  message: string,
+): { url: string; confirmed: boolean } | null {
+  const confirmed = safeWhatsAppUrl(confirmedUrl)
+  let base = confirmed
+  if (!base) {
+    let digits = phone?.replace(/\D/g, "") ?? ""
+    if ((digits.length === 10 || digits.length === 11) && !digits.startsWith("55")) digits = `55${digits}`
+    if (!/^55\d{10,11}$/.test(digits)) return null
+    base = `https://wa.me/${digits}`
+  }
+  const text = message.trim()
+  return { url: text ? `${base}?text=${encodeURIComponent(text)}` : base, confirmed: Boolean(confirmed) }
+}
+
+export function instagramProfileUrl(username: string | null | undefined): string | null {
+  const normalized = username?.trim().replace(/^@/, "") ?? ""
+  return /^[A-Za-z0-9._]{1,30}$/.test(normalized) ? `https://www.instagram.com/${normalized}/` : null
+}
+
 export function parsePipelineEntry(value: unknown): PipelineEntry {
   if (!value || typeof value !== "object") throw new Error("Resposta inválida do Pipeline.")
   const item = value as PipelineEntry
