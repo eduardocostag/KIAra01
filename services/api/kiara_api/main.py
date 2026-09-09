@@ -26,12 +26,13 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .http.routes.conversations import create_conversation_router
 from .http.routes.pipeline import create_pipeline_router
+from .hunter import HunterRepository, create_hunter_router
+from .integrations import IntegrationRepository, create_integration_router
 from .ports.conversations import ConversationCommandRepository
 from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
-from .hunter import HunterRepository, create_hunter_router
-from .integrations import IntegrationRepository, create_integration_router
+from .sales import SalesRepository, create_sales_router
 
 
 class CorrelationMiddleware(BaseHTTPMiddleware):
@@ -118,7 +119,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=list(config.cors_origins),
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
         allow_headers=[
             "Authorization",
             "Content-Type",
@@ -199,5 +200,6 @@ def create_app(
         app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
         if config.integration_encryption_key:
             app.include_router(create_integration_router(IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key)))
+        app.include_router(create_sales_router(SalesRepository(PostgresRepository(config.database_url))))
 
     return app

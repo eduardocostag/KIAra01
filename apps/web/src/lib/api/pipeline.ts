@@ -12,6 +12,8 @@ export type PipelineEntry = {
   id: string
   stage: PipelineStage
   next_action: string | null
+  next_action_at?: string | null
+  activities?: import("@/lib/api/sales").OutreachActivity[]
   version: number
   updated_at: string
   consumer: {

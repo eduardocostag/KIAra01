@@ -211,8 +211,14 @@ class PostgresRepository:
         organization_uuid = _uuid("organization", organization_id)
         async with self._transaction(organization_id) as connection:
             rows = await (await connection.execute(
-                """SELECT p.id,p.stage,p.next_action,p.version,p.updated_at,c.id consumer_id,
-                          c.display_name,c.instagram_username,c.attributes FROM pipeline_entries p JOIN consumers c
+                """SELECT p.id,p.stage,p.next_action,p.next_action_at,p.version,p.updated_at,c.id consumer_id,
+                          c.display_name,c.instagram_username,c.attributes,
+                          COALESCE((SELECT jsonb_agg(item ORDER BY item->>'created_at' DESC) FROM
+                            (SELECT jsonb_build_object('id',a.id,'channel',a.channel,'status',a.status,'body',a.body,
+                              'next_follow_up_at',a.next_follow_up_at,'created_at',a.created_at) item
+                             FROM outreach_activities a WHERE a.organization_id=p.organization_id
+                               AND a.pipeline_entry_id=p.id ORDER BY a.created_at DESC LIMIT 20) recent), '[]'::jsonb) activities
+                   FROM pipeline_entries p JOIN consumers c
                    ON c.organization_id=p.organization_id AND c.id=p.consumer_id
                    WHERE p.organization_id=%s AND c.lifecycle_status='active'
                      AND c.consent_status NOT IN ('revoked','opted_out')
@@ -297,4 +303,5 @@ class PostgresRepository:
                 consumer[key] = hunter[key]
         return {"id": str(row["id"]), "consumer": consumer,
             "stage": row["stage"], "next_action": row["next_action"],
+            "next_action_at": _iso(row.get("next_action_at")), "activities": row.get("activities") or [],
             "version": row["version"], "updated_at": _iso(row["updated_at"])}

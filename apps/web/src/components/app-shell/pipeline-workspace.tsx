@@ -67,7 +67,8 @@ export function PipelineWorkspace({ initialEntries, initialError = "" }: { initi
               <Link className="block break-words font-semibold leading-5 hover:text-primary" href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`}>{entry.consumer.display_name}</Link>
               {entry.consumer.instagram_username && <p className="mt-1 text-xs text-muted-foreground">@{entry.consumer.instagram_username}</p>}
               <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{entry.next_action || "Revisar contato e definir próxima ação."}</p>
-              <div className="mt-3"><LeadContactActions consumer={entry.consumer} /></div>
+              {entry.next_action_at ? <p className="mt-1 text-[11px] font-medium text-primary">Follow-up: {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(entry.next_action_at))}</p> : null}
+              <div className="mt-3"><LeadContactActions entry={entry} onRecorded={refresh} /></div>
               <div className="mt-4 border-t pt-3"><Select disabled={loading || saving.includes(entry.id)} value={entry.stage} onValueChange={(value) => void move(entry, value as PipelineStage)}><SelectTrigger className="h-9 w-full text-xs" aria-label={`Etapa de ${entry.consumer.display_name}`}><SelectValue /></SelectTrigger><SelectContent>{pipelineStages.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
             </article>) : <p className="py-7 text-center text-xs text-muted-foreground">Nenhum lead nesta etapa</p>}</div>
           </section>
