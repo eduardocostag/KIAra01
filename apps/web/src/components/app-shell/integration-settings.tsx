@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { CheckCircle2, ExternalLink, KeyRound, Loader2, ShieldCheck } from "lucide-react"
+import { BarChart3, CheckCircle2, ExternalLink, KeyRound, Loader2, MessageCircle, ShieldCheck } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -60,22 +60,22 @@ export function IntegrationSettings() {
     finally { setSaving(null) }
   }
 
-  return <Card>
-    <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="size-5 text-primary" />Central de credenciais do cliente</CardTitle><p className="text-sm text-muted-foreground">Configure cada canal com dados da sua própria conta. Senhas pessoais nunca são solicitadas.</p></CardHeader>
-    <CardContent className="space-y-5">
+  return <Card className="overflow-hidden shadow-sm">
+    <CardHeader className="border-b bg-muted/20 px-5 py-5 sm:px-7"><CardTitle className="flex items-center gap-2"><KeyRound className="size-5 text-primary" />Credenciais e contas</CardTitle><p className="max-w-2xl text-sm leading-6 text-muted-foreground">Escolha um canal e informe os dados gerados na plataforma correspondente. A Kiara nunca solicita sua senha pessoal.</p></CardHeader>
+    <CardContent className="space-y-5 p-5 sm:p-7">
       {message && <Alert variant={message.type === "error" ? "destructive" : "default"}><ShieldCheck className="size-4" /><AlertTitle>{message.type === "ok" ? "Configuração salva" : "Revise os dados"}</AlertTitle><AlertDescription>{message.text}</AlertDescription></Alert>}
-      <Tabs defaultValue="google">
-        <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="google">Google Growth</TabsTrigger><TabsTrigger value="instagram">Instagram</TabsTrigger></TabsList>
+      <Tabs defaultValue="google" className="w-full min-w-0 flex-col gap-5">
+        <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl p-1.5 sm:max-w-md"><TabsTrigger className="min-h-10 rounded-lg px-3" value="google"><BarChart3 className="size-4" />Google Growth</TabsTrigger><TabsTrigger className="min-h-10 rounded-lg px-3" value="instagram"><MessageCircle className="size-4" />Instagram</TabsTrigger></TabsList>
         {(["google", "instagram"] as Provider[]).map(provider => {
           const status = statuses.find(item => item.provider === provider)
-          return <TabsContent value={provider} key={provider} className="mt-5">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
-              <div><p className="font-medium">{provider === "google" ? "Google Ads, GA4 e Data Manager" : "Instagram Messaging"}</p><p className="mt-1 text-xs text-muted-foreground">{help[provider].text}</p></div>
+          return <TabsContent value={provider} key={provider} className="m-0 min-w-0">
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-muted/25 p-4 sm:p-5">
+              <div className="max-w-2xl"><p className="font-semibold">{provider === "google" ? "Google Ads, Analytics e Data Manager" : "Instagram profissional"}</p><p className="mt-1.5 text-xs leading-5 text-muted-foreground">{help[provider].text}</p></div>
               <Badge variant={status ? "secondary" : "outline"}>{status ? "Configurado" : "Aguardando dados"}</Badge>
             </div>
             <form className="space-y-5" onSubmit={event => { event.preventDefault(); void save(provider, event.currentTarget) }} autoComplete="off">
-              <div className="grid gap-4 md:grid-cols-2">{fields[provider].map(field => <div className="grid gap-2" key={field.name}><Label htmlFor={`${provider}-${field.name}`}>{field.label}{field.required ? " *" : ""}</Label><Input id={`${provider}-${field.name}`} name={field.name} type={field.secret ? "password" : "text"} required={field.required} placeholder={status?.configured_fields.includes(field.name) ? "Já configurado — digite para substituir" : field.placeholder} autoComplete="new-password" /></div>)}</div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4"><Button asChild type="button" variant="outline"><a href={help[provider].href} target="_blank" rel="noreferrer">Como gerar meus dados <ExternalLink className="size-4" /></a></Button><Button type="submit" disabled={saving !== null}>{saving === provider ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}Salvar configuração</Button></div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">{fields[provider].map(field => <div className="grid min-w-0 gap-2" key={field.name}><Label className="text-xs font-medium" htmlFor={`${provider}-${field.name}`}>{field.label}{field.required ? <span className="text-primary"> *</span> : <span className="font-normal text-muted-foreground"> · opcional</span>}</Label><Input className="h-11 min-w-0" id={`${provider}-${field.name}`} name={field.name} type={field.secret ? "password" : "text"} required={field.required} placeholder={status?.configured_fields.includes(field.name) ? "Já configurado — digite para substituir" : field.placeholder} autoComplete="new-password" /></div>)}</div>
+              <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><Button asChild type="button" variant="outline"><a href={help[provider].href} target="_blank" rel="noreferrer">Como gerar meus dados <ExternalLink className="size-4" /></a></Button><Button className="sm:min-w-48" type="submit" disabled={saving !== null}>{saving === provider ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}Salvar e preparar conexão</Button></div>
             </form>
           </TabsContent>
         })}
