@@ -212,9 +212,11 @@ class PostgresRepository:
         async with self._transaction(organization_id) as connection:
             rows = await (await connection.execute(
                 """SELECT p.id,p.stage,p.next_action,p.version,p.updated_at,c.id consumer_id,
-                          c.display_name,c.instagram_username FROM pipeline_entries p JOIN consumers c
+                          c.display_name,c.instagram_username,c.attributes FROM pipeline_entries p JOIN consumers c
                    ON c.organization_id=p.organization_id AND c.id=p.consumer_id
-                   WHERE p.organization_id=%s ORDER BY p.updated_at DESC""", (organization_uuid,)
+                   WHERE p.organization_id=%s AND c.lifecycle_status='active'
+                     AND c.consent_status NOT IN ('revoked','opted_out')
+                   ORDER BY p.updated_at DESC""", (organization_uuid,)
             )).fetchall()
         return [self._pipeline(row) for row in rows]
 
@@ -244,7 +246,7 @@ class PostgresRepository:
                 values,
             )).fetchone()
             consumer = await (await connection.execute(
-                "SELECT display_name,instagram_username FROM consumers WHERE organization_id=%s AND id=%s",
+                "SELECT display_name,instagram_username,attributes FROM consumers WHERE organization_id=%s AND id=%s",
                 (organization_uuid, row["consumer_id"]),
             )).fetchone()
             row.update(consumer)
@@ -284,8 +286,15 @@ class PostgresRepository:
             "updated_at": _iso(row["updated_at"]), "version": 1}
 
     def _pipeline(self, row: dict[str, Any]) -> dict[str, Any]:
-        return {"id": str(row["id"]), "consumer": {"id": str(row["consumer_id"]),
-            "display_name": row["display_name"] or "Lead do Instagram",
-            "instagram_username": row["instagram_username"] or "instagram"},
+        hunter = (row.get("attributes") or {}).get("hunter") or {}
+        consumer = {"id": str(row["consumer_id"]),
+                    "display_name": row["display_name"] or "Contato sem nome",
+                    "instagram_username": row["instagram_username"] or None}
+        for key in ("phone", "whatsapp_url", "source_url", "source", "website_status",
+                    "website_url", "research_query", "search_id", "location", "address",
+                    "website_evidence", "criterion_status"):
+            if isinstance(hunter.get(key), str):
+                consumer[key] = hunter[key]
+        return {"id": str(row["id"]), "consumer": consumer,
             "stage": row["stage"], "next_action": row["next_action"],
             "version": row["version"], "updated_at": _iso(row["updated_at"])}

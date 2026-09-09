@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from urllib.parse import quote, urlsplit
 from dataclasses import dataclass
@@ -16,9 +17,16 @@ from .adapters.postgres import PostgresRepository, _iso, _uuid
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
+from .hunter_crm import sync_hunter_results
+from .hunter_research import (clean_summary, extract_contacts, filter_results, maps_detail_result,
+                              normalize_result, research_options, safe_public_url)
 
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "linkedin"}
 DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "linkedin": "linkedin.com"}
+SOURCE_TIMEOUT_SECONDS = 130
+ENRICHMENT_TIMEOUT_SECONDS = 25
+SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "linkedin": "LinkedIn"}
+logger = logging.getLogger(__name__)
 
 
 class SearchCreate(BaseModel):
@@ -29,6 +37,8 @@ class SearchCreate(BaseModel):
     result_limit: int = Field(default=10, ge=1, le=20)
     research_mode: Literal["broad", "focused"] = "broad"
     objective: str = Field(default="", max_length=500)
+    website_filter: Literal["any", "without_website", "with_website"] = "any"
+    contact_filter: Literal["any", "phone", "whatsapp"] = "any"
 
     @field_validator("query", "objective", "location", mode="before")
     @classmethod
@@ -57,6 +67,7 @@ class HunterRepository:
 
     async def create(self, context: RequestContext, payload: SearchCreate) -> dict[str, Any]:
         org, user = _uuid("organization", context.organization_id), _uuid("user", context.user_id)
+        filters = research_options(payload.model_dump())
         async with self.database._transaction(context.organization_id) as connection:
             await connection.execute(
                 "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
@@ -74,6 +85,7 @@ class HunterRepository:
                 (org, user, row["id"], context.correlation_id, json.dumps({
                     "sources": payload.sources, "research_mode": payload.research_mode,
                     "objective": payload.objective if payload.research_mode == "focused" else "",
+                    "website_filter": filters["website_filter"], "contact_filter": filters["contact_filter"],
                 })),
             )
             await self._attach_options(connection, org, row)
@@ -91,10 +103,12 @@ class HunterRepository:
             )).fetchall() if searches else []
             if searches:
                 options = await (await connection.execute(
-                    "SELECT resource_id,metadata FROM audit_events WHERE organization_id=%s AND action='hunter.search.requested' AND resource_id=ANY(%s)",
+                    "SELECT resource_id,metadata FROM audit_events WHERE organization_id=%s AND action IN ('hunter.search.requested','hunter.search.finished') AND resource_id=ANY(%s) ORDER BY occurred_at",
                     (org, [row["id"] for row in searches]),
                 )).fetchall()
-                by_id = {item["resource_id"]: item["metadata"] for item in options}
+                by_id: dict[UUID, dict[str, Any]] = {}
+                for item in options:
+                    by_id.setdefault(item["resource_id"], {}).update(item["metadata"])
                 for row in searches:
                     row["search_options"] = by_id.get(row["id"], {})
         grouped: dict[UUID, list[dict[str, Any]]] = {}
@@ -130,7 +144,8 @@ class HunterRepository:
             )
         return self._search(row, [])
 
-    async def finish(self, context: RequestContext, search_id: str, results: list[dict[str, Any]], error: str | None = None) -> dict[str, Any]:
+    async def finish(self, context: RequestContext, search_id: str, results: list[dict[str, Any]], error: str | None = None,
+                     *, validation: dict[str, int] | None = None, warnings: list[str] | None = None) -> dict[str, Any]:
         org, sid = _uuid("organization", context.organization_id), _uuid("hunter_search", search_id)
         async with self.database._transaction(context.organization_id) as connection:
             for result in results:
@@ -148,20 +163,32 @@ class HunterRepository:
             saved = await (await connection.execute(
                 "SELECT * FROM hunter_results WHERE organization_id=%s AND search_id=%s ORDER BY created_at,id", (org, sid)
             )).fetchall()
+            summary = {"created": 0, "existing": 0, "skipped": 0}
+            if not error:
+                summary = await sync_hunter_results(connection, org, self._search(row, []), saved)
+            outcome = {"validation": validation or {}, "warnings": warnings or [], "sync_summary": summary}
+            await connection.execute(
+                "INSERT INTO audit_events (organization_id,actor_user_id,action,resource_type,resource_id,correlation_id,metadata) VALUES (%s,%s,'hunter.search.finished','hunter_search',%s,%s,%s)",
+                (org, _uuid("user", context.user_id), sid, context.correlation_id, json.dumps(outcome)),
+            )
+            row["search_options"].update(outcome)
         return self._search(row, [self._result(item) for item in saved])
 
     @staticmethod
     async def _attach_options(connection: Any, org: UUID, row: dict[str, Any]) -> None:
-        event = await (await connection.execute(
-            "SELECT metadata FROM audit_events WHERE organization_id=%s AND resource_id=%s AND action='hunter.search.requested' ORDER BY occurred_at DESC LIMIT 1",
+        events = await (await connection.execute(
+            "SELECT metadata FROM audit_events WHERE organization_id=%s AND resource_id=%s AND action IN ('hunter.search.requested','hunter.search.finished') ORDER BY occurred_at",
             (org, row["id"]),
-        )).fetchone()
-        row["search_options"] = event["metadata"] if event else {}
+        )).fetchall()
+        row["search_options"] = {}
+        for event in events:
+            row["search_options"].update(event["metadata"])
 
     @staticmethod
     def _result(row: dict[str, Any]) -> dict[str, Any]:
-        return {"id": str(row["id"]), "source": row["source"], "title": row["title"],
-                "url": row["url"], "summary": row["summary"], "public_data": row["public_data"]}
+        normalized = normalize_result(row)
+        return {"id": str(row["id"]), "source": row["source"], "title": normalized["title"],
+                "url": row["url"], "summary": normalized["summary"], "public_data": normalized["public_data"]}
 
     @staticmethod
     def _search(row: dict[str, Any], results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -169,6 +196,10 @@ class HunterRepository:
         return {"id": str(row["id"]), "market": row["market"], "query": row["query"],
                 "research_mode": options.get("research_mode", "broad"),
                 "objective": options.get("objective", ""),
+                "website_filter": options.get("website_filter", "any"),
+                "contact_filter": options.get("contact_filter", "any"),
+                "validation": options.get("validation", {}), "warnings": options.get("warnings", []),
+                "sync_summary": options.get("sync_summary", {}),
                 "location": row["location"], "sources": row["sources"], "result_limit": row["result_limit"],
                 "status": row["status"], "confirmed_at": _iso(row["confirmed_at"]),
                 "created_at": _iso(row["created_at"]), "error_code": row["error_code"], "results": results}
@@ -201,25 +232,27 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
     if not key:
         return
     candidates = [item for item in results if item.get("source") == "web"
-                  and urlsplit(item.get("url", "")).scheme == "https"][:3]
+                  and (safe_public_url(item.get("url")) or "").startswith("https://")][:3]
 
     async def enrich(item: dict[str, Any]) -> None:
         try:
             response = await asyncio.to_thread(
                 _post_json, "https://api.firecrawl.dev/v2/scrape",
                 {"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
-                {"url": item["url"], "formats": ["markdown"], "onlyMainContent": True,
+                {"url": item["url"], "formats": ["markdown", "links"], "onlyMainContent": True,
                  "timeout": 20000},
             )
             content = (response.get("data") or {}).get("markdown")
             if response.get("success") and isinstance(content, str) and content.strip():
-                item["public_data"] = {"enrichment": "completed", "provider": "firecrawl",
-                                       "source_url": item["url"], "content": content[:12000]}
-                item["summary"] = content[:1500]
+                contacts = extract_contacts(content[:40000], (response.get("data") or {}).get("links") or [])
+                item.setdefault("public_data", {}).update({
+                    "enrichment": "completed", "provider": "firecrawl", "source_url": item["url"], **contacts,
+                })
+                item["summary"] = clean_summary(content)
             else:
-                item["public_data"] = {"enrichment": "unavailable"}
+                item.setdefault("public_data", {})["enrichment"] = "unavailable"
         except Exception:
-            item["public_data"] = {"enrichment": "unavailable"}
+            item.setdefault("public_data", {})["enrichment"] = "unavailable"
 
     await asyncio.gather(*(enrich(item) for item in candidates))
 
@@ -227,36 +260,169 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     try:
         from browserbase import Browserbase
-        from playwright.async_api import async_playwright
+        import playwright.async_api  # noqa: F401 — check optional dependency before creating a paid session
     except ImportError as exc:
         raise RuntimeError("browser_provider_unavailable") from exc
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
     if not key or not project:
         raise RuntimeError("browserbase_not_configured")
-    session = await asyncio.to_thread(Browserbase(api_key=key).sessions.create, project_id=project)
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.connect_over_cdp(session.connect_url)
-        page = browser.contexts[0].pages[0]
-        await page.goto(f"https://www.google.com/maps/search/{quote(query, safe='')}", wait_until="domcontentloaded", timeout=45_000)
+    client = Browserbase(api_key=key, timeout=10, max_retries=0)
+    session = await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
+    try:
+        return await _read_maps_session(session, query, limit)
+    finally:
         try:
-            await page.wait_for_selector('a[href*="/maps/place/"]', timeout=15_000)
+            await asyncio.wait_for(asyncio.to_thread(client.sessions.update, session.id,
+                project_id=project, status="REQUEST_RELEASE", timeout=4), timeout=5)
         except Exception:
-            pass
-        items = await page.locator('a[href*="/maps/place/"]').evaluate_all(
-            "els => [...new Map(els.map(e => [e.href, {title: e.getAttribute('aria-label') || e.textContent.trim(), url: e.href}])).values()]"
-        )
-        await browser.close()
-    return [{"source": "google_maps", "title": item["title"] or "Empresa no Google Maps",
-             "url": item["url"], "summary": "Perfil empresarial público no Google Maps."}
-            for item in items[:limit]]
+            pass  # Best-effort release also covers CDP connection failure.
+        client.close()
+
+
+async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[str, Any]]:
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.connect_over_cdp(session.connect_url, timeout=10_000)
+        try:
+            context = browser.contexts[0]
+            page = context.pages[0]
+            await page.goto(f"https://www.google.com/maps/search/{quote(query, safe='')}?hl=pt-BR", wait_until="domcontentloaded", timeout=25_000)
+            await page.wait_for_selector('a[href*="/maps/place/"], h1.DUwDvf, [role="feed"], [role="main"]', timeout=8_000)
+            # Allow the business list, not just the Maps application shell, to load.
+            try:
+                await page.wait_for_selector('a[href*="/maps/place/"], h1.DUwDvf', timeout=6_000)
+            except Exception:
+                if await page.locator('[role="feed"]').count() == 0:
+                    raise RuntimeError("maps_results_unavailable")
+            items = await page.locator('a[href*="/maps/place/"]').evaluate_all(
+                "els => [...new Map(els.map(e => [e.href, {title: e.getAttribute('aria-label') || e.textContent.trim(), url: e.href}])).values()]"
+            )
+            if not items and await page.locator('h1.DUwDvf').count():
+                items = [{"title": await page.locator('h1.DUwDvf').first.inner_text(), "url": page.url}]
+            items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, 30)]
+            slots = asyncio.Semaphore(3)
+
+            async def inspect(item: dict[str, Any]) -> dict[str, Any]:
+                async with slots:
+                    detail_page = await context.new_page()
+                    try:
+                        await detail_page.goto(item["url"], wait_until="domcontentloaded", timeout=10_000)
+                        await detail_page.wait_for_function("""() => {
+                            const heading = document.querySelector('h1.DUwDvf') || document.querySelector('[role="main"] h1');
+                            const panel = heading?.closest('[role="main"]');
+                            return panel && panel.querySelector('[data-item-id="address"], [data-item-id^="phone:"], a[data-item-id="authority"]')
+                                && !panel.querySelector('[role="progressbar"]');
+                        }""", timeout=5_000)
+                        detail = await detail_page.evaluate(MAPS_DETAIL_SCRIPT)
+                        return maps_detail_result(item, detail)
+                    except Exception:
+                        return maps_detail_result(item, {})
+                    finally:
+                        await detail_page.close()
+
+            tasks = [asyncio.create_task(inspect(item)) for item in items]
+            if not tasks:
+                return []
+            done, pending = await asyncio.wait(tasks, timeout=50)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            return [task.result() if task in done and not task.cancelled() and task.exception() is None
+                    else maps_detail_result(item, {}) for item, task in zip(items, tasks)]
+        finally:
+            try:
+                await asyncio.wait_for(browser.close(), timeout=5)
+            except Exception:
+                logger.warning("hunter.maps.browser_cleanup_failed")
+
+
+MAPS_DETAIL_SCRIPT = """() => {
+    const heading = document.querySelector('h1.DUwDvf') || document.querySelector('[role="main"] h1');
+    const panel = heading?.closest('[role="main"]');
+    if (!panel) return {};
+    const website = panel.querySelector('a[data-item-id="authority"]');
+    const websiteButton = panel.querySelector('[data-item-id="authority"], [aria-label^="Website:"], [aria-label^="Site:"]');
+    const phone = panel.querySelector('[data-item-id^="phone:"], a[href^="tel:"]');
+    const address = panel.querySelector('[data-item-id="address"]');
+    return {
+        title: heading.textContent.trim(),
+        loaded: !!(address || phone || website),
+        website: website?.href || null,
+        website_button: !!websiteButton,
+        phone: phone?.getAttribute('href') || phone?.getAttribute('aria-label') || phone?.textContent || null,
+        address: (address?.getAttribute('aria-label') || address?.textContent || '').replace(/^(?:Address|Endereço):\\s*/i, ''),
+        category: panel.querySelector('button[jsaction*="category"]')?.textContent || '',
+        links: [...panel.querySelectorAll('a[href]')].map(a => a.href),
+    };
+}"""
 
 
 def research_query(search: dict[str, Any]) -> str:
-    base = " ".join(filter(None, [search["query"], search.get("location")]))
-    objective = search.get("objective", "").strip()
-    if search.get("research_mode") == "focused" and objective:
+    options = research_options(search)
+    base = " ".join(filter(None, [options["provider_query"], search.get("location")]))
+    objective = options["remaining_objective"]
+    if objective:
         return f"{base}. Critério de interesse: {objective}"
     return base
+
+
+async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
+    """Bound provider work, retain partial successes, then apply hard filters."""
+    options = research_options(search)
+    query = research_query(search)
+    strict = options["website_filter"] != "any" or options["contact_filter"] != "any"
+    # Filter after recall: never spend the user's result allowance on rejects.
+    per_source = min(30, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
+    tasks = {source: asyncio.create_task(maps_search(query, per_source) if source == "google_maps"
+                                        else exa_search(query, source, per_source)) for source in search["sources"]}
+    _, pending = await asyncio.wait(tasks.values(), timeout=SOURCE_TIMEOUT_SECONDS)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    candidates: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    failures: list[str] = []
+    allowed_errors = {"exa_not_configured", "browserbase_not_configured", "browser_provider_unavailable"}
+    for source, task in tasks.items():
+        if task.cancelled() or task.exception() is not None:
+            code = str(task.exception()) if not task.cancelled() else "provider_timeout"
+            failures.append(code if code in allowed_errors else "provider_error")
+            warnings.append(f"{SOURCE_LABELS[source]} não concluiu a consulta. Os resultados das outras fontes foram preservados.")
+        else:
+            batch = task.result()
+            if isinstance(batch, list) and all(isinstance(item, dict) for item in batch):
+                candidates.extend(batch)
+            else:
+                failures.append("provider_error")
+                warnings.append(f"{SOURCE_LABELS[source]} retornou dados inválidos. Os resultados das outras fontes foram preservados.")
+    # A known external website can never pass without_website. Avoid paying
+    # to crawl pages which this explicit constraint will discard anyway.
+    if options["website_filter"] != "without_website":
+        try:
+            await asyncio.wait_for(enrich_results(candidates), timeout=ENRICHMENT_TIMEOUT_SECONDS)
+        except TimeoutError:
+            warnings.append("O enriquecimento atingiu o limite de tempo; somente os contatos já encontrados foram mantidos.")
+        except Exception:
+            warnings.append("O enriquecimento não foi concluído; os resultados originais foram preservados.")
+    results, validation = filter_results(candidates, search)
+    validation["source_failures"] = len(failures)
+    results = results[:search["result_limit"]]
+    validation["accepted"] = len(results)
+    if options["website_filter"] == "without_website":
+        warnings.append("Sem site significa que o campo Site não foi informado no perfil do Google Maps inspecionado; não prova que um site não existe.")
+        if "google_maps" not in search["sources"]:
+            warnings.append("Selecione Google Maps para verificar o filtro sem site. Outras fontes sem evidência foram excluídas.")
+    if options["contact_filter"] == "whatsapp":
+        warnings.append("WhatsApp exige um link público explícito. Um número de celular isolado não confirma WhatsApp.")
+    if validation["unknown"]:
+        warnings.append(f"{validation['unknown']} candidato(s) excluído(s) por falta de evidência para os filtros solicitados.")
+    if options["unsupported_criterion"]:
+        warnings.append("O critério livre foi enviado à busca, mas não pôde ser comprovado automaticamente. Esses resultados não foram importados para o CRM.")
+    if any(item.get("public_data", {}).get("enrichment") == "unavailable" for item in candidates):
+        warnings.append("Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados.")
+    error = (failures[0] if len(set(failures)) == 1 else "provider_error") if len(failures) == len(tasks) else None
+    return {"results": results, "validation": validation, "warnings": warnings, "error": error}
 
 
 def create_hunter_router(repository: HunterRepository) -> APIRouter:
@@ -276,26 +442,13 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
                              context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:
         del request, idempotency_key
         search = await repository.claim_confirmation(context, search_id)
-        full_query = research_query(search)
-        per_source = max(1, search["result_limit"] // len(search["sources"]))
         try:
-            batches = await asyncio.gather(*[
-                maps_search(full_query, per_source) if source == "google_maps"
-                else exa_search(full_query, source, per_source)
-                for source in search["sources"]
-            ])
-            results = [item for batch in batches for item in batch][:search["result_limit"]]
-            await enrich_results(results)
-            if search.get("research_mode") == "focused" and search.get("objective"):
-                for result in results:
-                    result.setdefault("public_data", {}).update({
-                        "research_objective": search["objective"],
-                        "criterion_status": "not_verified",
-                    })
-            return await repository.finish(context, search_id, results)
+            outcome = await execute_research(search)
         except Exception as exc:
-            code = str(exc) if str(exc) in {"exa_not_configured", "browserbase_not_configured", "browser_provider_unavailable"} else "provider_error"
-            await repository.finish(context, search_id, [], code)
-            raise ApiError(502, code, "A fonte externa não concluiu a pesquisa. Tente novamente mais tarde.") from exc
+            logger.warning("hunter.research.unexpected_error", extra={"error_class": type(exc).__name__})
+            outcome = {"results": [], "error": "provider_error", "validation": {},
+                       "warnings": ["A pesquisa não pôde ser concluída. Tente novamente; nenhum contato foi inventado."]}
+        return await repository.finish(context, search_id, outcome["results"], outcome["error"],
+                                       validation=outcome["validation"], warnings=outcome["warnings"])
 
     return router

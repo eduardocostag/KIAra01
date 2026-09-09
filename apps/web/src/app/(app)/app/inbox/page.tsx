@@ -1,43 +1,15 @@
-import { AlertCircle } from "lucide-react"
-
-import { InboxWorkspace } from "@/components/app-shell/inbox-workspace"
+import { InboxHub } from "@/components/app-shell/inbox-hub"
 import { PageHeader } from "@/components/app-shell/page-header"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { getInboxDTO, KiaraApiError } from "@/lib/api/inbox"
+import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
+import { getInboxDTO } from "@/lib/api/inbox"
+import { getPipelineDTO } from "@/lib/api/pipeline-server"
 
-async function loadInbox() {
-  try {
-    return { inbox: await getInboxDTO(), correlationId: null }
-  } catch (error) {
-    return {
-      inbox: null,
-      correlationId: error instanceof KiaraApiError ? error.correlationId : crypto.randomUUID(),
-    }
-  }
-}
-
-export default async function InboxPage() {
-  const { inbox, correlationId } = await loadInbox()
-  if (inbox) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          eyebrow="Canal oficial"
-          title="Inbox do Instagram"
-          description="Qualifique conversas inbound, prepare rascunhos e mantenha aprovação e envio como etapas separadas."
-        />
-        <InboxWorkspace initialConversations={inbox.conversations} />
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-6">
-      <PageHeader eyebrow="Canal oficial" title="Inbox do Instagram" description="A Inbox real não pôde ser carregada." />
-      <Alert variant="destructive">
-        <AlertCircle />
-        <AlertTitle>Não foi possível consultar a API</AlertTitle>
-        <AlertDescription>Tente novamente em instantes. Referência: {correlationId}</AlertDescription>
-      </Alert>
-    </div>
-  )
+export default async function InboxPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const [params, inbox, pipeline] = await Promise.all([
+    searchParams,
+    getInboxDTO().then((data) => ({ conversations: data.conversations, error: "" })).catch(() => ({ conversations: [], error: "Não foi possível carregar as conversas. Use Atualizar para tentar novamente." })),
+    getPipelineDTO().then((entries) => ({ entries, error: "" })).catch(() => ({ entries: [], error: "Não foi possível carregar os contatos prospectados. Use Atualizar para tentar novamente." })),
+  ])
+  const initialView = params.view ?? (!inbox.conversations.length && pipeline.entries.length ? "contacts" : "conversations")
+  return <div className="space-y-6"><PageHeader eyebrow="Relacionamento" title="Inbox" description="Contatos prospectados e conversas reais, cada um no seu lugar." actions={<RefreshWorkspace />} /><InboxHub conversations={inbox.conversations} entries={pipeline.entries} conversationError={inbox.error} prospectError={pipeline.error} initialView={initialView} /></div>
 }

@@ -2,62 +2,70 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bell, Bot, ChevronDown, Gauge, MessageCircle as Instagram, Menu, Plug, Search, Settings, Target, UsersRound } from "lucide-react"
+import { useState } from "react"
+import { ArrowUpRight, ChevronRight, Gauge, Inbox, Menu, PanelsTopLeft, Plug, Search, Settings, ShieldCheck, Target, UsersRound } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { ThemeToggle } from "@/components/brand/theme-toggle"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 
 const nav = [
   { href: "/app", label: "Visão geral", icon: Gauge },
-  { href: "/app/inbox", label: "Inbox", icon: Instagram, badge: "3" },
   { href: "/app/hunter", label: "Hunter", icon: Target },
   { href: "/app/pipeline", label: "Pipeline", icon: UsersRound },
+  { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/integrations", label: "Integrações", icon: Plug },
 ]
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   return <nav aria-label="Navegação principal" className="space-y-1">
-    {nav.map(({ href, label, icon: Icon, badge }) => {
+    {nav.map(({ href, label, icon: Icon }) => {
       const active = href === "/app" ? pathname === href : pathname.startsWith(href)
-      return <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn("group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-[background-color,color,transform] duration-150 hover:translate-x-px", active ? "bg-brand-subtle text-brand-subtle-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
-        <Icon className="size-4" aria-hidden="true"/><span className="flex-1">{label}</span>{badge && <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", active ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground")}>{badge}</span>}
+      return <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn("group relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition-colors", active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground")}>
+        <Icon className={cn("size-4", active && "text-sidebar-primary")} aria-hidden="true" /><span className="flex-1">{label}</span>{active && <span className="size-1.5 rounded-full bg-sidebar-primary" aria-hidden="true" />}
       </Link>
     })}
   </nav>
 }
 
+function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
+  return <div className="mt-auto space-y-4 pt-8">
+    <div className="rounded-lg border border-sidebar-border bg-sidebar-foreground/3 p-3.5"><p className="flex items-center gap-2 text-xs font-medium text-sidebar-foreground"><ShieldCheck className="size-4 text-sidebar-primary" />Você mantém o controle</p><p className="mt-2 text-[11px] leading-5 text-sidebar-foreground/60">Pesquise e organize seus leads. Mensagens externas exigem sua aprovação.</p></div>
+    <Link href="/app/settings" onClick={onNavigate} className="flex min-h-11 items-center gap-3 border-t border-sidebar-border px-2 pt-3 text-xs font-medium text-sidebar-foreground/65 hover:text-sidebar-foreground"><Settings className="size-4" />Configurações<ArrowUpRight className="ml-auto size-3.5" /></Link>
+  </div>
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-muted/25 text-foreground">
-    <a href="#conteudo" className="sr-only z-50 rounded-md bg-background p-3 focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Pular para o conteúdo</a>
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-sidebar/94 p-4 shadow-[8px_0_32px_oklch(0.1_0.03_267/0.04)] backdrop-blur-xl lg:flex lg:flex-col">
-      <Link href="/app" className="mb-8 flex min-h-11 items-center gap-3 px-2" aria-label="Kiara, início">
-        <KiaraBrand />
-      </Link>
+  const [menuOpen, setMenuOpen] = useState(false)
+  const pathname = usePathname()
+  const current = nav.find((item) => item.href !== "/app" && pathname.startsWith(item.href))?.label ?? (pathname.startsWith("/app/settings") ? "Configurações" : "Visão geral")
+  return <div className="kiara-workspace min-h-screen bg-background text-foreground">
+    <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
+      <Link href="/app" className="mb-9 flex min-h-10 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
+      <p className="mb-3 px-3 text-[9px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/40">Workspace comercial</p>
       <Navigation />
-      <div className="mt-auto space-y-3">
-        <div className="rounded-xl border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground"><span className="mb-1 flex items-center gap-2 font-semibold text-foreground"><Bot className="size-4 text-primary"/>Autonomia nível 3</span>Toda mensagem externa exige aprovação humana.</div>
-        <Link href="/app/settings" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"><Settings className="size-4"/>Configurações</Link>
-      </div>
+      <SidebarFooter />
     </aside>
-    <div className="lg:pl-64">
-      <header className="app-shell-header sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-background/82 px-4 backdrop-blur-xl sm:px-6">
-        <Sheet>
-          <SheetTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden" aria-label="Abrir menu"><Menu/></Button></SheetTrigger>
-          <SheetContent side="left" className="w-72 p-5"><SheetHeader><SheetTitle>Kiara</SheetTitle><SheetDescription>Lead Intelligence</SheetDescription></SheetHeader><div className="mt-7"><Navigation /></div></SheetContent>
+    <div className="min-w-0 lg:pl-60">
+      <header className="app-shell-header sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+          <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 lg:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
+          <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground">
+            <SheetHeader className="p-0 text-left"><SheetTitle><KiaraBrand inverse /></SheetTitle><SheetDescription className="sr-only">Navegação do workspace comercial Kiara</SheetDescription></SheetHeader>
+            <div className="mt-7"><Navigation onNavigate={() => setMenuOpen(false)} /></div><SidebarFooter onNavigate={() => setMenuOpen(false)} />
+          </SheetContent>
         </Sheet>
-        <div className="relative hidden max-w-sm flex-1 md:block"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input className="h-9 pl-9" placeholder="Buscar lead ou conversa" aria-label="Buscar lead ou conversa"/></div>
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" className="hidden max-w-52 sm:flex"><span className="size-2 rounded-full bg-success"/><span className="truncate">Studio Aurora</span><ChevronDown/></Button>
-          <ThemeToggle />
-          <Button variant="ghost" size="icon" aria-label="Notificações"><Bell/></Button>
-          <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary" aria-label="Usuário Eduardo">EG</div>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><PanelsTopLeft className="hidden size-4 sm:block" aria-hidden="true" /><span className="hidden sm:inline">Workspace</span><ChevronRight className="hidden size-3 sm:block" aria-hidden="true" /><span className="truncate font-medium text-foreground">{current}</span></div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button asChild variant="ghost" className="hidden h-9 gap-2 text-xs sm:inline-flex"><Link href="/app/hunter"><Search className="size-3.5" />Pesquisar leads</Link></Button>
+          <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" /><ThemeToggle />
+          <Button asChild variant="outline" size="icon" className="size-9 rounded-lg"><Link href="/app/settings" aria-label="Configurações do workspace"><Settings className="size-4" /></Link></Button>
         </div>
       </header>
-      <main id="conteudo" className="mx-auto w-full max-w-[1680px] p-4 sm:p-6 lg:p-8">{children}</main>
+      <main id="conteudo" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-[1600px] p-4 outline-none sm:p-6 lg:p-8">{children}</main>
     </div>
   </div>
 }

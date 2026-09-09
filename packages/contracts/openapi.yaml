@@ -265,7 +265,19 @@ components:
       properties:
         id: { $ref: "#/components/schemas/OpaqueId" }
         display_name: { type: string, maxLength: 120 }
-        instagram_username: { type: string, maxLength: 64 }
+        instagram_username: { type: [string, "null"], maxLength: 64 }
+        phone: { type: [string, "null"] }
+        whatsapp_url: { type: [string, "null"], format: uri }
+        source_url: { type: [string, "null"], format: uri }
+        source: { type: [string, "null"] }
+        website_status: { type: [string, "null"] }
+        website_url: { type: [string, "null"], format: uri }
+        address: { type: [string, "null"] }
+        research_query: { type: [string, "null"] }
+        search_id: { type: [string, "null"] }
+        location: { type: [string, "null"] }
+        website_evidence: { type: [string, "null"] }
+        criterion_status: { type: [string, "null"] }
     ThreadSummary:
       type: object
       additionalProperties: false
