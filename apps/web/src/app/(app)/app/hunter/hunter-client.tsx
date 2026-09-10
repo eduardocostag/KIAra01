@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BriefcaseBusiness, Check, ChevronRight, Globe2, Loader2, MapPinned, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
+import { BriefcaseBusiness, Check, ChevronRight, Globe2, Loader2, MapPinned, Radar, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { HunterResults } from "./hunter-results"
+import { KiaraOrb } from "@/components/brand/kiara-orb"
 import { inferredWebsiteFilter, parseHunterHistory, parseHunterJob, requestHunter, type ContactFilter, type WebsiteFilter, type HunterSource as Source, type HunterJob as Job } from "@/lib/api/hunter-client"
 import { cn } from "@/lib/utils"
 import styles from "./hunter.module.css"
@@ -104,12 +105,24 @@ export function HunterClient() {
   }
 
   return <div className={styles.workspace}>
-    <Card className="gap-0 self-start py-0 shadow-none ring-1 ring-border">
-      <CardHeader className="border-b p-5">
+    <section className={styles.hero} aria-labelledby="hunter-title">
+      <div className={styles.heroCopy}>
+        <span className={styles.eyebrow}><Radar aria-hidden="true" /> KIARA HUNTER · INTELIGÊNCIA DE PROSPECÇÃO</span>
+        <h2 id="hunter-title">Encontre o próximo cliente<br /><em>antes da concorrência.</em></h2>
+        <p>Descreva o público ideal. A Kiara cruza sinais públicos, valida os critérios e entrega oportunidades prontas para ação.</p>
+        <div className={styles.heroSignals} aria-label="Recursos da pesquisa">
+          <span><Check /> Dados verificados</span><span><Check /> CRM automático</span><span><ShieldCheck /> Sem mensagens automáticas</span>
+        </div>
+      </div>
+      <div className={styles.orbStage}><span className={styles.orbHalo} /><KiaraOrb size="lg" active /><span className={styles.orbStatus}>Hunter online</span></div>
+    </section>
+
+    <Card className={cn(styles.searchPanel, "gap-0 self-start py-0 shadow-none")}>
+      <CardHeader className={cn(styles.panelHeader, "border-b p-5")}>
         <div className="flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" aria-hidden="true" /><CardTitle className="text-sm font-semibold">Configurar pesquisa</CardTitle></div>
         <p className="mt-1 text-xs text-muted-foreground">Defina seu público. A Kiara verifica as fontes.</p>
       </CardHeader>
-      <CardContent className="p-5">
+      <CardContent className={cn(styles.panelContent, "p-5")}>
         <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); if (query.trim().length >= 2 && effectiveSources.length && !busy) setReview(true) }}>
           <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
             <div className="space-y-2">
@@ -161,13 +174,13 @@ export function HunterClient() {
             </fieldset>
           </fieldset>
           {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{error}</p>}
-          <Button type="submit" className="h-11 w-full gap-2" disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
+          <Button type="submit" className={cn(styles.searchButton, "h-12 w-full gap-2")} disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
           <p className="text-center text-[11px] leading-4 text-muted-foreground">Leads aprovados entram no CRM. Nenhuma mensagem é enviada.</p>
         </form>
       </CardContent>
     </Card>
 
-    <div ref={resultsPanel} tabIndex={-1} aria-label="Acompanhamento e resultados da pesquisa" className="min-w-0 scroll-mt-20 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <div ref={resultsPanel} tabIndex={-1} aria-label="Acompanhamento e resultados da pesquisa" className={cn(styles.resultsPanel, "min-w-0 scroll-mt-20 outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
       <HunterResults jobs={jobs} selected={latest} busy={busy} loading={loading} stage={stage} error={error} onRefresh={() => void load()} onSelect={setSelectedId} onBroaden={broaden} />
     </div>
 

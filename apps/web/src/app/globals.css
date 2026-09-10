@@ -263,6 +263,43 @@ body:has(> [role="status"]) .app-shell-header {
 .kiara-copilot-stage { background: radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--brand-subtle) 85%, white), transparent 17rem), var(--card); }
 @keyframes kiara-float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
 
+.kiara-workspace {
+  position: relative;
+  isolation: isolate;
+  background-image: linear-gradient(to right, color-mix(in oklch, var(--border) 34%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklch, var(--border) 28%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-attachment: fixed;
+}
+.kiara-workspace::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 4rem 0 auto 13rem;
+  height: 28rem;
+  pointer-events: none;
+  background: radial-gradient(circle at 55% 0, color-mix(in oklch, var(--primary) 10%, transparent), transparent 60%);
+}
+.kiara-sidebar { box-shadow: 18px 0 70px rgb(12 8 24 / .15); }
+.kiara-sidebar::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 4%, rgb(133 82 255 / .13), transparent 18rem); }
+.kiara-sidebar > * { position: relative; z-index: 1; }
+.kiara-workspace main > div { animation: kiara-enter .42s var(--ease-out) both; }
+.kiara-workspace button, .kiara-workspace a { -webkit-tap-highlight-color: transparent; }
+@keyframes kiara-enter { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+
+.dark .kiara-soft-panel {
+  background: color-mix(in oklch, var(--card) 94%, var(--primary));
+  border-color: color-mix(in oklch, var(--primary) 14%, var(--border));
+  box-shadow: 0 24px 70px rgb(0 0 0 / .22), inset 0 1px rgb(255 255 255 / .035);
+}
+.dark .kiara-copilot-stage { background: radial-gradient(circle at 50% 32%, color-mix(in oklch, var(--primary) 15%, transparent), transparent 18rem), var(--card); }
+
+.inbox-premium > [role="tablist"] { min-height: 3rem; border-radius: 1rem; padding: .35rem; background: var(--card); box-shadow: var(--shadow-1); border: 1px solid var(--border); }
+.inbox-premium [role="tabpanel"] > .divide-y { display: grid; gap: .75rem; border: 0; background: transparent; overflow: visible; }
+.inbox-premium [role="tabpanel"] > .divide-y > article { border: 1px solid var(--border); border-radius: 1.25rem; background: var(--card); box-shadow: var(--shadow-1); transition: transform var(--motion-standard) var(--ease-out), box-shadow var(--motion-standard) var(--ease-out); }
+.inbox-premium [role="tabpanel"] > .divide-y > article:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+@media (min-width: 768px) { .inbox-premium [role="tabpanel"] > .divide-y { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .inbox-premium [role="tabpanel"] > .divide-y { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
 .signal-edge {
   box-shadow: inset 3px 0 var(--primary);
   background: color-mix(in oklch, var(--brand-subtle) 70%, transparent);

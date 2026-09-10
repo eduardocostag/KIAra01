@@ -23,7 +23,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   return <nav aria-label="Navegação principal" className="space-y-1">
     {nav.map(({ href, label, icon: Icon }) => {
       const active = href === "/app" ? pathname === href : pathname.startsWith(href)
-      return <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn("group relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition-colors", active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground")}>
+      return <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn("group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-200", active ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_rgb(255_255_255/.06),0_8px_24px_rgb(91_47_190/.16)]" : "text-sidebar-foreground/55 hover:translate-x-0.5 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground")}>
         <Icon className={cn("size-4", active && "text-sidebar-primary")} aria-hidden="true" /><span className="flex-1">{label}</span>{active && <span className="size-1.5 rounded-full bg-sidebar-primary" aria-hidden="true" />}
       </Link>
     })}
@@ -43,14 +43,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = nav.find((item) => item.href !== "/app" && pathname.startsWith(item.href))?.label ?? (pathname.startsWith("/app/settings") ? "Configurações" : "Visão geral")
   return <div className="kiara-workspace min-h-screen bg-background text-foreground">
     <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-52 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
+    <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-52 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
       <Link href="/app" className="mb-9 flex min-h-10 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
       <p className="mb-3 px-3 text-[9px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/40">Workspace comercial</p>
       <Navigation />
       <SidebarFooter />
     </aside>
     <div className="min-w-0 lg:pl-52">
-      <header className="app-shell-header sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
+      <header className="app-shell-header sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-background/78 px-4 backdrop-blur-xl sm:px-6 lg:px-10">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 lg:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
           <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground">
@@ -65,7 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Button asChild variant="outline" size="icon" className="size-9 rounded-lg"><Link href="/app/settings" aria-label="Configurações do workspace"><Settings className="size-4" /></Link></Button>
         </div>
       </header>
-      <main id="conteudo" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-[1540px] p-4 outline-none sm:p-7 lg:p-10">{children}</main>
+      <main id="conteudo" tabIndex={-1} className="relative mx-auto w-full min-w-0 max-w-[1540px] p-4 outline-none sm:p-7 lg:p-10">{children}</main>
     </div>
   </div>
 }

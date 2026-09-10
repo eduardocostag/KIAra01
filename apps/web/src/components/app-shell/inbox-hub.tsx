@@ -17,7 +17,7 @@ export function InboxHub({ conversations, entries, conversationError, prospectEr
   const [query, setQuery] = useState("")
   const contacts = entries.filter((entry) => !["won", "lost"].includes(entry.stage))
   const filtered = contacts.filter((entry) => `${entry.consumer.display_name} ${entry.consumer.phone ?? ""}`.toLowerCase().includes(query.toLowerCase()))
-  return <Tabs defaultValue={initialView === "contacts" ? "contacts" : "conversations"} className="gap-5">
+  return <Tabs defaultValue={initialView === "contacts" ? "contacts" : "conversations"} className="inbox-premium gap-5">
     <TabsList className="h-11 w-full sm:w-fit"><TabsTrigger value="conversations" className="px-4"><MessageCircle />Conversas <span className="ml-1 text-xs tabular-nums">{conversationError ? "—" : conversations.length}</span></TabsTrigger><TabsTrigger value="contacts" className="px-4"><Users />Prospectados <span className="ml-1 text-xs tabular-nums">{prospectError ? "—" : contacts.length}</span></TabsTrigger></TabsList>
     <TabsContent value="conversations">
       {conversationError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{conversationError}</div> : <InboxWorkspace initialConversations={conversations} />}
