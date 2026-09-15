@@ -163,7 +163,6 @@ export function HunterClient() {
           </fieldset>
           {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{error}</p>}
           <Button type="submit" className={cn(styles.searchButton, "h-12 w-full gap-2")} disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
-          <p className="text-center text-[11px] leading-4 text-muted-foreground">Leads aprovados entram no CRM. Nenhuma mensagem é enviada.</p>
         </form>
       </CardContent>
     </Card>
