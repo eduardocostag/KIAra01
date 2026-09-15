@@ -104,7 +104,10 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
 
 def _skip_reason(search: dict[str, Any], result: dict[str, Any]) -> str | None:
     options = search.get("search_options") or search
-    status = (result.get("public_data") or {}).get("criterion_status")
+    data = result.get("public_data") or {}
+    if result.get("source") == "instagram" and data.get("content_kind") == "publication":
+        return "publication_not_contact"
+    status = data.get("criterion_status")
     if status in {"rejected", "not_matched"}:
         return "criterion_not_matched"
     if status in {"not_verified", "unverified"}:

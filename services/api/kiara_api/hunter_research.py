@@ -205,6 +205,9 @@ def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
         segments = parts.path.strip("/").split("/") if parts else []
         if host == "instagram.com" and len(segments) == 1 and re.fullmatch(r"[A-Za-z0-9_.]{1,30}", segments[0]):
             data["profile_handle"] = segments[0]
+            data["content_kind"] = "profile"
+        elif host == "instagram.com" and len(segments) == 2 and segments[0].lower() in {"p", "reel", "tv"}:
+            data["content_kind"] = "publication"
     text = " ".join(str(value or "") for value in (data.pop("content", None), item.get("summary")))
     # User notes are not a verified source of public contact information.
     contacts = {"phone": None, "whatsapp_url": None, "email": None} if data.get("manual_import") else extract_contacts(text)
@@ -236,8 +239,13 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
         return True
     path = urlsplit(url).path.lower()
     if item.get("source") == "instagram":
+        if (urlsplit(url).hostname or "").lower().removeprefix("www.") != "instagram.com":
+            return True
         segments = path.strip("/").split("/")
-        return len(segments) != 1 or segments[0] in {"", "p", "reel", "reels", "explore", "stories", "accounts", "direct"}
+        if len(segments) == 1 and re.fullmatch(r"[a-z0-9_.]{1,30}", segments[0]) and segments[0] not in {"p", "reel", "reels", "explore", "stories", "accounts", "direct", "about"}:
+            return False
+        return not (len(segments) == 2 and segments[0] in {"p", "reel", "tv"}
+                    and re.fullmatch(r"[a-z0-9_-]{5,80}", segments[1]))
     if item.get("source") == "linkedin":
         return not re.match(r"^/(?:in|company|school)/[^/]+", path)
     if item.get("source") == "web":
@@ -284,7 +292,7 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             counts["unknown"] += int(unknown and not rejected)
             continue
         seen.add(data["source_url"])
-        data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] or (item["source"] == "instagram" and data.get("bio_status") != "verified_public_profile") else
+        data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] or (item["source"] == "instagram" and (data.get("content_kind") == "publication" or data.get("bio_status") != "verified_public_profile" or not data.get("bio_niche_evidence") or (search.get("location") and not data.get("bio_location_evidence")))) else
                                     "verified" if website != "any" or contact != "any" or options["email_filter"] != "any" or options["website_quality_filter"] != "any" else "not_requested")
         reasons = []
         if website == "without_website": reasons.append("Site não informado no perfil inspecionado")

@@ -70,13 +70,42 @@ def test_manual_profile_notes_do_not_become_public_contact_evidence():
     assert normalized["public_data"]["whatsapp_url"] is None
 
 
-def test_instagram_profile_requires_niche_and_place_in_public_bio():
+def test_instagram_profile_kept_with_unverified_location_evidence():
     search = {"query": "dentistas", "location": "Porto Alegre", "sources": ["instagram"], "market": "b2c"}
     matched = {"source": "instagram", "url": "https://www.instagram.com/clinica_alegre/",
                "summary": "Clínica", "public_data": {"profile_bio": "Dentista em Porto Alegre"}}
     other_city = {**matched, "public_data": {"profile_bio": "Dentista em Curitiba"}}
     assert _instagram_profile_matches(matched, search)
-    assert not _instagram_profile_matches(other_city, search)
+    assert _instagram_profile_matches(other_city, search)
+    assert matched["public_data"]["bio_location_evidence"] is True
+    assert other_city["public_data"]["bio_location_evidence"] is False
+
+
+def test_instagram_publication_is_saved_but_not_presented_as_profile():
+    search_data = {"query": "educador fisico", "location": "Curitiba", "sources": ["instagram"]}
+    post = {"source": "instagram", "title": "Treino funcional", "url": "https://instagram.com/reel/ABC123/",
+            "summary": "Educador fisico em Curitiba"}
+    assert _instagram_profile_matches(post, search_data)
+    kept, stats = filter_results([post], search_data)
+    assert stats["accepted"] == 1
+    assert kept[0]["public_data"]["content_kind"] == "publication"
+    assert kept[0]["public_data"]["criterion_status"] == "not_verified"
+
+
+@pytest.mark.parametrize("query,location", [
+    ("restauradores de instrumentos", "Manaus"),
+    ("terapeutas ocupacionais", "Minas Gerais"),
+    ("ateliers de ceramica", "Recife"),
+])
+def test_instagram_search_keeps_arbitrary_indexed_niches_without_hardcoded_categories(query, location):
+    row = {"source": "instagram", "title": "Resultado público", "url": "https://instagram.com/perfil_publico/",
+           "summary": f"{query} em {location}"}
+    request = {"query": query, "location": location, "sources": ["instagram"]}
+    assert _instagram_profile_matches(row, request)
+    kept, stats = filter_results([row], request)
+    assert stats["accepted"] == 1
+    assert kept[0]["public_data"]["niche_evidence"] is True
+    assert kept[0]["public_data"]["location_evidence"] is True
 
 
 @pytest.mark.parametrize("query,expected", [
@@ -335,8 +364,8 @@ def test_editorial_pages_and_social_posts_are_not_crm_contacts():
         {"source": "linkedin", "title": "Empresa", "url": "https://linkedin.com/company/empresa"},
     ]
     kept, stats = filter_results(items, search("psicólogos"))
-    assert [item["title"] for item in kept] == ["Como Psicologia — Clínica", "Clínica", "Empresa"]
-    assert stats["excluded"] == 3
+    assert any(item["public_data"].get("content_kind") == "publication" for item in kept)
+    assert stats["excluded"] == 2
 
 
 def test_malformed_provider_url_does_not_strand_a_search(monkeypatch):

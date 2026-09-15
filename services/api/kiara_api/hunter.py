@@ -881,12 +881,29 @@ def research_query(search: dict[str, Any]) -> str:
 
 
 def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
+    """Keep indexed Instagram candidates; record what the public evidence actually proves."""
+    url = safe_public_url(row.get("url"))
+    parts = urlsplit(url) if url else None
+    if not parts or (parts.hostname or "").lower().removeprefix("www.") != "instagram.com":
+        return False
+    segments = parts.path.strip("/").split("/")
+    publication = len(segments) == 2 and segments[0].lower() in {"p", "reel", "tv"}
+    profile = len(segments) == 1 and _INSTAGRAM_HANDLE.fullmatch(segments[0]) and segments[0].lower() not in _INSTAGRAM_RESERVED
+    if not profile and not publication:
+        return False
     options = research_options(search)
-    text = folded(str(row.get("public_data", {}).get("profile_bio") or row.get("summary") or ""))
     niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(options["provider_query"]))
              if word not in {"para", "com", "sem", "quero", "buscar", "encontrar"}]
     place = [word for word in re.findall(r"[a-z]{4,}", folded(search.get("location") or ""))]
-    return bool(niche and all(word in text for word in niche[:3]) and all(word in text for word in place[:3]))
+    indexed = folded(" ".join(str(row.get(key) or "") for key in ("title", "summary")) + " " + (segments[0] if profile else ""))
+    bio = folded(str(row.get("public_data", {}).get("profile_bio") or ""))
+    data = row.setdefault("public_data", {})
+    data["content_kind"] = "publication" if publication else "profile"
+    data["niche_evidence"] = bool(niche and any(word in indexed or word in bio for word in niche))
+    data["location_evidence"] = bool(place and all(word in indexed or word in bio for word in place))
+    data["bio_niche_evidence"] = bool(niche and any(word in bio for word in niche))
+    data["bio_location_evidence"] = bool(place and all(word in bio for word in place))
+    return True
 
 
 async def execute_research(search: dict[str, Any]) -> dict[str, Any]:

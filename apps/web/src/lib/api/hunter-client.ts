@@ -5,6 +5,9 @@ export type HunterPublicData = {
   criterion_status?: "verified" | "not_verified" | "not_requested" | "manual_review"
   manual_import?: boolean
   profile_handle?: string
+  content_kind?: "profile" | "publication"
+  niche_evidence?: boolean
+  location_evidence?: boolean
   profile_bio?: string
   bio_status?: "verified_public_profile" | "indexed_excerpt_only"
   user_notes?: string
@@ -92,6 +95,9 @@ export function parseHunterJob(value: unknown): HunterJob {
           const data = result.public_data
           const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.email, data.whatsapp_url, data.address, data.source_url, data.lead_id, data.pipeline_entry_id, data.crm_status, data.profile_handle, data.profile_bio, data.user_notes]
           if (data.bio_status && !["verified_public_profile", "indexed_excerpt_only"].includes(data.bio_status)) return false
+          if (data.content_kind && !["profile", "publication"].includes(data.content_kind)) return false
+          if (data.niche_evidence != null && typeof data.niche_evidence !== "boolean") return false
+          if (data.location_evidence != null && typeof data.location_evidence !== "boolean") return false
           if (!textFields.every((field) => field == null || typeof field === "string")) return false
           if (data.manual_import != null && typeof data.manual_import !== "boolean") return false
           if (data.website_status && !["present", "not_listed", "unknown"].includes(data.website_status)) return false

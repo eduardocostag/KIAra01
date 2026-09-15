@@ -166,6 +166,15 @@ def test_unverified_or_rejected_criteria_are_visible_but_not_imported(mode, stat
     assert row["public_data"]["crm_status"] == "skipped"
 
 
+def test_instagram_publication_is_saved_as_research_not_crm_contact():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(source="instagram", url="https://instagram.com/p/ABC123/",
+                 public_data={"content_kind": "publication", "criterion_status": "not_requested"})
+    assert run(conn, org, search(), [row])["skipped"] == 1
+    assert row["public_data"]["crm_skip_reason"] == "publication_not_contact"
+    assert not conn.consumers and not conn.entries
+
+
 def test_observed_whatsapp_link_is_preserved_but_phone_is_not_converted():
     conn, org = MemoryConnection(), uuid4()
     row = result(public_data={"whatsapp_url": "https://wa.me/5511999990000", "phone": "+55 11 99999-0000"})
