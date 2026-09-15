@@ -23,7 +23,7 @@ export default async function DashboardPage() {
     { label: "Conversas", value: inbox.available ? inbox.conversations.length : "—", icon: MessageCircle },
     { label: "Ganhos", value: pipeline.available ? won.length : "—", icon: CheckCheck },
   ]
-  const nextHref = fresh.length ? "/app/pipeline" : "/app/hunter"
+  const nextHref = fresh.length ? "/app/inbox?view=contacts" : "/app/hunter"
   return <div className="space-y-7">
     <PageHeader eyebrow="Bom trabalho começa com clareza" title="Visão geral" description="A Kiara organiza sua operação e mostra somente o próximo movimento que importa." actions={<RefreshWorkspace />} />
     {(!pipeline.available || !inbox.available) && <div role="alert" className="rounded-2xl border border-destructive/25 bg-destructive/5 p-4 text-sm">Parte dos dados não pôde ser carregada. Os indicadores indisponíveis aparecem como “—”.</div>}

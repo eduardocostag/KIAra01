@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BriefcaseBusiness, Check, ChevronRight, Globe2, Loader2, MapPinned, Radar, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
+import { BriefcaseBusiness, Check, ChevronRight, Globe2, Loader2, MapPinned, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { HunterResults } from "./hunter-results"
-import { KiaraOrb } from "@/components/brand/kiara-orb"
 import { inferredWebsiteFilter, parseHunterHistory, parseHunterJob, requestHunter, type ContactFilter, type WebsiteFilter, type HunterSource as Source, type HunterJob as Job } from "@/lib/api/hunter-client"
 import { cn } from "@/lib/utils"
 import styles from "./hunter.module.css"
@@ -44,9 +43,6 @@ export function HunterClient() {
   const [clearReview, setClearReview] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [manualProfiles, setManualProfiles] = useState("")
-  const [importingProfiles, setImportingProfiles] = useState(false)
-  const [showInstagramImport, setShowInstagramImport] = useState(false)
   const [stage, setStage] = useState("Preparando sua pesquisa…")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
@@ -123,34 +119,8 @@ export function HunterClient() {
     finally { setClearing(false) }
   }
 
-  async function importInstagramProfiles() {
-    if (importingProfiles || !manualProfiles.trim()) return
-    setImportingProfiles(true); setError(""); setStage("Organizando perfis do Instagram…")
-    try {
-      const job = parseHunterJob(await requestHunter("/api/hunter/instagram/import", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ market, profiles: manualProfiles }),
-      }))
-      ++requestVersion.current
-      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
-      setSelectedId(job.id); setManualProfiles(""); setShowInstagramImport(false)
-      router.refresh(); focusResults()
-    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível importar os perfis.") }
-    finally { setImportingProfiles(false) }
-  }
-
   return <div className={styles.workspace}>
-    <section className={styles.hero} aria-labelledby="hunter-title">
-      <div className={styles.heroCopy}>
-        <span className={styles.eyebrow}><Radar aria-hidden="true" /> KIARA HUNTER · INTELIGÊNCIA DE PROSPECÇÃO</span>
-        <h2 id="hunter-title">Encontre o próximo cliente<br /><em>antes da concorrência.</em></h2>
-        <p>Descreva o público ideal. A Kiara cruza sinais públicos, valida os critérios e entrega oportunidades prontas para ação.</p>
-        <div className={styles.heroSignals} aria-label="Recursos da pesquisa">
-          <span><Check /> Dados verificados</span><span><Check /> CRM automático</span><span><ShieldCheck /> Sem mensagens automáticas</span>
-        </div>
-      </div>
-      <div className={styles.orbStage}><span className={styles.orbHalo} /><KiaraOrb size="lg" active /><span className={styles.orbStatus}>Hunter online</span></div>
-    </section>
+    <header className="mb-6"><h1 id="hunter-title" className="kiara-editorial text-3xl sm:text-4xl">Encontrar contatos</h1><p className="mt-1 text-sm text-muted-foreground">Defina o público e veja os resultados ao lado.</p></header>
 
     <Card className={cn(styles.searchPanel, "gap-0 self-start py-0 shadow-none")}>
       <CardHeader className={cn(styles.panelHeader, "border-b p-5")}>
@@ -205,26 +175,13 @@ export function HunterClient() {
             <fieldset className="space-y-3">
               <legend className="mb-2 text-xs font-medium text-muted-foreground">Objetivo da pesquisa</legend>
               <div className="flex gap-2">{(["broad", "focused"] as const).map((mode) => <Button type="button" key={mode} variant={researchMode === mode ? "secondary" : "ghost"} aria-pressed={researchMode === mode} onClick={() => setResearchMode(mode)} className="h-9 flex-1 text-xs">{mode === "broad" ? "Pesquisa ampla" : "Com objetivo"}</Button>)}</div>
-              {researchMode === "focused" ? <div className="space-y-2"><Label htmlFor="hunter-objective" className="sr-only">Objetivo ou critério de interesse</Label><Textarea id="hunter-objective" maxLength={500} rows={3} value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="O que torna esse lead interessante para você?" className="resize-y text-base sm:text-sm" /><p className="text-xs leading-5 text-muted-foreground">Critérios livres orientam a consulta. Resultados sem comprovação ficam para revisão, fora do pipeline.</p></div> : <p className="text-xs leading-5 text-muted-foreground">Reúne informações públicas do público escolhido, respeitando os filtros acima.</p>}
+              {researchMode === "focused" && <div className="space-y-2"><Label htmlFor="hunter-objective" className="sr-only">Objetivo ou critério de interesse</Label><Textarea id="hunter-objective" maxLength={500} rows={3} value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="O que torna esse lead interessante para você?" className="resize-y text-base sm:text-sm" /></div>}
             </fieldset>
           </fieldset>
           {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{error}</p>}
           <Button type="submit" className={cn(styles.searchButton, "h-12 w-full gap-2")} disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
           <p className="text-center text-[11px] leading-4 text-muted-foreground">Leads aprovados entram no CRM. Nenhuma mensagem é enviada.</p>
         </form>
-        <div className="mt-6 space-y-3 border-t pt-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><p className="text-sm font-semibold">Perfis do Instagram</p><p className="mt-1 text-xs text-muted-foreground">Encontrou perfis no app? Organize os @ aqui, sem conectar a conta.</p></div>
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowInstagramImport((value) => !value)} aria-expanded={showInstagramImport} aria-controls="instagram-import-form">{showInstagramImport ? "Fechar" : "Importar @"}</Button>
-          </div>
-          {showInstagramImport && <div id="instagram-import-form" className="space-y-3 rounded-xl border bg-muted/30 p-3">
-            <p className="text-xs leading-5 text-muted-foreground">Abra o <a href="https://www.instagram.com/explore/" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">Instagram em outra aba</a> ou use o celular. Cole um @ ou URL de perfil por linha. Depois de <span className="font-mono">|</span>, você pode registrar uma observação; ela não será tratada como dado verificado.</p>
-            <Label htmlFor="instagram-profiles">@ ou URLs dos perfis</Label>
-            <Textarea id="instagram-profiles" rows={5} maxLength={8000} value={manualProfiles} onChange={(event) => setManualProfiles(event.target.value)} placeholder={"@perfil1 | Bio ou observação vista no perfil\nhttps://www.instagram.com/perfil2/"} className="resize-y text-base sm:text-sm" />
-            <Button type="button" className="w-full" disabled={!manualProfiles.trim() || importingProfiles || busy} onClick={() => void importInstagramProfiles()}>{importingProfiles ? <Loader2 className="animate-spin" /> : <Users />}Organizar perfis no CRM</Button>
-            <p className="text-[11px] leading-4 text-muted-foreground">A Kiara salva somente os perfis que você forneceu. Não lê sua sessão, não extrai dados privados e não envia mensagens.</p>
-          </div>}
-        </div>
       </CardContent>
     </Card>
 
@@ -244,15 +201,14 @@ export function HunterClient() {
             {effectiveObjective && <div className="py-3"><dt className="text-xs text-muted-foreground">Objetivo para revisão</dt><dd className="mt-1 break-words">{effectiveObjective}</dd></div>}
           </dl>
           {requiresMaps && <p className="text-xs leading-5 text-muted-foreground">Perfis com site informado ou sem evidência suficiente serão excluídos. “Sem site” significa que o campo não foi encontrado no perfil inspecionado do Maps.</p>}
-          <p className="rounded-lg bg-muted p-3 text-xs leading-5 text-muted-foreground">Os resultados aceitos são salvos no pipeline e nos contatos do Inbox. Critérios não verificados exigem revisão. Esta ação não envia mensagens nem cria conversas fictícias.</p>
+          <p className="text-xs text-muted-foreground">Contatos aceitos aparecem no Inbox. Nenhuma mensagem é enviada.</p>
         </div>
         <DialogFooter><Button variant="outline" className="h-10" onClick={() => setReview(false)}>Voltar e editar</Button><Button className="h-10" disabled={busy} onClick={() => void confirm()}><Search />Confirmar e pesquisar</Button></DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={clearReview} onOpenChange={setClearReview}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Limpar resultados do Hunter?</DialogTitle><DialogDescription>As pesquisas e os resultados desta tela serão removidos. Os leads já enviados ao Pipeline e ao CRM continuarão salvos.</DialogDescription></DialogHeader>
-        <div className="rounded-xl bg-muted p-4 text-sm text-muted-foreground"><strong className="text-foreground">O Pipeline será preservado.</strong><p className="mt-1">Esta ação não exclui contatos, etapas comerciais ou atividades registradas.</p></div>
+        <DialogHeader><DialogTitle>Limpar resultados do Hunter?</DialogTitle><DialogDescription>As pesquisas desta tela serão removidas. Os contatos do Inbox continuarão salvos.</DialogDescription></DialogHeader>
         <DialogFooter><Button variant="outline" onClick={() => setClearReview(false)} disabled={clearing}>Cancelar</Button><Button variant="destructive" onClick={() => void clearHistory()} disabled={clearing}>{clearing ? <Loader2 className="animate-spin" /> : null}Limpar resultados</Button></DialogFooter>
       </DialogContent>
     </Dialog>

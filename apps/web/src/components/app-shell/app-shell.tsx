@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import { ChevronRight, Gauge, Inbox, Menu, PanelsTopLeft, Plug, Search, Settings, Target, UsersRound } from "lucide-react"
+import { ChevronRight, Gauge, Inbox, Menu, PanelsTopLeft, Plug, Search, Settings, Target } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { ThemeToggle } from "@/components/brand/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils"
 const nav = [
   { href: "/app", label: "Visão geral", icon: Gauge },
   { href: "/app/hunter", label: "Hunter", icon: Target },
-  { href: "/app/pipeline", label: "Pipeline", icon: UsersRound },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/integrations", label: "Integrações", icon: Plug },
 ]
