@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { HunterResults } from "./hunter-results"
 import { inferredWebsiteFilter, parseHunterHistory, parseHunterJob, requestHunter, type ContactFilter, type WebsiteFilter, type HunterSource as Source, type HunterJob as Job } from "@/lib/api/hunter-client"
 import { cn } from "@/lib/utils"
@@ -29,10 +28,7 @@ const HUNTER_MAX_RESULTS = 100
 
 export function HunterClient() {
   const router = useRouter()
-  const [market, setMarket] = useState<"b2c" | "b2b">("b2c")
   const [query, setQuery] = useState("")
-  const [researchMode, setResearchMode] = useState<"broad" | "focused">("broad")
-  const [objective, setObjective] = useState("")
   const [location, setLocation] = useState("")
   const [limit, setLimit] = useState(10)
   const [sources, setSources] = useState<Source[]>(["google_maps", "web"])
@@ -70,8 +66,8 @@ export function HunterClient() {
       resultsPanel.current?.scrollIntoView({ block: "start", behavior: "instant" })
     })
   }
-  const effectiveObjective = researchMode === "focused" ? objective.trim() : ""
-  const inferredWebsite = inferredWebsiteFilter(query, effectiveObjective)
+  const market = /\b(?:empresas?|negócios?|clínicas?|lojas?|agências?|restaurantes?)\b/i.test(query) ? "b2b" : "b2c"
+  const inferredWebsite = inferredWebsiteFilter(query, "")
   const effectiveWebsite = inferredWebsite !== "any" ? inferredWebsite : websiteFilter
   const requiresMaps = effectiveWebsite === "without_website"
   const effectiveSources = requiresMaps && !sources.includes("google_maps") ? [...sources, "google_maps" as Source] : sources
@@ -80,8 +76,8 @@ export function HunterClient() {
     setSources((all) => all.includes(source) ? all.filter((item) => item !== source) : [...all, source])
   }
   function broaden(job: Job) {
-    setQuery(job.query); setLocation(job.location || ""); setMarket(job.market); setSources(job.sources)
-    setResearchMode("broad"); setObjective(""); setWebsiteFilter("any"); setContactFilter("any")
+    setQuery(job.query); setLocation(job.location || ""); setSources(job.sources)
+    setWebsiteFilter("any"); setContactFilter("any")
     document.getElementById("hunter-query")?.focus()
   }
   async function confirm() {
@@ -93,7 +89,7 @@ export function HunterClient() {
     try {
       const job = parseHunterJob(await requestHunter("/api/hunter/searches", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ market, query: query.trim(), location: location.trim() || null, sources: effectiveSources, result_limit: limit, research_mode: researchMode, objective: effectiveObjective, website_filter: effectiveWebsite, contact_filter: contactFilter }),
+        body: JSON.stringify({ market, query: query.trim(), location: location.trim() || null, sources: effectiveSources, result_limit: limit, research_mode: "broad", objective: "", website_filter: effectiveWebsite, contact_filter: contactFilter }),
       }))
       setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
       setSelectedId(job.id)
@@ -132,20 +128,12 @@ export function HunterClient() {
           <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
             <div className="space-y-2">
               <Label htmlFor="hunter-query">Quem você quer encontrar?</Label>
-              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Público, profissão, empresa ou nicho" />
+              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: dentistas em Porto Alegre sem site" />
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_80px] gap-3">
               <div className="space-y-2"><Label htmlFor="hunter-location">Cidade ou região</Label><Input id="hunter-location" maxLength={200} className="h-10 text-base sm:text-sm" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Localização (opcional)" /></div>
               <div className="space-y-2"><Label htmlFor="hunter-limit">Limite</Label><Input id="hunter-limit" className="h-10 text-base sm:text-sm" type="number" min={1} max={HUNTER_MAX_RESULTS} value={limit} onChange={(event) => setLimit(Math.max(1, Math.min(HUNTER_MAX_RESULTS, Number(event.target.value) || 1)))} /></div>
             </div>
-            <fieldset>
-              <legend className="mb-2 text-xs font-medium text-muted-foreground">Perfil de prospecção</legend>
-              <div className="grid grid-cols-2 rounded-lg bg-muted p-1">
-                {(["b2c", "b2b"] as const).map((item) => <Button key={item} type="button" variant="ghost" onClick={() => setMarket(item)} aria-pressed={market === item} className={cn("h-9 rounded-md text-xs", market === item && "bg-card shadow-sm hover:bg-card")}>
-                  {item === "b2c" ? <Users /> : <BriefcaseBusiness />} {item.toUpperCase()} · {item === "b2c" ? "Pessoas" : "Empresas"}
-                </Button>)}
-              </div>
-            </fieldset>
             <div className="space-y-4 border-y py-4">
               <div className="space-y-2">
                 <Label htmlFor="hunter-website">Presença digital</Label>
@@ -172,11 +160,6 @@ export function HunterClient() {
               })}</div>
               {requiresMaps && <p className="mt-2 text-xs text-muted-foreground">Google Maps incluído para verificar o critério de site.</p>}
             </fieldset>
-            <fieldset className="space-y-3">
-              <legend className="mb-2 text-xs font-medium text-muted-foreground">Objetivo da pesquisa</legend>
-              <div className="flex gap-2">{(["broad", "focused"] as const).map((mode) => <Button type="button" key={mode} variant={researchMode === mode ? "secondary" : "ghost"} aria-pressed={researchMode === mode} onClick={() => setResearchMode(mode)} className="h-9 flex-1 text-xs">{mode === "broad" ? "Pesquisa ampla" : "Com objetivo"}</Button>)}</div>
-              {researchMode === "focused" && <div className="space-y-2"><Label htmlFor="hunter-objective" className="sr-only">Objetivo ou critério de interesse</Label><Textarea id="hunter-objective" maxLength={500} rows={3} value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="O que torna esse lead interessante para você?" className="resize-y text-base sm:text-sm" /></div>}
-            </fieldset>
           </fieldset>
           {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{error}</p>}
           <Button type="submit" className={cn(styles.searchButton, "h-12 w-full gap-2")} disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
@@ -193,12 +176,11 @@ export function HunterClient() {
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" onCloseAutoFocus={(event) => { if (inFlight.current) { event.preventDefault(); focusResults() } }}>
         <DialogHeader><DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />Confirmar pesquisa</DialogTitle><DialogDescription>Revise os critérios antes de consultar as fontes externas.</DialogDescription></DialogHeader>
         <div className="space-y-4 py-2">
-          <div><p className="text-lg font-semibold tracking-tight">{query}</p><p className="text-sm text-muted-foreground">{location || "Todas as regiões"} · {market.toUpperCase()} · até {limit} resultados</p></div>
+          <div><p className="text-lg font-semibold tracking-tight">{query}</p><p className="text-sm text-muted-foreground">{location || "Todas as regiões"} · até {limit} resultados</p></div>
           <dl className="divide-y rounded-lg border px-4 text-sm">
             <div className="py-3"><dt className="text-xs text-muted-foreground">Presença digital</dt><dd className="mt-1 font-medium">{websiteLabels[effectiveWebsite]}</dd></div>
             <div className="py-3"><dt className="text-xs text-muted-foreground">Contato necessário</dt><dd className="mt-1 font-medium">{contactLabels[contactFilter]}</dd></div>
             <div className="py-3"><dt className="text-xs text-muted-foreground">Fontes</dt><dd className="mt-1">{effectiveSources.map((source) => sourceInfo[source].label).join(" · ")}</dd></div>
-            {effectiveObjective && <div className="py-3"><dt className="text-xs text-muted-foreground">Objetivo para revisão</dt><dd className="mt-1 break-words">{effectiveObjective}</dd></div>}
           </dl>
           {requiresMaps && <p className="text-xs leading-5 text-muted-foreground">Perfis com site informado ou sem evidência suficiente serão excluídos. “Sem site” significa que o campo não foi encontrado no perfil inspecionado do Maps.</p>}
           <p className="text-xs text-muted-foreground">Contatos aceitos aparecem no Inbox. Nenhuma mensagem é enviada.</p>
