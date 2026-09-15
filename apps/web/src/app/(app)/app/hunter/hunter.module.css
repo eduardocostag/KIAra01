@@ -95,5 +95,5 @@
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
 @media (min-width: 640px) { .leadAvatar { display: grid; } .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 860px) { .hero { grid-template-columns: minmax(0, 1fr) 280px; } .orbStage { display: grid; } }
-@media (min-width: 1200px) { .workspace { grid-template-columns: minmax(300px, 350px) minmax(0, 1fr); gap: 1.25rem; } .hero { grid-column: 1 / -1; } .searchPanel { position: sticky; top: 5.5rem; } }
+@media (min-width: 1200px) { .workspace { grid-template-columns: minmax(300px, 350px) minmax(0, 1fr); gap: 1.25rem; } .workspace > header { grid-column: 1 / -1; } .searchPanel { grid-column: 1; position: sticky; top: 5.5rem; } .resultsPanel { grid-column: 2; } }
 @media (prefers-reduced-motion: reduce) { .track span { animation: none; } }
