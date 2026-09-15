@@ -208,10 +208,6 @@
   }
 }
 
-body:has(> [role="status"]) .app-shell-header {
-  top: 2rem;
-}
-
 .skip-link {
   position: fixed;
   left: 1rem;

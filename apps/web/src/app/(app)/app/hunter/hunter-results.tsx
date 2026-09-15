@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, Globe2, History, Inbox, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Radar, RefreshCw, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react"
+import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, Globe2, History, Inbox, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Radar, RefreshCw, ShieldCheck, Sparkles, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -65,9 +65,9 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
   </article>
 }
 
-export function HunterResults({ jobs, selected, busy, loading, stage, error, onRefresh, onSelect, onBroaden }: {
+export function HunterResults({ jobs, selected, busy, loading, stage, error, onRefresh, onClear, onSelect, onBroaden }: {
   jobs: HunterJob[]; selected?: HunterJob; busy: boolean; loading: boolean; stage: string; error: string
-  onRefresh: () => void; onSelect: (id: string) => void; onBroaden: (job: HunterJob) => void
+  onRefresh: () => void; onClear: () => void; onSelect: (id: string) => void; onBroaden: (job: HunterJob) => void
 }) {
   const synced = selected?.results.filter((result) => result.public_data?.lead_id && result.public_data?.pipeline_entry_id).length ?? 0
   const historical = Boolean(selected && !selected.validation)
@@ -78,7 +78,7 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, onR
     <CardHeader className={styles.resultsHeader}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><p className={styles.resultsEyebrow}>RADAR DE OPORTUNIDADES</p><CardTitle className={styles.resultsTitle}>Resultados da pesquisa</CardTitle></div>
-        <Button variant="outline" className="h-9 text-xs" disabled={loading || busy} onClick={onRefresh}>{loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}Atualizar resultados</Button>
+        <div className="flex gap-2">{jobs.length > 0 && <Button variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-destructive" disabled={loading || busy} onClick={onClear}><Trash2 />Limpar</Button>}<Button variant="outline" className="h-9 text-xs" disabled={loading || busy} onClick={onRefresh}>{loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}Atualizar resultados</Button></div>
       </div>
       {jobs.length > 0 && <div className="min-w-0 space-y-2">
         <label htmlFor="hunter-history" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><History className="size-3.5" />Histórico de pesquisas</label>

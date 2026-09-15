@@ -1,0 +1,2 @@
+# Optional, offline semantic analysis profile. Not loaded by Vercel Functions.
+scrapegraphai>=1.0,<3

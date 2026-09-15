@@ -26,6 +26,8 @@ const sourceInfo = {
 const websiteLabels = { any: "Qualquer presença digital", without_website: "Sem site informado no Maps", with_website: "Com site identificado" }
 const contactLabels = { any: "Todos os contatos disponíveis", phone: "Somente com telefone público", whatsapp: "Somente com WhatsApp identificado" }
 
+const HUNTER_MAX_RESULTS = 100
+
 export function HunterClient() {
   const router = useRouter()
   const [market, setMarket] = useState<"b2c" | "b2b">("b2c")
@@ -39,6 +41,8 @@ export function HunterClient() {
   const [contactFilter, setContactFilter] = useState<ContactFilter>("any")
   const [jobs, setJobs] = useState<Job[]>([])
   const [review, setReview] = useState(false)
+  const [clearReview, setClearReview] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [stage, setStage] = useState("Preparando sua pesquisa…")
   const [error, setError] = useState("")
@@ -104,6 +108,18 @@ export function HunterClient() {
     finally { setBusy(false); inFlight.current = false; focusResults() }
   }
 
+  async function clearHistory() {
+    if (busy || clearing) return
+    setClearing(true); setError("")
+    try {
+      await requestHunter("/api/hunter/searches", { method: "DELETE" })
+      ++requestVersion.current
+      setJobs([]); setSelectedId(null); setClearReview(false)
+      router.refresh()
+    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível limpar as pesquisas.") }
+    finally { setClearing(false) }
+  }
+
   return <div className={styles.workspace}>
     <section className={styles.hero} aria-labelledby="hunter-title">
       <div className={styles.heroCopy}>
@@ -131,7 +147,7 @@ export function HunterClient() {
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_80px] gap-3">
               <div className="space-y-2"><Label htmlFor="hunter-location">Cidade ou região</Label><Input id="hunter-location" maxLength={200} className="h-10 text-base sm:text-sm" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Localização (opcional)" /></div>
-              <div className="space-y-2"><Label htmlFor="hunter-limit">Limite</Label><Input id="hunter-limit" className="h-10 text-base sm:text-sm" type="number" min={1} max={20} value={limit} onChange={(event) => setLimit(Math.max(1, Math.min(20, Number(event.target.value))))} /></div>
+              <div className="space-y-2"><Label htmlFor="hunter-limit">Limite</Label><Input id="hunter-limit" className="h-10 text-base sm:text-sm" type="number" min={1} max={HUNTER_MAX_RESULTS} value={limit} onChange={(event) => setLimit(Math.max(1, Math.min(HUNTER_MAX_RESULTS, Number(event.target.value) || 1)))} /></div>
             </div>
             <fieldset>
               <legend className="mb-2 text-xs font-medium text-muted-foreground">Perfil de prospecção</legend>
@@ -181,7 +197,7 @@ export function HunterClient() {
     </Card>
 
     <div ref={resultsPanel} tabIndex={-1} aria-label="Acompanhamento e resultados da pesquisa" className={cn(styles.resultsPanel, "min-w-0 scroll-mt-20 outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
-      <HunterResults jobs={jobs} selected={latest} busy={busy} loading={loading} stage={stage} error={error} onRefresh={() => void load()} onSelect={setSelectedId} onBroaden={broaden} />
+      <HunterResults jobs={jobs} selected={latest} busy={busy || clearing} loading={loading} stage={stage} error={error} onRefresh={() => void load()} onClear={() => setClearReview(true)} onSelect={setSelectedId} onBroaden={broaden} />
     </div>
 
     <Dialog open={review} onOpenChange={setReview}>
@@ -199,6 +215,13 @@ export function HunterClient() {
           <p className="rounded-lg bg-muted p-3 text-xs leading-5 text-muted-foreground">Os resultados aceitos são salvos no pipeline e nos contatos do Inbox. Critérios não verificados exigem revisão. Esta ação não envia mensagens nem cria conversas fictícias.</p>
         </div>
         <DialogFooter><Button variant="outline" className="h-10" onClick={() => setReview(false)}>Voltar e editar</Button><Button className="h-10" disabled={busy} onClick={() => void confirm()}><Search />Confirmar e pesquisar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={clearReview} onOpenChange={setClearReview}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Limpar resultados do Hunter?</DialogTitle><DialogDescription>As pesquisas e os resultados desta tela serão removidos. Os leads já enviados ao Pipeline e ao CRM continuarão salvos.</DialogDescription></DialogHeader>
+        <div className="rounded-xl bg-muted p-4 text-sm text-muted-foreground"><strong className="text-foreground">O Pipeline será preservado.</strong><p className="mt-1">Esta ação não exclui contatos, etapas comerciais ou atividades registradas.</p></div>
+        <DialogFooter><Button variant="outline" onClick={() => setClearReview(false)} disabled={clearing}>Cancelar</Button><Button variant="destructive" onClick={() => void clearHistory()} disabled={clearing}>{clearing ? <Loader2 className="animate-spin" /> : null}Limpar resultados</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>

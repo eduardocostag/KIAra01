@@ -15,7 +15,14 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from kiara_api import hunter
-from kiara_api.hunter import SearchCreate, execute_research, research_query
+from kiara_api.hunter import (
+    SearchCreate,
+    execute_research,
+    firecrawl_search,
+    maps_index_search,
+    public_search,
+    research_query,
+)
 from kiara_api.hunter_research import (
     clean_summary,
     extract_contacts,
@@ -181,6 +188,81 @@ def test_partial_provider_failure_keeps_results_and_reports_warning(monkeypatch)
     assert len(outcome["results"]) == 1
     assert outcome["validation"]["source_failures"] == 1
     assert any("Web pública não concluiu" in message for message in outcome["warnings"])
+
+
+def test_maps_public_index_fallback_keeps_only_maps_profiles(monkeypatch):
+    async def indexed(*args):
+        return [
+            {"source": "google_maps", "title": "Clínica", "url": "https://www.google.com/maps/place/clinica", "summary": ""},
+            {"source": "google_maps", "title": "Busca", "url": "https://www.google.com/search?q=clinica", "summary": ""},
+        ]
+    monkeypatch.setattr(hunter, "exa_search", indexed)
+    rows = asyncio.run(maps_index_search("clínicas Rio Grande do Sul", 20))
+    assert len(rows) == 1
+    assert rows[0]["public_data"] == {
+        "detail_inspected": False,
+        "website_status": "unknown",
+        "provider": "maps_public_index",
+    }
+
+
+def test_maps_without_browser_credentials_uses_free_index_before_playwright(monkeypatch):
+    monkeypatch.delenv("OBSCURA_CDP_URL", raising=False)
+    monkeypatch.delenv("BROWSERBASE_API_KEY", raising=False)
+    monkeypatch.delenv("BROWSERBASE_PROJECT_ID", raising=False)
+    calls = []
+    async def indexed(query, limit):
+        calls.append((query, limit))
+        return [{"title": "Perfil público", "source": "google_maps"}]
+    async def unavailable(_query, _limit):
+        raise RuntimeError("chromium_unavailable")
+    monkeypatch.setattr(hunter, "_read_maps_local", unavailable)
+    monkeypatch.setattr(hunter, "maps_index_search", indexed)
+    rows = asyncio.run(hunter.maps_search("dentistas Rio Grande do Sul", 100))
+    assert calls == [("dentistas Rio Grande do Sul", 100)]
+    assert rows[0]["title"] == "Perfil público"
+
+
+def test_large_complex_search_preserves_matching_leads_after_filters(monkeypatch):
+    candidates = [maps_result(f"psicologo-{i}", website=None if i % 2 else "https://site.example")
+                  for i in range(100)]
+    async def maps(_query, limit):
+        assert limit == 100
+        return candidates
+    monkeypatch.setattr(hunter, "maps_search", maps)
+    request = SearchCreate(market="b2b", query="psicólogos sem site no Rio Grande do Sul",
+                           sources=["google_maps"], result_limit=100)
+    outcome = asyncio.run(execute_research(request.model_dump()))
+    assert outcome["error"] is None
+    assert len(outcome["results"]) == 50
+    assert outcome["validation"]["accepted"] == 50
+    assert all(row["title"].split("-")[-1].isdigit() and int(row["title"].split("-")[-1]) % 2
+               for row in outcome["results"])
+
+
+def test_public_search_falls_back_to_firecrawl(monkeypatch):
+    async def unavailable(*args):
+        raise RuntimeError("exa_auth_failed")
+    async def firecrawl(*args):
+        return [{"source": "web", "title": "Clínica", "url": "https://clinica.example", "summary": ""}]
+    monkeypatch.setattr(hunter, "exa_search", unavailable)
+    monkeypatch.setattr(hunter, "firecrawl_search", firecrawl)
+    rows = asyncio.run(public_search("clínicas RS", "web", 20))
+    assert [row["title"] for row in rows] == ["Clínica"]
+
+
+def test_firecrawl_search_uses_brazil_and_source_scope(monkeypatch):
+    captured = {}
+    def response(_url, _headers, body):
+        captured.update(body)
+        return {"data": {"web": [{"title": "Perfil", "url": "https://instagram.com/perfil", "description": "Público"}]}}
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "test-key")
+    monkeypatch.setattr(hunter, "_post_json", response)
+    rows = asyncio.run(firecrawl_search("dentistas Rio Grande do Sul", "instagram", 100))
+    assert captured["country"] == "BR"
+    assert captured["includeDomains"] == ["instagram.com"]
+    assert captured["limit"] == 100
+    assert rows[0]["public_data"]["provider"] == "firecrawl_search"
 
 
 def test_provider_timeout_is_bounded_and_persistable_failed_job(monkeypatch):

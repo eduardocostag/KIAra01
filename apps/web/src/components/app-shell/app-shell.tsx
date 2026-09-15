@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import { ArrowUpRight, ChevronRight, Gauge, Inbox, Menu, PanelsTopLeft, Plug, Search, Settings, ShieldCheck, Target, UsersRound } from "lucide-react"
+import { ChevronRight, Gauge, Inbox, Menu, PanelsTopLeft, Plug, Search, Settings, Target, UsersRound } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { ThemeToggle } from "@/components/brand/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -30,13 +30,6 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   </nav>
 }
 
-function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
-  return <div className="mt-auto space-y-4 pt-8">
-    <div className="rounded-lg border border-sidebar-border bg-sidebar-foreground/3 p-3.5"><p className="flex items-center gap-2 text-xs font-medium text-sidebar-foreground"><ShieldCheck className="size-4 text-sidebar-primary" />Você mantém o controle</p><p className="mt-2 text-[11px] leading-5 text-sidebar-foreground/60">Pesquise e organize seus leads. Mensagens externas exigem sua aprovação.</p></div>
-    <Link href="/app/settings" onClick={onNavigate} className="flex min-h-11 items-center gap-3 border-t border-sidebar-border px-2 pt-3 text-xs font-medium text-sidebar-foreground/65 hover:text-sidebar-foreground"><Settings className="size-4" />Configurações<ArrowUpRight className="ml-auto size-3.5" /></Link>
-  </div>
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const pathname = usePathname()
@@ -47,15 +40,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Link href="/app" className="mb-9 flex min-h-10 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
       <p className="mb-3 px-3 text-[9px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/40">Workspace comercial</p>
       <Navigation />
-      <SidebarFooter />
     </aside>
-    <div className="min-w-0 lg:pl-52">
-      <header className="app-shell-header sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-background/78 px-4 backdrop-blur-xl sm:px-6 lg:px-10">
+    <div className="min-w-0 pt-16 lg:pl-52">
+      <header className="app-shell-header fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/90 px-4 shadow-[0_10px_35px_-28px_rgb(0_0_0/.8)] backdrop-blur-xl sm:px-6 lg:left-52 lg:px-10">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 lg:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
           <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground">
             <SheetHeader className="p-0 text-left"><SheetTitle><KiaraBrand inverse /></SheetTitle><SheetDescription className="sr-only">Navegação do workspace comercial Kiara</SheetDescription></SheetHeader>
-            <div className="mt-7"><Navigation onNavigate={() => setMenuOpen(false)} /></div><SidebarFooter onNavigate={() => setMenuOpen(false)} />
+            <div className="mt-7"><Navigation onNavigate={() => setMenuOpen(false)} /></div>
           </SheetContent>
         </Sheet>
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><PanelsTopLeft className="hidden size-4 sm:block" aria-hidden="true" /><span className="hidden sm:inline">Workspace</span><ChevronRight className="hidden size-3 sm:block" aria-hidden="true" /><span className="truncate font-medium text-foreground">{current}</span></div>

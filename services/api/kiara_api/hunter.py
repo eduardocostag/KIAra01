@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from typing import Any, Literal
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
+from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request as UrlRequest
-from urllib.request import urlopen
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -30,11 +33,13 @@ from .hunter_research import (
     safe_public_url,
     website_opportunity,
 )
+from .scraping_adapters import analyze_with_scrapegraph, parse_with_scrapling
 
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "linkedin"}
-DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "linkedin": "linkedin.com"}
+DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "linkedin": "linkedin.com", "google_maps": "google.com"}
 SOURCE_TIMEOUT_SECONDS = 130
 ENRICHMENT_TIMEOUT_SECONDS = 25
+HUNTER_MAX_RESULTS = 100
 SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "linkedin": "LinkedIn"}
 logger = logging.getLogger(__name__)
 
@@ -44,7 +49,7 @@ class SearchCreate(BaseModel):
     query: str = Field(min_length=2, max_length=300)
     location: str | None = Field(default=None, max_length=160)
     sources: list[str] = Field(min_length=1, max_length=4)
-    result_limit: int = Field(default=10, ge=1, le=20)
+    result_limit: int = Field(default=10, ge=1, le=HUNTER_MAX_RESULTS)
     research_mode: Literal["broad", "focused"] = "broad"
     objective: str = Field(default="", max_length=500)
     website_filter: Literal["any", "without_website", "with_website"] = "any"
@@ -125,6 +130,29 @@ class HunterRepository:
         for result in results:
             grouped.setdefault(result["search_id"], []).append(self._result(result))
         return [self._search(row, grouped.get(row["id"], [])) for row in searches]
+
+    async def clear(self, context: RequestContext) -> int:
+        if context.role not in {"owner", "admin", "operator"}:
+            raise ApiError(403, "insufficient_role", "Seu perfil não pode limpar pesquisas.")
+        org, user = _uuid("organization", context.organization_id), _uuid("user", context.user_id)
+        async with self.database._transaction(context.organization_id) as connection:
+            await connection.execute(
+                "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
+                (user, context.user_id),
+            )
+            running = await (await connection.execute(
+                "SELECT count(*) count FROM hunter_searches WHERE organization_id=%s AND status='running'", (org,)
+            )).fetchone()
+            if running and running["count"]:
+                raise ApiError(409, "hunter_search_running", "Aguarde a pesquisa em execução terminar antes de limpar o histórico.")
+            deleted = await (await connection.execute(
+                "DELETE FROM hunter_searches WHERE organization_id=%s RETURNING id", (org,)
+            )).fetchall()
+            await connection.execute(
+                "INSERT INTO audit_events (organization_id,actor_user_id,action,resource_type,correlation_id,metadata) VALUES (%s,%s,'hunter.searches.cleared','hunter_search',%s,%s)",
+                (org, user, context.correlation_id, json.dumps({"deleted_searches": len(deleted), "pipeline_preserved": True})),
+            )
+        return len(deleted)
 
     async def claim_confirmation(self, context: RequestContext, search_id: str) -> dict[str, Any]:
         if context.role not in {"owner", "admin", "operator"}:
@@ -231,7 +259,7 @@ class HunterRepository:
 
 def _post_json(url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
     request = UrlRequest(url, data=json.dumps(body).encode(), headers=headers, method="POST")
-    with urlopen(request, timeout=45) as response:
+    with build_opener().open(request, timeout=45) as response:
         return json.loads(response.read())
 
 
@@ -250,10 +278,54 @@ async def exa_search(query: str, source: str, limit: int) -> list[dict[str, Any]
             for item in data.get("results", []) if item.get("url")]
 
 
+async def firecrawl_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    """Discover public pages through the already configured Firecrawl search API."""
+    key = os.getenv("FIRECRAWL_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("firecrawl_not_configured")
+    domain = DOMAIN_BY_SOURCE.get(source)
+    scoped_query = f"site:{domain}/maps {query}" if source == "google_maps" else query
+    body: dict[str, Any] = {
+        "query": scoped_query,
+        "limit": min(limit, HUNTER_MAX_RESULTS),
+        "sources": ["web"],
+        "country": "BR",
+        "timeout": 30_000,
+        "ignoreInvalidURLs": True,
+    }
+    if domain and source != "google_maps":
+        body["includeDomains"] = [domain]
+    response = await asyncio.to_thread(
+        _post_json,
+        "https://api.firecrawl.dev/v2/search",
+        {"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        body,
+    )
+    rows = (response.get("data") or {}).get("web") or []
+    return [{
+        "source": source,
+        "title": item.get("title") or (item.get("metadata") or {}).get("title") or "Resultado público",
+        "url": item.get("url") or (item.get("metadata") or {}).get("sourceURL") or "",
+        "summary": item.get("description") or item.get("markdown") or "",
+        "public_data": {"provider": "firecrawl_search"},
+    } for item in rows if item.get("url") or (item.get("metadata") or {}).get("sourceURL")]
+
+
+async def public_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    try:
+        return await exa_search(query, source, limit)
+    except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
+        logger.warning("hunter.exa.unavailable", extra={"source": source, "error_class": type(exc).__name__})
+        return await firecrawl_search(query, source, limit)
+
+
 async def enrich_results(results: list[dict[str, Any]]) -> None:
     """Enrich public websites with contacts and observable opportunity signals."""
     key = os.getenv("FIRECRAWL_API_KEY", "").strip()
     if not key:
+        await obscura_enrich_results(results)
+        await native_enrich_results(results)
+        await semantic_enrich_results(results)
         return
     candidates = []
     for item in results:
@@ -287,21 +359,242 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
             item.setdefault("public_data", {})["enrichment"] = "unavailable"
 
     await asyncio.gather(*(enrich(item) for item in candidates))
+    await native_enrich_results(results)
+    await semantic_enrich_results(results)
+
+
+class _PublicHtmlParser(HTMLParser):
+    def __init__(self, base_url: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.base_url = base_url
+        self.text: list[str] = []
+        self.links: list[str] = []
+        self._ignored = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "noscript", "svg"}:
+            self._ignored += 1
+        if tag == "a":
+            href = dict(attrs).get("href")
+            if href:
+                self.links.append(urljoin(self.base_url, href))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "noscript", "svg"} and self._ignored:
+            self._ignored -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._ignored and data.strip():
+            self.text.append(data.strip())
+
+
+def _assert_public_destination(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("unsafe_url")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    for item in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM):
+        address = ipaddress.ip_address(item[4][0])
+        if not address.is_global:
+            raise ValueError("unsafe_destination")
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
+        _assert_public_destination(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fetch_public_page(url: str) -> tuple[str, list[str]]:
+    _assert_public_destination(url)
+    request = UrlRequest(url, headers={
+        "User-Agent": "KiaraResearchBot/1.0 (+public-contact-research)",
+        "Accept": "text/html,application/xhtml+xml;q=0.9",
+    })
+    with build_opener(_SafeRedirectHandler()).open(request, timeout=12) as response:
+        content_type = response.headers.get_content_type()
+        if content_type not in {"text/html", "application/xhtml+xml"}:
+            raise ValueError("unsupported_content")
+        payload = response.read(2_000_001)
+        if len(payload) > 2_000_000:
+            raise ValueError("page_too_large")
+        charset = response.headers.get_content_charset() or "utf-8"
+        page_url = response.geturl()
+    html = payload.decode(charset, errors="replace")
+    try:
+        return parse_with_scrapling(html, page_url)
+    except (ImportError, ValueError, TypeError):
+        parser = _PublicHtmlParser(page_url)
+        parser.feed(html)
+        return " ".join(parser.text)[:40000], parser.links[:500]
+
+
+async def native_enrich_results(results: list[dict[str, Any]]) -> None:
+    """Zero-config, bounded HTML enrichment that runs inside the Kiara API."""
+    candidates: list[dict[str, Any]] = []
+    for item in results:
+        data = item.setdefault("public_data", {})
+        if data.get("enrichment") == "completed":
+            continue
+        target = safe_public_url(data.get("website_url")) or (safe_public_url(item.get("url")) if item.get("source") == "web" else None)
+        if target and len(candidates) < 12:
+            data["enrichment_url"] = target
+            candidates.append(item)
+    slots = asyncio.Semaphore(4)
+
+    async def enrich(item: dict[str, Any]) -> None:
+        async with slots:
+            try:
+                content, links = await asyncio.to_thread(_fetch_public_page, item["public_data"]["enrichment_url"])
+                if not content.strip():
+                    return
+                contacts = extract_contacts(content, links)
+                quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
+                item["public_data"].update({
+                    "enrichment": "completed", "provider": "kiara_native", **contacts,
+                    "website_quality_score": quality, "website_quality_signals": signals,
+                })
+                item["summary"] = clean_summary(content)
+            except (OSError, ValueError, TypeError, AttributeError, UnicodeError):
+                item["public_data"].setdefault("enrichment", "unavailable")
+
+    await asyncio.gather(*(enrich(item) for item in candidates))
+
+
+async def semantic_enrich_results(results: list[dict[str, Any]]) -> None:
+    """Add unverified business context through the open-source ScrapeGraphAI graph."""
+    if not os.getenv("KIARA_SCRAPEGRAPH_MODEL", "").strip():
+        return
+    prompt = (
+        "Resuma em JSON o ramo de atividade e serviços descritos nesta página pública. "
+        "Não invente telefone, WhatsApp, e-mail, identidade, ausência de site ou filtros comerciais."
+    )
+    for item in results[:3]:
+        data = item.get("public_data") or {}
+        target = safe_public_url(data.get("enrichment_url"))
+        if data.get("enrichment") != "completed" or not target:
+            continue
+        try:
+            _assert_public_destination(target)
+            hint = await asyncio.wait_for(
+                asyncio.to_thread(analyze_with_scrapegraph, target, prompt), timeout=20,
+            )
+            item.setdefault("public_data", {})["semantic_hint"] = {
+                "provider": "scrapegraphai", "verified": False, "data": hint,
+            }
+        except (ImportError, OSError, ValueError, TypeError, RuntimeError, TimeoutError):
+            logger.warning("hunter.scrapegraph.unavailable", extra={"url_host": urlsplit(target).hostname})
+
+
+def _obscura_connection() -> tuple[str, dict[str, str]] | None:
+    """Return a server-side Obscura CDP connection without leaking its secret."""
+    endpoint = os.getenv("OBSCURA_CDP_URL", "").strip()
+    if not endpoint:
+        return None
+    parsed = urlsplit(endpoint)
+    if parsed.scheme not in {"https", "wss", "http", "ws"} or not parsed.hostname or parsed.username or parsed.password:
+        logger.warning("hunter.obscura.invalid_endpoint")
+        return None
+    headers: dict[str, str] = {}
+    token = os.getenv("OBSCURA_AUTH_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return endpoint, headers
+
+
+async def obscura_enrich_results(results: list[dict[str, Any]]) -> None:
+    """Render dynamic public pages through Obscura and extract observable facts."""
+    connection = _obscura_connection()
+    if not connection:
+        return
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import async_playwright
+
+    candidates: list[dict[str, Any]] = []
+    for item in results:
+        data = item.setdefault("public_data", {})
+        target = safe_public_url(data.get("website_url")) or (safe_public_url(item.get("url")) if item.get("source") == "web" else None)
+        if target and len(candidates) < 20:
+            data["enrichment_url"] = target
+            candidates.append(item)
+    if not candidates:
+        return
+
+    endpoint, headers = connection
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.connect_over_cdp(endpoint, headers=headers, timeout=10_000)
+        context = await browser.new_context()
+        slots = asyncio.Semaphore(4)
+
+        async def enrich(item: dict[str, Any]) -> None:
+            async with slots:
+                page = await context.new_page()
+                try:
+                    await page.goto(item["public_data"]["enrichment_url"], wait_until="domcontentloaded", timeout=15_000)
+                    await page.wait_for_timeout(500)
+                    snapshot = await page.evaluate("""() => ({
+                        text: (document.body?.innerText || '').slice(0, 40000),
+                        links: Array.from(document.querySelectorAll('a[href]'), a => a.href).slice(0, 500)
+                    })""")
+                    content = snapshot.get("text", "") if isinstance(snapshot, dict) else ""
+                    links = snapshot.get("links", []) if isinstance(snapshot, dict) else []
+                    if content.strip():
+                        contacts = extract_contacts(content, links)
+                        quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
+                        item["public_data"].update({
+                            "enrichment": "completed", "provider": "obscura", **contacts,
+                            "website_quality_score": quality, "website_quality_signals": signals,
+                        })
+                        item["summary"] = clean_summary(content)
+                    else:
+                        item["public_data"]["enrichment"] = "unavailable"
+                except (PlaywrightError, TimeoutError, ValueError, TypeError, AttributeError):
+                    item["public_data"]["enrichment"] = "unavailable"
+                finally:
+                    await page.close()
+
+        try:
+            await asyncio.gather(*(enrich(item) for item in candidates))
+        finally:
+            await context.close()
+            await browser.close()
 
 
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
+    obscura = _obscura_connection()
+    key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
+    if not obscura and (not key or not project):
+        try:
+            return await _read_maps_local(query, limit)
+        except Exception as exc:  # noqa: BLE001 — the public index remains the final fallback
+            logger.warning("hunter.maps.local_browser_unavailable", extra={"error_class": type(exc).__name__})
+        return await maps_index_search(query, limit)
     try:
         import playwright.async_api  # noqa: F401 — check optional dependency before creating a paid session
+    except ImportError as exc:
+        logger.warning("hunter.maps.playwright_unavailable", extra={"error_class": type(exc).__name__})
+        return await maps_index_search(query, limit)
+    if obscura:
+        endpoint, headers = obscura
+        try:
+            return await _read_maps_cdp(endpoint, query, limit, headers=headers)
+        except Exception as exc:  # noqa: BLE001 — Browserbase remains the isolated fallback
+            logger.warning("hunter.obscura.maps_failed", extra={"error_class": type(exc).__name__})
+    if not key or not project:
+        return await maps_index_search(query, limit)
+    try:
         from browserbase import Browserbase
     except ImportError as exc:
         raise RuntimeError("browser_provider_unavailable") from exc
-    key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
-    if not key or not project:
-        raise RuntimeError("browserbase_not_configured")
     client = Browserbase(api_key=key, timeout=10, max_retries=0)
-    session = await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
     try:
-        return await _read_maps_session(session, query, limit)
+        session = await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
+    except Exception as exc:  # noqa: BLE001 — indexed public Maps pages remain available
+        logger.warning("hunter.maps.browserbase_unavailable", extra={"error_class": type(exc).__name__})
+        client.close()
+        return await maps_index_search(query, limit)
+    try:
+        return await _read_maps_cdp(session.connect_url, query, limit)
     finally:
         try:
             await asyncio.wait_for(asyncio.to_thread(client.sessions.update, session.id,
@@ -311,16 +604,62 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         client.close()
 
 
-async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[str, Any]]:
+async def maps_index_search(query: str, limit: int) -> list[dict[str, Any]]:
+    """Fallback for public Maps pages indexed on the web; no browser session required."""
+    rows = await public_search(f"{query} Google Maps", "google_maps", limit)
+    indexed: list[dict[str, Any]] = []
+    for row in rows:
+        url = safe_public_url(row.get("url"))
+        parsed = urlsplit(url) if url else None
+        host = (parsed.hostname or "").lower() if parsed else ""
+        google_host = host in {"google.com", "google.com.br"} or host.endswith((".google.com", ".google.com.br"))
+        if parsed and google_host and "/maps" in parsed.path:
+            row.setdefault("public_data", {}).update({
+                "detail_inspected": False,
+                "website_status": "unknown",
+                "provider": "maps_public_index",
+            })
+            indexed.append(row)
+    return indexed
+
+
+async def _read_maps_cdp(connect_url: str, query: str, limit: int, *, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.connect_over_cdp(session.connect_url, timeout=10_000)
+        browser = await playwright.chromium.connect_over_cdp(connect_url, headers=headers, timeout=10_000)
         try:
             context = browser.contexts[0]
             page = context.pages[0]
+            return await _collect_maps_page(context, page, query, limit)
+        finally:
+            try:
+                await asyncio.wait_for(browser.close(), timeout=5)
+            except (PlaywrightError, TimeoutError, RuntimeError):
+                logger.warning("hunter.maps.browser_cleanup_failed")
+
+
+async def _read_maps_local(query: str, limit: int) -> list[dict[str, Any]]:
+    """Use a locally installed Chromium without an API key or remote CDP service."""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True, timeout=10_000)
+        try:
+            context = await browser.new_context(locale="pt-BR")
+            page = await context.new_page()
+            return await _collect_maps_page(context, page, query, limit)
+        finally:
+            await browser.close()
+
+
+async def _collect_maps_page(context: Any, page: Any, query: str, limit: int) -> list[dict[str, Any]]:
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    try:
             await page.goto(f"https://www.google.com/maps/search/?api=1&query={quote(query, safe='')}&hl=pt-BR", wait_until="domcontentloaded", timeout=25_000)
             await _dismiss_google_consent(page)
             await page.wait_for_selector('a[href*="/maps/place/"], h1.DUwDvf, [role="feed"], [role="main"]', timeout=8_000)
@@ -335,18 +674,18 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
             )
             if not items and await page.locator('h1.DUwDvf').count():
                 items = [{"title": await page.locator('h1.DUwDvf').first.inner_text(), "url": page.url}]
-            items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, 30)]
+            items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, HUNTER_MAX_RESULTS)]
             feed = page.locator('[role="feed"]')
             attempts = 0
-            while len(items) < min(limit, 30) and await feed.count() and attempts < 8:
+            while len(items) < min(limit, HUNTER_MAX_RESULTS) and await feed.count() and attempts < 20:
                 attempts += 1
                 await feed.evaluate("element => element.scrollBy(0, Math.max(element.clientHeight * 1.8, 900))")
                 await page.wait_for_timeout(700)
                 items = await page.locator('a[href*="/maps/place/"]').evaluate_all(
                     "els => [...new Map(els.map(e => [e.href, {title: e.getAttribute('aria-label') || e.textContent.trim(), url: e.href}])).values()]"
                 )
-                items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, 30)]
-            slots = asyncio.Semaphore(3)
+                items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, HUNTER_MAX_RESULTS)]
+            slots = asyncio.Semaphore(6)
 
             async def inspect(item: dict[str, Any]) -> dict[str, Any]:
                 async with slots:
@@ -375,11 +714,16 @@ async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[
             await asyncio.gather(*pending, return_exceptions=True)
             return [task.result() if task in done and not task.cancelled() and task.exception() is None
                     else maps_detail_result(item, {}) for item, task in zip(items, tasks)]
-        finally:
-            try:
-                await asyncio.wait_for(browser.close(), timeout=5)
-            except (PlaywrightError, TimeoutError, RuntimeError):
-                logger.warning("hunter.maps.browser_cleanup_failed")
+    finally:
+        try:
+            await page.close()
+        except PlaywrightError:
+            logger.warning("hunter.maps.page_cleanup_failed")
+
+
+async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[str, Any]]:
+    """Compatibility wrapper for existing callers and contract tests."""
+    return await _read_maps_cdp(session.connect_url, query, limit)
 
 
 async def _dismiss_google_consent(page: Any) -> None:
@@ -431,11 +775,15 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
     query = research_query(search)
+    logger.info("hunter.research.started", extra={
+        "sources": search["sources"], "result_limit": search["result_limit"],
+        "has_location": bool(search.get("location")), "research_mode": search.get("research_mode", "broad"),
+    })
     strict = any(options[key] != "any" for key in ("website_filter", "contact_filter", "email_filter", "website_quality_filter"))
     # Filter after recall: never spend the user's result allowance on rejects.
-    per_source = min(30, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
+    per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
     tasks = {source: asyncio.create_task(maps_search(query, per_source) if source == "google_maps"
-                                        else exa_search(query, source, per_source)) for source in search["sources"]}
+                                        else public_search(query, source, per_source)) for source in search["sources"]}
     _, pending = await asyncio.wait(tasks.values(), timeout=SOURCE_TIMEOUT_SECONDS)
     for task in pending:
         task.cancel()
@@ -443,7 +791,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     warnings: list[str] = []
     failures: list[str] = []
-    allowed_errors = {"exa_not_configured", "browserbase_not_configured", "browser_provider_unavailable"}
+    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "browserbase_not_configured", "browser_provider_unavailable"}
     for source, task in tasks.items():
         if task.cancelled() or task.exception() is not None:
             code = str(task.exception()) if not task.cancelled() else "provider_timeout"
@@ -453,6 +801,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
             batch = task.result()
             if isinstance(batch, list) and all(isinstance(item, dict) for item in batch):
                 candidates.extend(batch)
+                logger.info("hunter.research.source_completed", extra={"source": source, "candidate_count": len(batch)})
             else:
                 failures.append("provider_error")
                 warnings.append(f"{SOURCE_LABELS[source]} retornou dados inválidos. Os resultados das outras fontes foram preservados.")
@@ -485,7 +834,13 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         warnings.append("O critério livre foi enviado à busca, mas não pôde ser comprovado automaticamente. Esses resultados não foram importados para o CRM.")
     if any(item.get("public_data", {}).get("enrichment") == "unavailable" for item in candidates):
         warnings.append("Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados.")
+    if any(item.get("public_data", {}).get("provider") == "maps_public_index" for item in candidates):
+        warnings.append("O navegador do Maps estava indisponível. A Kiara preservou perfis públicos indexados; telefone, site e filtros específicos exigem detalhes verificáveis.")
     error = (failures[0] if len(set(failures)) == 1 else "provider_error") if len(failures) == len(tasks) else None
+    logger.info("hunter.research.finished", extra={
+        "candidate_count": len(candidates), "accepted_count": len(results),
+        "excluded_count": validation["excluded"], "source_failures": len(failures), "error_code": error,
+    })
     return {"results": results, "validation": validation, "warnings": warnings, "error": error}
 
 
@@ -499,6 +854,10 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
     @router.get("/searches")
     async def list_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         return {"items": await repository.list(context)}
+
+    @router.delete("/searches")
+    async def clear_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
+        return {"deleted": await repository.clear(context), "pipeline_preserved": True}
 
     @router.post("/searches/{search_id}/confirm")
     async def confirm_search(search_id: str, request: Request,

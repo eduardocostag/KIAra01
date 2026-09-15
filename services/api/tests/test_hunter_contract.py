@@ -1,18 +1,25 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
-from kiara_api.hunter import SearchCreate
+from kiara_api.hunter import (
+    SearchCreate,
+    _assert_public_destination,
+    _PublicHtmlParser,
+    native_enrich_results,
+    semantic_enrich_results,
+)
 
 
 def test_hunter_requires_supported_sources_and_bounded_limit() -> None:
     with pytest.raises(ValidationError):
         SearchCreate(market="b2c", query="academia", sources=["private_instagram"], result_limit=10)
     with pytest.raises(ValidationError):
-        SearchCreate(market="b2b", query="clinicas", sources=["web"], result_limit=100)
+        SearchCreate(market="b2b", query="clinicas", sources=["web"], result_limit=101)
+    assert SearchCreate(market="b2b", query="clinicas", sources=["web"], result_limit=100).result_limit == 100
 
 
 def test_hunter_schema_requires_confirmation_and_tenant_rls() -> None:
@@ -29,3 +36,59 @@ def test_confirmation_is_a_separate_endpoint() -> None:
     assert '@router.post("/searches", status_code=201)' in source
     assert '@router.post("/searches/{search_id}/confirm")' in source
     assert "claim_confirmation" in source
+
+
+def test_hunter_history_can_be_cleared_without_deleting_pipeline() -> None:
+    source = (Path(__file__).parents[1] / "kiara_api" / "hunter.py").read_text(encoding="utf-8")
+    assert '@router.delete("/searches")' in source
+    assert "DELETE FROM hunter_searches WHERE organization_id=%s" in source
+    assert "DELETE FROM pipeline_entries" not in source
+    assert '"pipeline_preserved": True' in source
+
+
+def test_obscura_is_optional_and_browserbase_remains_fallback() -> None:
+    source = (Path(__file__).parents[1] / "kiara_api" / "hunter.py").read_text(encoding="utf-8")
+    assert 'os.getenv("OBSCURA_CDP_URL"' in source
+    assert 'os.getenv("OBSCURA_AUTH_TOKEN"' in source
+    assert "return await _read_maps_cdp(endpoint, query, limit, headers=headers)" in source
+    assert "Browserbase(api_key=key" in source
+    assert '"provider": "obscura"' in source
+
+
+def test_native_parser_extracts_visible_text_and_absolute_links() -> None:
+    parser = _PublicHtmlParser("https://example.com/team/")
+    parser.feed('<style>hidden</style><h1>Clínica Aurora</h1><a href="/contato">WhatsApp</a>')
+    assert parser.text == ["Clínica Aurora", "WhatsApp"]
+    assert parser.links == ["https://example.com/contato"]
+
+
+def test_native_fetch_rejects_private_destinations() -> None:
+    with pytest.raises(ValueError, match="unsafe_destination"):
+        _assert_public_destination("http://127.0.0.1/internal")
+
+
+@pytest.mark.asyncio
+async def test_native_enrichment_requires_no_external_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "kiara_api.hunter._fetch_public_page",
+        lambda _url: ("Telefone: +55 11 99999-0000 contato@aurora.com.br", ["https://wa.me/5511999990000"]),
+    )
+    results = [{"source": "web", "url": "https://aurora.example", "title": "Aurora", "public_data": {}}]
+    await native_enrich_results(results)
+    assert results[0]["public_data"]["provider"] == "kiara_native"
+    assert results[0]["public_data"]["whatsapp_url"] == "https://wa.me/5511999990000"
+
+
+@pytest.mark.asyncio
+async def test_scrapegraph_path_adds_only_unverified_semantic_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KIARA_SCRAPEGRAPH_MODEL", "ollama/test")
+    monkeypatch.setattr("kiara_api.hunter._assert_public_destination", lambda _url: None)
+    monkeypatch.setattr("kiara_api.hunter.analyze_with_scrapegraph", lambda _url, _prompt: {"activity": "Psicologia"})
+    rows = [{"source": "web", "url": "https://clinic.example", "public_data": {
+        "enrichment": "completed", "enrichment_url": "https://clinic.example", "phone": None,
+    }}]
+    await semantic_enrich_results(rows)
+    assert rows[0]["public_data"]["semantic_hint"] == {
+        "provider": "scrapegraphai", "verified": False, "data": {"activity": "Psicologia"},
+    }
+    assert rows[0]["public_data"]["phone"] is None
