@@ -284,7 +284,7 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             counts["unknown"] += int(unknown and not rejected)
             continue
         seen.add(data["source_url"])
-        data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] else
+        data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] or (item["source"] == "instagram" and data.get("bio_status") != "verified_public_profile") else
                                     "verified" if website != "any" or contact != "any" or options["email_filter"] != "any" or options["website_quality_filter"] != "any" else "not_requested")
         reasons = []
         if website == "without_website": reasons.append("Site não informado no perfil inspecionado")

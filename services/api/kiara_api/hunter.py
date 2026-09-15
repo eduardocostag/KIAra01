@@ -27,6 +27,7 @@ from .hunter_research import (
     clean_summary,
     extract_contacts,
     filter_results,
+    folded,
     maps_detail_result,
     normalize_result,
     research_options,
@@ -365,11 +366,66 @@ async def firecrawl_search(query: str, source: str, limit: int) -> list[dict[str
 
 
 async def public_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    if source == "instagram":
+        query = f"site:instagram.com/ {query} Instagram perfil bio"
     try:
         return await exa_search(query, source, limit)
     except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
         logger.warning("hunter.exa.unavailable", extra={"source": source, "error_class": type(exc).__name__})
         return await firecrawl_search(query, source, limit)
+
+
+class _InstagramBioParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.bio = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "meta":
+            return
+        fields = dict(attrs)
+        if fields.get("property") in {"og:description", "twitter:description"} or fields.get("name") == "description":
+            self.bio = self.bio or (fields.get("content") or "")
+
+
+def _read_public_instagram_bio(url: str) -> str:
+    _assert_public_destination(url)
+    request = UrlRequest(url, headers={"User-Agent": "KiaraResearchBot/1.0", "Accept": "text/html"})
+    with build_opener(_SafeRedirectHandler()).open(request, timeout=8) as response:
+        if response.headers.get_content_type() != "text/html":
+            raise ValueError("unsupported_content")
+        payload = response.read(500_001)
+        if len(payload) > 500_000:
+            raise ValueError("page_too_large")
+    parser = _InstagramBioParser()
+    parser.feed(payload.decode("utf-8", errors="replace"))
+    return clean_summary(parser.bio, 500)
+
+
+async def inspect_instagram_bios(rows: list[dict[str, Any]]) -> None:
+    """Verify public profile bios where Instagram serves them without login."""
+    slots = asyncio.Semaphore(4)
+
+    async def inspect(row: dict[str, Any]) -> None:
+        url = safe_public_url(row.get("url"))
+        parts = urlsplit(url) if url else None
+        host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
+        path = parts.path.strip("/") if parts else ""
+        if host != "instagram.com" or not _INSTAGRAM_HANDLE.fullmatch(path) or path.lower() in _INSTAGRAM_RESERVED:
+            return
+        data = row.setdefault("public_data", {})
+        data["profile_handle"] = path
+        async with slots:
+            try:
+                bio = await asyncio.to_thread(_read_public_instagram_bio, url)
+            except (OSError, ValueError, TypeError, UnicodeError):
+                bio = ""
+        data["bio_status"] = "verified_public_profile" if bio else "indexed_excerpt_only"
+        if bio:
+            data["profile_bio"] = bio
+            row["summary"] = bio
+
+    await asyncio.gather(*(inspect(row) for row in rows[:30]))
 
 
 async def enrich_results(results: list[dict[str, Any]]) -> None:
@@ -824,6 +880,15 @@ def research_query(search: dict[str, Any]) -> str:
     return base
 
 
+def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
+    options = research_options(search)
+    text = folded(str(row.get("public_data", {}).get("profile_bio") or row.get("summary") or ""))
+    niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(options["provider_query"]))
+             if word not in {"para", "com", "sem", "quero", "buscar", "encontrar"}]
+    place = [word for word in re.findall(r"[a-z]{4,}", folded(search.get("location") or ""))]
+    return bool(niche and all(word in text for word in niche[:3]) and all(word in text for word in place[:3]))
+
+
 async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
@@ -858,6 +923,12 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
             else:
                 failures.append("provider_error")
                 warnings.append(f"{SOURCE_LABELS[source]} retornou dados inválidos. Os resultados das outras fontes foram preservados.")
+    instagram_rows = [row for row in candidates if row.get("source") == "instagram"]
+    if instagram_rows:
+        await inspect_instagram_bios(instagram_rows)
+        candidates = [row for row in candidates if row.get("source") != "instagram" or _instagram_profile_matches(row, search)]
+        if any(row.get("public_data", {}).get("bio_status") == "indexed_excerpt_only" for row in candidates):
+            warnings.append("Alguns perfis do Instagram apareceram no índice público, mas a bio atual não pôde ser confirmada sem login; confira o perfil antes de abordar.")
     # A known external website can never pass without_website. Avoid paying
     # to crawl pages which this explicit constraint will discard anyway.
     if options["website_filter"] != "without_website" or options["email_filter"] != "any" or options["website_quality_filter"] != "any":

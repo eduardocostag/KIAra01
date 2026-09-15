@@ -20,6 +20,7 @@ from kiara_api.hunter import (
     execute_research,
     firecrawl_search,
     maps_index_search,
+    _instagram_profile_matches,
     parse_instagram_import,
     public_search,
     research_query,
@@ -67,6 +68,15 @@ def test_manual_profile_notes_do_not_become_public_contact_evidence():
     assert normalized["public_data"]["phone"] is None
     assert normalized["public_data"]["email"] is None
     assert normalized["public_data"]["whatsapp_url"] is None
+
+
+def test_instagram_profile_requires_niche_and_place_in_public_bio():
+    search = {"query": "dentistas", "location": "Porto Alegre", "sources": ["instagram"], "market": "b2c"}
+    matched = {"source": "instagram", "url": "https://www.instagram.com/clinica_alegre/",
+               "summary": "Clínica", "public_data": {"profile_bio": "Dentista em Porto Alegre"}}
+    other_city = {**matched, "public_data": {"profile_bio": "Dentista em Curitiba"}}
+    assert _instagram_profile_matches(matched, search)
+    assert not _instagram_profile_matches(other_city, search)
 
 
 @pytest.mark.parametrize("query,expected", [
