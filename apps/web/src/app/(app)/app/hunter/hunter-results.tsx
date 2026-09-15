@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, Globe2, History, Inbox, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Radar, RefreshCw, ShieldCheck, Sparkles, Trash2, TriangleAlert } from "lucide-react"
+import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, Globe2, History, Inbox, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Radar, RefreshCw, ShieldCheck, Sparkles, Trash2, TriangleAlert, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -42,12 +42,14 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
           <h3 className={styles.leadTitle}>{result.title}</h3>
           {synced ? <span className="inline-flex items-center gap-1 rounded-md bg-success-subtle px-2 py-1 text-[10px] font-medium text-success"><CheckCheck className="size-3" />No pipeline</span> : <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">{historical ? "Histórico · não validado" : "Sem inclusão no CRM"}</span>}
         </div>
+        {data?.manual_import && <p className="mt-1 text-[11px] text-muted-foreground">@ selecionado pelo usuário · bio e observações não verificadas pela Kiara</p>}
         <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{data?.address || location || "Localização não informada"}</span></p>
         {(opportunity !== null || data?.match_reasons?.length) && <div className={styles.intelligenceStrip}>
           {opportunity !== null && <div className="flex items-center gap-2 pr-2"><span className="grid size-9 place-items-center rounded-full bg-primary/10 font-mono text-xs font-semibold text-primary">{opportunity}</span><div><p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Potencial digital</p><p className="text-xs font-medium">{opportunity >= 70 ? "Alta oportunidade" : opportunity >= 40 ? "Pode melhorar" : "Presença estruturada"}</p></div></div>}
           {data?.match_reasons?.slice(0, 3).map(reason => <span key={reason} className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-[10px] text-muted-foreground"><Sparkles className="size-3 text-primary" />{reason}</span>)}
         </div>}
         <div className={styles.contactActions}>
+          {data?.manual_import && <Button asChild variant="outline" className="h-10 gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer"><Users className="size-4" />Abrir perfil<ExternalLink className="size-3" /></a></Button>}
           {contact ? <div className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-lg border bg-background py-1 pl-3 pr-1"><Phone className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="break-all font-mono text-sm font-medium tracking-tight">{contact}</span><Button variant="ghost" size="icon" className="size-8" onClick={() => void copyPhone()} aria-label={`Copiar telefone de ${result.title}`}>{copyStatus === "Número copiado" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</Button></div> : <span className="flex min-h-10 items-center gap-2 text-xs text-muted-foreground"><Phone className="size-3.5" />Telefone não encontrado na fonte</span>}
           {whatsapp && <Button asChild className="h-10 gap-2"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4" />Abrir WhatsApp<ExternalLink className="size-3" /><span className="sr-only">em nova aba</span></a></Button>}
           {data?.email && <a className="inline-flex min-h-10 items-center gap-2 rounded-lg border bg-background px-3 text-xs font-medium text-foreground hover:border-primary/40" href={`mailto:${data.email}`}><Mail className="size-3.5 text-muted-foreground" />{data.email}</a>}
@@ -59,7 +61,7 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
           <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1 text-primary underline-offset-4 hover:underline">{labels[result.source]}<ExternalLink className="size-3" /><span className="sr-only">Abrir fonte em nova aba</span></a>
         </div>
         {(data?.criterion_status === "not_verified" || historical) && <p className="mt-2 text-xs leading-5 text-warning">{historical ? "Pesquisa anterior à verificação de critérios. Refaça a busca para validar e integrar os leads." : `Objetivo ainda não comprovado${data?.research_objective ? `: ${data.research_objective}` : ". Revise as evidências antes de prospectar."}`}</p>}
-        {(data?.website_evidence || excerpt) && <details className="mt-2 text-xs text-muted-foreground"><summary className="w-fit cursor-pointer py-1 font-medium underline-offset-4 hover:text-foreground hover:underline">Ver evidências da fonte</summary><p className="mt-2 max-w-2xl break-words leading-5">{data?.website_evidence || excerpt}</p></details>}
+        {(data?.website_evidence || excerpt) && <details className="mt-2 text-xs text-muted-foreground"><summary className="w-fit cursor-pointer py-1 font-medium underline-offset-4 hover:text-foreground hover:underline">{data?.manual_import ? "Ver observação fornecida pelo usuário" : "Ver evidências da fonte"}</summary><p className="mt-2 max-w-2xl break-words leading-5">{data?.website_evidence || excerpt}</p></details>}
       </div>
     </div>
   </article>

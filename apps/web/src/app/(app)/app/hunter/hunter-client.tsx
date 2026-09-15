@@ -44,6 +44,9 @@ export function HunterClient() {
   const [clearReview, setClearReview] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [manualProfiles, setManualProfiles] = useState("")
+  const [importingProfiles, setImportingProfiles] = useState(false)
+  const [showInstagramImport, setShowInstagramImport] = useState(false)
   const [stage, setStage] = useState("Preparando sua pesquisa…")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
@@ -120,6 +123,22 @@ export function HunterClient() {
     finally { setClearing(false) }
   }
 
+  async function importInstagramProfiles() {
+    if (importingProfiles || !manualProfiles.trim()) return
+    setImportingProfiles(true); setError(""); setStage("Organizando perfis do Instagram…")
+    try {
+      const job = parseHunterJob(await requestHunter("/api/hunter/instagram/import", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ market, profiles: manualProfiles }),
+      }))
+      ++requestVersion.current
+      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
+      setSelectedId(job.id); setManualProfiles(""); setShowInstagramImport(false)
+      router.refresh(); focusResults()
+    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível importar os perfis.") }
+    finally { setImportingProfiles(false) }
+  }
+
   return <div className={styles.workspace}>
     <section className={styles.hero} aria-labelledby="hunter-title">
       <div className={styles.heroCopy}>
@@ -193,6 +212,19 @@ export function HunterClient() {
           <Button type="submit" className={cn(styles.searchButton, "h-12 w-full gap-2")} disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
           <p className="text-center text-[11px] leading-4 text-muted-foreground">Leads aprovados entram no CRM. Nenhuma mensagem é enviada.</p>
         </form>
+        <div className="mt-6 space-y-3 border-t pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><p className="text-sm font-semibold">Perfis do Instagram</p><p className="mt-1 text-xs text-muted-foreground">Encontrou perfis no app? Organize os @ aqui, sem conectar a conta.</p></div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowInstagramImport((value) => !value)} aria-expanded={showInstagramImport} aria-controls="instagram-import-form">{showInstagramImport ? "Fechar" : "Importar @"}</Button>
+          </div>
+          {showInstagramImport && <div id="instagram-import-form" className="space-y-3 rounded-xl border bg-muted/30 p-3">
+            <p className="text-xs leading-5 text-muted-foreground">Abra o <a href="https://www.instagram.com/explore/" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">Instagram em outra aba</a> ou use o celular. Cole um @ ou URL de perfil por linha. Depois de <span className="font-mono">|</span>, você pode registrar uma observação; ela não será tratada como dado verificado.</p>
+            <Label htmlFor="instagram-profiles">@ ou URLs dos perfis</Label>
+            <Textarea id="instagram-profiles" rows={5} maxLength={8000} value={manualProfiles} onChange={(event) => setManualProfiles(event.target.value)} placeholder={"@perfil1 | Bio ou observação vista no perfil\nhttps://www.instagram.com/perfil2/"} className="resize-y text-base sm:text-sm" />
+            <Button type="button" className="w-full" disabled={!manualProfiles.trim() || importingProfiles || busy} onClick={() => void importInstagramProfiles()}>{importingProfiles ? <Loader2 className="animate-spin" /> : <Users />}Organizar perfis no CRM</Button>
+            <p className="text-[11px] leading-4 text-muted-foreground">A Kiara salva somente os perfis que você forneceu. Não lê sua sessão, não extrai dados privados e não envia mensagens.</p>
+          </div>}
+        </div>
       </CardContent>
     </Card>
 

@@ -76,6 +76,59 @@ class SearchCreate(BaseModel):
         return unique
 
 
+class InstagramImport(BaseModel):
+    market: Literal["b2c", "b2b"] = "b2c"
+    profiles: str = Field(min_length=2, max_length=8000)
+
+
+_INSTAGRAM_HANDLE = re.compile(r"[A-Za-z0-9_.]{1,30}\Z")
+_INSTAGRAM_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "direct", "about"}
+
+
+def parse_instagram_import(value: str) -> list[dict[str, Any]]:
+    """Parse user-selected public profile identities, never posts or session data."""
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for line_number, raw in enumerate(value.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        identity, _, notes = line.partition("|")
+        identity = identity.strip()
+        notes = notes.strip()
+        if identity.startswith("@"):
+            handle = identity[1:]
+        elif identity.lower().startswith(("https://", "http://")):
+            parts = urlsplit(identity)
+            host = (parts.hostname or "").lower().removeprefix("www.")
+            path = parts.path.strip("/")
+            if parts.scheme != "https" or host != "instagram.com" or "/" in path or parts.username or parts.password:
+                raise ApiError(422, "invalid_instagram_profile", f"Linha {line_number}: use um @ ou URL de perfil do Instagram.")
+            handle = path
+        else:
+            handle = identity
+        if not _INSTAGRAM_HANDLE.fullmatch(handle) or handle.lower() in _INSTAGRAM_RESERVED:
+            raise ApiError(422, "invalid_instagram_profile", f"Linha {line_number}: @ inválido ou link que não é perfil.")
+        if len(notes) > 300:
+            raise ApiError(422, "instagram_note_too_long", f"Linha {line_number}: observação deve ter até 300 caracteres.")
+        key = handle.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({
+            "source": "instagram", "title": f"@{handle}",
+            "url": f"https://www.instagram.com/{handle}/", "summary": notes,
+            "public_data": {"provider": "user_supplied", "manual_import": True,
+                            "verification_version": 1, "criterion_status": "manual_review",
+                            "profile_handle": handle, "user_notes": notes},
+        })
+        if len(results) > HUNTER_MAX_RESULTS:
+            raise ApiError(422, "instagram_import_too_large", f"Importe até {HUNTER_MAX_RESULTS} perfis por vez.")
+    if not results:
+        raise ApiError(422, "instagram_import_empty", "Informe pelo menos um @ ou URL de perfil.")
+    return results
+
+
 @dataclass(slots=True)
 class HunterRepository:
     database: PostgresRepository
@@ -846,6 +899,21 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
 
 def create_hunter_router(repository: HunterRepository) -> APIRouter:
     router = APIRouter(prefix="/v1/hunter", tags=["hunter"])
+
+    @router.post("/instagram/import", status_code=201)
+    async def import_instagram(payload: InstagramImport, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
+        if context.role not in {"owner", "admin", "operator"}:
+            raise ApiError(403, "insufficient_role", "Seu perfil não pode importar perfis.")
+        results = parse_instagram_import(payload.profiles)
+        search = await repository.create(context, SearchCreate(
+            market=payload.market, query="Perfis do Instagram selecionados pelo usuário",
+            sources=["instagram"], result_limit=len(results),
+        ))
+        await repository.claim_confirmation(context, search["id"])
+        return await repository.finish(context, search["id"], results,
+            validation={"checked": len(results), "accepted": len(results), "excluded": 0, "unknown": 0, "source_failures": 0},
+            warnings=["Perfis e observações fornecidos pelo usuário. A Kiara não leu sua sessão do Instagram nem confirmou bio, telefone ou mensagens."],
+        )
 
     @router.post("/searches", status_code=201)
     async def create_search(payload: SearchCreate, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker

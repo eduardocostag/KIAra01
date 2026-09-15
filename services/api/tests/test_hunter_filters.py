@@ -20,6 +20,7 @@ from kiara_api.hunter import (
     execute_research,
     firecrawl_search,
     maps_index_search,
+    parse_instagram_import,
     public_search,
     research_query,
 )
@@ -42,6 +43,30 @@ def maps_result(name, *, loaded=True, website=None, phone="+55 (11) 91234-5678",
     return maps_detail_result({"title": name, "url": f"https://www.google.com/maps/place/{name}/data=!1s{name}"},
         {"title": name, "loaded": loaded, "website": website, "website_button": website_button or bool(website),
          "phone": phone, "address": "São Paulo", "links": ["https://wa.me/5511912345678"] if whatsapp else []})
+
+
+def test_instagram_manual_import_parses_profiles_and_deduplicates():
+    rows = parse_instagram_import("@ana.psi | Psicóloga em Porto Alegre\nhttps://www.instagram.com/lojabela/?hl=pt-br\n@ANA.PSI")
+    assert [row["public_data"]["profile_handle"] for row in rows] == ["ana.psi", "lojabela"]
+    assert rows[0]["summary"] == "Psicóloga em Porto Alegre"
+    assert rows[0]["public_data"]["manual_import"] is True
+
+
+@pytest.mark.parametrize("value", [
+    "https://www.instagram.com/p/ABC123/", "@explore", "https://evil.example/ana.psi",
+    "https://www.instagram.com/ana.psi/extra/", "@invalid handle",
+])
+def test_instagram_manual_import_rejects_non_profiles(value):
+    with pytest.raises(Exception):
+        parse_instagram_import(value)
+
+
+def test_manual_profile_notes_do_not_become_public_contact_evidence():
+    row = parse_instagram_import("@ana.psi | WhatsApp 11987654321 e email ana@example.com")[0]
+    normalized = normalize_result(row)
+    assert normalized["public_data"]["phone"] is None
+    assert normalized["public_data"]["email"] is None
+    assert normalized["public_data"]["whatsapp_url"] is None
 
 
 @pytest.mark.parametrize("query,expected", [

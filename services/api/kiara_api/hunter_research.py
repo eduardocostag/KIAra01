@@ -198,8 +198,16 @@ def is_profile_url(value: str) -> bool:
 
 def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
     data = dict(item.get("public_data") or {})
+    if item.get("source") == "instagram":
+        profile_url = safe_public_url(item.get("url"))
+        parts = urlsplit(profile_url) if profile_url else None
+        host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
+        segments = parts.path.strip("/").split("/") if parts else []
+        if host == "instagram.com" and len(segments) == 1 and re.fullmatch(r"[A-Za-z0-9_.]{1,30}", segments[0]):
+            data["profile_handle"] = segments[0]
     text = " ".join(str(value or "") for value in (data.pop("content", None), item.get("summary")))
-    contacts = extract_contacts(text)
+    # User notes are not a verified source of public contact information.
+    contacts = {"phone": None, "whatsapp_url": None, "email": None} if data.get("manual_import") else extract_contacts(text)
     data["phone"] = phone_number(data.get("phone")) or contacts["phone"]
     data["whatsapp_url"] = whatsapp_link(data.get("whatsapp_url")) or contacts["whatsapp_url"]
     data["email"] = (str(data.get("email") or "").strip().lower() or contacts.get("email"))
