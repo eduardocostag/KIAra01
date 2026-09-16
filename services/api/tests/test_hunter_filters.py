@@ -245,8 +245,11 @@ def test_partial_provider_failure_keeps_results_and_reports_warning(monkeypatch)
     async def maps(query, limit):
         assert query == "psicólogos"
         return [maps_result("accepted", whatsapp=True)]
+    async def index_unavailable(*args):
+        raise RuntimeError("public_index_unavailable")
     monkeypatch.setattr(hunter, "exa_search", exa)
     monkeypatch.setattr(hunter, "maps_search", maps)
+    monkeypatch.setattr(hunter, "indexed_search", index_unavailable)
     outcome = asyncio.run(execute_research(search(contact_filter="whatsapp")))
     assert outcome["error"] is None
     assert len(outcome["results"]) == 1
@@ -315,6 +318,35 @@ def test_public_search_falls_back_to_firecrawl(monkeypatch):
     assert [row["title"] for row in rows] == ["Clínica"]
 
 
+def test_public_search_uses_public_index_when_paid_providers_are_unavailable(monkeypatch):
+    async def unavailable(*args):
+        raise RuntimeError("not_configured")
+
+    async def indexed(*args):
+        return [{"source": "web", "title": "Clinica publica", "url": "https://example.org", "summary": ""}]
+
+    monkeypatch.setattr(hunter, "exa_search", unavailable)
+    monkeypatch.setattr(hunter, "firecrawl_search", unavailable)
+    monkeypatch.setattr(hunter, "indexed_search", indexed)
+    rows = asyncio.run(public_search("clinicas RS", "web", 20))
+    assert [row["title"] for row in rows] == ["Clinica publica"]
+
+
+def test_public_index_parser_extracts_original_destination_and_rejects_bad_links():
+    parser = hunter._PublicIndexParser("instagram", 5)
+    parser.feed(
+        '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Finstagram.com%2Fclinica.rs">Clinica RS</a>'
+        '<a class="result__a" href="javascript:alert(1)">Invalido</a>'
+    )
+    assert parser.rows == [{
+        "source": "instagram",
+        "title": "Clinica RS",
+        "url": "https://instagram.com/clinica.rs",
+        "summary": "",
+        "public_data": {"provider": "public_web_index"},
+    }]
+
+
 def test_firecrawl_search_uses_brazil_and_source_scope(monkeypatch):
     captured = {}
     def response(_url, _headers, body):
@@ -379,21 +411,29 @@ def test_malformed_provider_url_does_not_strand_a_search(monkeypatch):
     assert outcome["error"] is None
 
 
-def test_unexpected_provider_processing_error_is_finished_not_left_running(monkeypatch):
+def test_unexpected_provider_processing_error_is_requeued_not_lost(monkeypatch):
     async def broken(*args):
         raise KeyError("unexpected provider shape")
     monkeypatch.setattr(hunter, "execute_research", broken)
     class Repository:
-        async def claim_confirmation(self, *args):
-            return search()
+        retried = None
+        async def claim_work(self, *args):
+            return {"attempts": 1, "max_attempts": 12}
+        async def get(self, *args):
+            return {**search(), "id": "search-id", "status": "running", "warnings": [], "results": []}
+        async def retry_work(self, context, search_id, error, attempts, max_attempts):
+            self.retried = (search_id, error, attempts, max_attempts)
+            return False
         async def finish(self, context, search_id, results, error, **options):
             return {"id": search_id, "status": "failed" if error else "completed", "results": results, **options}
-    router = hunter.create_hunter_router(Repository())
-    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/confirm"))
-    response = asyncio.run(endpoint("search-id", None, "test-idempotency", None))
-    assert response["status"] == "failed"
+    repository = Repository()
+    router = hunter.create_hunter_router(repository)
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/process"))
+    response = asyncio.run(endpoint("search-id", None, None))
+    assert response["status"] == "running"
     assert response["results"] == []
     assert response["warnings"]
+    assert repository.retried == ("search-id", "transient_worker_error", 1, 12)
 
 
 def test_browser_cleanup_failure_does_not_erase_completed_maps_results(monkeypatch):

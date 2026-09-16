@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { ArrowRight, Check, ChevronDown, CircleDollarSign, Clock3, ExternalLink, Filter, Instagram, Loader2, MapPin, MessageCircle, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, TriangleAlert } from "lucide-react"
+import { ArrowRight, AtSign as Instagram, Check, ChevronDown, CircleDollarSign, Clock3, ExternalLink, Filter, Loader2, MapPin, MessageCircle, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { leadDisplayName, parsePipeline, PipelineRequestError, pipelineStages, requestPipeline, sourceLabels, type PipelineEntry, type PipelineStage, websiteLabel } from "@/lib/api/pipeline"

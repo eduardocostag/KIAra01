@@ -38,6 +38,19 @@ def test_confirmation_is_a_separate_endpoint() -> None:
     assert "claim_confirmation" in source
 
 
+def test_hunter_uses_a_durable_tenant_queue_and_recoverable_leases() -> None:
+    root = Path(__file__).parents[1]
+    source = (root / "kiara_api" / "hunter.py").read_text(encoding="utf-8")
+    migration = (root / "migrations" / "0007_hunter_durable_queue.sql").read_text(encoding="utf-8")
+    assert "'hunter.search','queued'" in source
+    assert "attempts=attempts+1" in source
+    assert "lease_expires_at<now()" in source
+    assert "FOR UPDATE SKIP LOCKED" in source
+    assert '@router.get("/internal/drain")' in source
+    assert "organization_id uuid NOT NULL" in migration
+    assert "REFERENCES hunter_searches (organization_id, id)" in migration
+
+
 def test_hunter_history_can_be_cleared_without_deleting_pipeline() -> None:
     source = (Path(__file__).parents[1] / "kiara_api" / "hunter.py").read_text(encoding="utf-8")
     assert '@router.delete("/searches")' in source

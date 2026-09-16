@@ -3,7 +3,7 @@
     {
       "id": "conversation-1787771212289594",
       "title": "teste do usuário",
-      "updated_at": "2026-09-16T14:06:57.363478+00:00",
+      "updated_at": "2026-09-16T18:48:46.089987+00:00",
       "messages": [
         {
           "author": "Você",
@@ -364,6 +364,21 @@
           "author": "Você",
           "text": "busque empresas",
           "created_at": "2026-09-16T14:06:57.363478+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-09-16T18:48:45.577629+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-09-16T18:48:45.591229+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-09-16T18:48:46.089987+00:00"
         }
       ]
     },

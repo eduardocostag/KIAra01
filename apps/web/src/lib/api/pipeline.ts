@@ -33,9 +33,14 @@ export type PipelineEntry = {
 }
 
 export class PipelineRequestError extends Error {
-  constructor(message: string, readonly status: number, readonly code = "pipeline_error") {
+  readonly status: number
+  readonly code: string
+
+  constructor(message: string, status: number, code = "pipeline_error") {
     super(message)
     this.name = "PipelineRequestError"
+    this.status = status
+    this.code = code
   }
 }
 
@@ -139,7 +144,7 @@ export async function requestPipeline(path: string, init: RequestInit = {}): Pro
       throw new PipelineRequestError(`A API retornou uma resposta inválida (HTTP ${response.status}).`, response.status, "invalid_response")
     }
     if (response.status === 401) throw new PipelineRequestError("Sua sessão expirou. Entre novamente para acessar o CRM.", 401, payload.error?.code)
-    if (response.status === 412) throw new PipelineRequestError(payload.error?.message || "Este lead foi atualizado em outra sessão.", 412, payload.error?.code || "version_conflict")
+    if (response.status === 412) throw new PipelineRequestError("Este lead foi atualizado em outra sessão.", 412, payload.error?.code || "version_conflict")
     if (!response.ok) throw new PipelineRequestError(typeof payload?.error?.message === "string" ? payload.error.message : "Não foi possível atualizar o Pipeline.", response.status, payload.error?.code)
     return payload
   } catch (error) {

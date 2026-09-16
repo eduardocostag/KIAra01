@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import ipaddress
 import json
 import logging
@@ -10,12 +11,14 @@ import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Literal
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlencode, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request as UrlRequest
 from uuid import UUID
 
+import psycopg
 from fastapi import APIRouter, Depends, Header, Request
+from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, field_validator
 
 from .adapters.postgres import PostgresRepository, _iso, _uuid
@@ -235,7 +238,130 @@ class HunterRepository:
                 "INSERT INTO audit_events (organization_id,actor_user_id,action,resource_type,resource_id,correlation_id) VALUES (%s,%s,'hunter.search.confirmed','hunter_search',%s,%s)",
                 (org, user, sid, context.correlation_id),
             )
+            await connection.execute(
+                """INSERT INTO jobs
+                   (organization_id,kind,state,payload,idempotency_key,max_attempts)
+                   VALUES (%s,'hunter.search','queued',%s,%s,12)
+                   ON CONFLICT (organization_id,idempotency_key) DO NOTHING""",
+                (org, json.dumps({"search_id": str(sid), "requested_by": context.user_id,
+                                  "membership_id": context.membership_id,
+                                  "role": context.role, "correlation_id": context.correlation_id}),
+                 f"hunter.search:{sid}"),
+            )
+            await connection.execute(
+                """INSERT INTO hunter_work_queue (organization_id,search_id)
+                   VALUES (%s,%s) ON CONFLICT (organization_id,search_id)
+                   DO UPDATE SET available_at=LEAST(hunter_work_queue.available_at,now()),
+                     lease_owner=NULL,lease_expires_at=NULL,updated_at=now()""",
+                (org, sid),
+            )
         return self._search(row, [])
+
+    async def get(self, context: RequestContext, search_id: str) -> dict[str, Any]:
+        org, sid = _uuid("organization", context.organization_id), _uuid("hunter_search", search_id)
+        async with self.database._transaction(context.organization_id) as connection:
+            row = await (await connection.execute(
+                "SELECT * FROM hunter_searches WHERE organization_id=%s AND id=%s", (org, sid)
+            )).fetchone()
+            if not row:
+                raise ApiError(404, "hunter_search_not_found", "Pesquisa não encontrada.")
+            await self._attach_options(connection, org, row)
+            results = await (await connection.execute(
+                "SELECT * FROM hunter_results WHERE organization_id=%s AND search_id=%s ORDER BY created_at,id",
+                (org, sid),
+            )).fetchall()
+        return self._search(row, [self._result(item) for item in results])
+
+    async def claim_work(self, context: RequestContext, search_id: str) -> dict[str, Any] | None:
+        """Lease one tenant-scoped Hunter job; expired workers can be recovered safely."""
+        org, sid = _uuid("organization", context.organization_id), _uuid("hunter_search", search_id)
+        owner = f"{context.correlation_id}:{context.user_id}"[:200]
+        async with self.database._transaction(context.organization_id) as connection:
+            row = await (await connection.execute(
+                """UPDATE jobs SET state='running',attempts=attempts+1,lease_owner=%s,
+                          lease_expires_at=now() + interval '4 minutes',updated_at=now()
+                   WHERE organization_id=%s AND kind='hunter.search'
+                     AND payload->>'search_id'=%s AND attempts < max_attempts
+                     AND ((state='queued' AND available_at<=now()) OR
+                          (state='running' AND lease_expires_at<now()))
+                   RETURNING id,attempts,max_attempts,payload""",
+                (owner, org, str(sid)),
+            )).fetchone()
+        return row
+
+    async def retry_work(self, context: RequestContext, search_id: str, error_code: str,
+                         attempts: int, max_attempts: int) -> bool:
+        org, sid = _uuid("organization", context.organization_id), _uuid("hunter_search", search_id)
+        exhausted = attempts >= max_attempts
+        delay = min(900, 15 * (2 ** max(0, attempts - 1)))
+        async with self.database._transaction(context.organization_id) as connection:
+            await connection.execute(
+                """UPDATE jobs SET state=%s,available_at=now()+(%s * interval '1 second'),
+                          lease_owner=NULL,lease_expires_at=NULL,last_error_code=%s,updated_at=now()
+                   WHERE organization_id=%s AND kind='hunter.search' AND payload->>'search_id'=%s""",
+                ("failed" if exhausted else "queued", delay, error_code, org, str(sid)),
+            )
+            if exhausted:
+                await connection.execute(
+                    "DELETE FROM hunter_work_queue WHERE organization_id=%s AND search_id=%s", (org, sid),
+                )
+            else:
+                await connection.execute(
+                    """UPDATE hunter_work_queue SET available_at=now()+(%s * interval '1 second'),
+                         lease_owner=NULL,lease_expires_at=NULL,updated_at=now()
+                       WHERE organization_id=%s AND search_id=%s""",
+                    (delay, org, sid),
+                )
+        return exhausted
+
+    async def complete_work(self, context: RequestContext, search_id: str) -> None:
+        org, sid = _uuid("organization", context.organization_id), _uuid("hunter_search", search_id)
+        async with self.database._transaction(context.organization_id) as connection:
+            await connection.execute(
+                """UPDATE jobs SET state='succeeded',lease_owner=NULL,lease_expires_at=NULL,
+                          last_error_code=NULL,updated_at=now()
+                   WHERE organization_id=%s AND kind='hunter.search' AND payload->>'search_id'=%s""",
+                (org, str(sid)),
+            )
+            await connection.execute(
+                "DELETE FROM hunter_work_queue WHERE organization_id=%s AND search_id=%s", (org, sid),
+            )
+
+    async def claim_next_global(self, worker_id: str) -> tuple[RequestContext, str] | None:
+        """Claim identifiers globally, then recover the payload inside its tenant RLS context."""
+        async with await psycopg.AsyncConnection.connect(
+            self.database._database_url, row_factory=dict_row, connect_timeout=5
+        ) as connection, connection.transaction():
+            row = await (await connection.execute(
+                """WITH candidate AS (
+                     SELECT organization_id,search_id FROM hunter_work_queue
+                     WHERE available_at<=now() AND (lease_owner IS NULL OR lease_expires_at<now())
+                     ORDER BY available_at,created_at FOR UPDATE SKIP LOCKED LIMIT 1
+                   )
+                   UPDATE hunter_work_queue queue SET lease_owner=%s,
+                     lease_expires_at=now()+interval '4 minutes',updated_at=now()
+                   FROM candidate WHERE queue.organization_id=candidate.organization_id
+                     AND queue.search_id=candidate.search_id
+                   RETURNING queue.organization_id,queue.search_id""",
+                (worker_id[:200],),
+            )).fetchone()
+        if not row:
+            return None
+        organization_id, search_id = str(row["organization_id"]), str(row["search_id"])
+        async with self.database._transaction(organization_id) as connection:
+            job = await (await connection.execute(
+                """SELECT payload FROM jobs WHERE organization_id=%s AND kind='hunter.search'
+                   AND payload->>'search_id'=%s""",
+                (_uuid("organization", organization_id), search_id),
+            )).fetchone()
+        if not job:
+            return None
+        payload = job["payload"]
+        return RequestContext(
+            user_id=str(payload["requested_by"]), organization_id=organization_id,
+            membership_id=str(payload["membership_id"]), role=str(payload["role"]),
+            correlation_id=str(payload.get("correlation_id") or worker_id),
+        ), search_id
 
     async def finish(self, context: RequestContext, search_id: str, results: list[dict[str, Any]], error: str | None = None,
                      *, validation: dict[str, int] | None = None, warnings: list[str] | None = None) -> dict[str, Any]:
@@ -366,6 +492,84 @@ async def firecrawl_search(query: str, source: str, limit: int) -> list[dict[str
     } for item in rows if item.get("url") or (item.get("metadata") or {}).get("sourceURL")]
 
 
+class _PublicIndexParser(HTMLParser):
+    def __init__(self, source: str, limit: int) -> None:
+        super().__init__(convert_charrefs=True)
+        self.source, self.limit = source, limit
+        self.rows: list[dict[str, Any]] = []
+        self._href = ""
+        self._title: list[str] = []
+        self._in_result = False
+        self._result_tag = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        fields = dict(attrs)
+        classes = (fields.get("class") or "").split()
+        if tag == "a" and "result__a" in classes and len(self.rows) < self.limit or tag == "a" and (fields.get("href") or "").startswith(("https://", "http://")) and len(self.rows) < self.limit:
+            self._href = fields.get("href") or ""
+            self._title = []
+            self._in_result = True
+            self._result_tag = "a"
+        elif tag == "a" and (fields.get("href") or "").startswith("/url?"):
+            self._href = (fields.get("href") or "")[4:]
+        elif tag == "h3" and self._href and len(self.rows) < self.limit:
+            self._title = []
+            self._in_result = True
+            self._result_tag = "h3"
+
+    def handle_data(self, data: str) -> None:
+        if self._in_result:
+            self._title.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != self._result_tag or not self._in_result:
+            return
+        self._in_result = False
+        href = "https:" + self._href if self._href.startswith("//") else self._href
+        parts = urlsplit(href)
+        if (parts.hostname or "").endswith("duckduckgo.com"):
+            href = unquote((parse_qs(parts.query).get("uddg") or [""])[0])
+        elif not parts.scheme:
+            href = unquote((parse_qs(href).get("q") or [""])[0])
+        safe = safe_public_url(href)
+        title = clean_summary(" ".join(self._title), 500)
+        host = (urlsplit(safe).hostname or "").lower().removeprefix("www.") if safe else ""
+        required_domain = DOMAIN_BY_SOURCE.get(self.source)
+        source_matches = not required_domain or host == required_domain or host.endswith("." + required_domain)
+        if self.source == "google_maps":
+            source_matches = bool(safe) and source_matches and "/maps" in urlsplit(safe).path
+        if safe and title and source_matches and all(row["url"] != safe for row in self.rows):
+            self.rows.append({
+                "source": self.source,
+                "title": title,
+                "url": safe,
+                "summary": "",
+                "public_data": {"provider": "public_web_index"},
+            })
+
+
+def _read_public_index(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    scoped = query
+    domain = DOMAIN_BY_SOURCE.get(source)
+    if domain and f"site:{domain}" not in scoped:
+        scoped = f"site:{domain} {scoped}"
+    endpoint = "https://search.brave.com/search?" + urlencode({"q": scoped, "source": "web"})
+    request = UrlRequest(endpoint, headers={"User-Agent": "Mozilla/5.0"})
+    with build_opener().open(request, timeout=20) as response:
+        if response.headers.get_content_type() != "text/html":
+            raise RuntimeError("public_index_invalid_response")
+        body = response.read(2_000_001)
+        if len(body) > 2_000_000:
+            raise RuntimeError("public_index_response_too_large")
+    parser = _PublicIndexParser(source, min(limit, HUNTER_MAX_RESULTS))
+    parser.feed(body.decode("utf-8", errors="replace"))
+    return parser.rows
+
+
+async def indexed_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    return await asyncio.to_thread(_read_public_index, query, source, limit)
+
+
 async def public_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
     if source == "instagram":
         query = f"site:instagram.com/ {query} Instagram perfil bio"
@@ -373,7 +577,19 @@ async def public_search(query: str, source: str, limit: int) -> list[dict[str, A
         return await exa_search(query, source, limit)
     except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
         logger.warning("hunter.exa.unavailable", extra={"source": source, "error_class": type(exc).__name__})
-        return await firecrawl_search(query, source, limit)
+        try:
+            return await firecrawl_search(query, source, limit)
+        except Exception as fallback_exc:  # noqa: BLE001 - public index is credential-free
+            logger.warning("hunter.firecrawl.unavailable", extra={
+                "source": source, "error_class": type(fallback_exc).__name__,
+            })
+            try:
+                rows = await indexed_search(query, source, limit)
+            except Exception as index_exc:
+                raise RuntimeError("public_index_unavailable") from index_exc
+            if not rows:
+                raise RuntimeError("public_index_empty")
+            return rows
 
 
 class _InstagramBioParser(HTMLParser):
@@ -735,7 +951,6 @@ async def maps_index_search(query: str, limit: int) -> list[dict[str, Any]]:
 
 async def _read_maps_cdp(connect_url: str, query: str, limit: int, *, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
     from playwright.async_api import Error as PlaywrightError
-    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
 
     async with async_playwright() as playwright:
@@ -938,7 +1153,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     warnings: list[str] = []
     failures: list[str] = []
-    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "browserbase_not_configured", "browser_provider_unavailable"}
+    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "public_index_unavailable", "public_index_empty", "browserbase_not_configured", "browser_provider_unavailable"}
     for source, task in tasks.items():
         if task.cancelled() or task.exception() is not None:
             code = str(task.exception()) if not task.cancelled() else "provider_timeout"
@@ -1000,6 +1215,32 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
 def create_hunter_router(repository: HunterRepository) -> APIRouter:
     router = APIRouter(prefix="/v1/hunter", tags=["hunter"])
 
+    async def run_leased_search(context: RequestContext, search_id: str) -> dict[str, Any]:
+        leased = await repository.claim_work(context, search_id)
+        if leased is None:
+            return await repository.get(context, search_id)
+        search = await repository.get(context, search_id)
+        try:
+            outcome = await execute_research(search)
+        except Exception as exc:  # noqa: BLE001 — the durable boundary must requeue unknown transient failures
+            logger.warning("hunter.research.unexpected_error", extra={"error_class": type(exc).__name__})
+            outcome = {"results": [], "error": "transient_worker_error", "validation": {},
+                       "warnings": ["A execução foi interrompida e continuará automaticamente; nenhum contato foi perdido."]}
+        if outcome["error"]:
+            exhausted = await repository.retry_work(
+                context, search_id, outcome["error"], leased["attempts"], leased["max_attempts"],
+            )
+            if not exhausted:
+                current = await repository.get(context, search_id)
+                current["warnings"] = [*current.get("warnings", []), *outcome["warnings"],
+                    "As fontes limitaram temporariamente a consulta. A pesquisa permanece na fila e será retomada."]
+                return current
+        completed = await repository.finish(context, search_id, outcome["results"], outcome["error"],
+                                            validation=outcome["validation"], warnings=outcome["warnings"])
+        if not outcome["error"]:
+            await repository.complete_work(context, search_id)
+        return completed
+
     @router.post("/instagram/import", status_code=201)
     async def import_instagram(payload: InstagramImport, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         if context.role not in {"owner", "admin", "operator"}:
@@ -1010,10 +1251,12 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
             sources=["instagram"], result_limit=len(results),
         ))
         await repository.claim_confirmation(context, search["id"])
-        return await repository.finish(context, search["id"], results,
+        completed = await repository.finish(context, search["id"], results,
             validation={"checked": len(results), "accepted": len(results), "excluded": 0, "unknown": 0, "source_failures": 0},
             warnings=["Perfis e observações fornecidos pelo usuário. A Kiara não leu sua sessão do Instagram nem confirmou bio, telefone ou mensagens."],
         )
+        await repository.complete_work(context, search["id"])
+        return completed
 
     @router.post("/searches", status_code=201)
     async def create_search(payload: SearchCreate, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
@@ -1022,6 +1265,10 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
     @router.get("/searches")
     async def list_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         return {"items": await repository.list(context)}
+
+    @router.get("/searches/{search_id}")
+    async def get_search(search_id: str, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008
+        return await repository.get(context, search_id)
 
     @router.delete("/searches")
     async def clear_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
@@ -1032,14 +1279,25 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
                              idempotency_key: str = Header(min_length=8, max_length=200),
                              context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         del request, idempotency_key
-        search = await repository.claim_confirmation(context, search_id)
-        try:
-            outcome = await execute_research(search)
-        except Exception as exc:  # noqa: BLE001 — persist a terminal state at the external-provider boundary
-            logger.warning("hunter.research.unexpected_error", extra={"error_class": type(exc).__name__})
-            outcome = {"results": [], "error": "provider_error", "validation": {},
-                       "warnings": ["A pesquisa não pôde ser concluída. Tente novamente; nenhum contato foi inventado."]}
-        return await repository.finish(context, search_id, outcome["results"], outcome["error"],
-                                       validation=outcome["validation"], warnings=outcome["warnings"])
+        return await repository.claim_confirmation(context, search_id)
+
+    @router.post("/searches/{search_id}/process")
+    async def process_search(search_id: str, request: Request,
+                             context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008
+        del request
+        return await run_leased_search(context, search_id)
+
+    @router.get("/internal/drain")
+    async def drain_queue(request: Request) -> dict[str, Any]:
+        expected = os.getenv("KIARA_WORKER_TOKEN") or os.getenv("CRON_SECRET")
+        supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not expected or not supplied or not hmac.compare_digest(supplied, expected):
+            raise ApiError(401, "worker_unauthorized", "Worker não autorizado.")
+        claimed = await repository.claim_next_global(request.state.correlation_id)
+        if not claimed:
+            return {"processed": False, "queue": "empty"}
+        context, search_id = claimed
+        result = await run_leased_search(context, search_id)
+        return {"processed": True, "search_id": search_id, "status": result["status"]}
 
     return router

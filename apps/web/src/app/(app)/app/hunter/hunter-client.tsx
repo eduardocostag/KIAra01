@@ -46,6 +46,18 @@ export function HunterClient() {
   const resultsPanel = useRef<HTMLDivElement>(null)
   const requestVersion = useRef(0)
   const inFlight = useRef(false)
+  const processQueued = useCallback(async (id: string) => {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const current = parseHunterJob(await requestHunter(
+        `/api/hunter/searches/${encodeURIComponent(id)}/process`, { method: "POST" }, 210_000,
+      ))
+      setJobs((items) => [current, ...items.filter((item) => item.id !== current.id)])
+      if (current.status !== "running") return current
+      setStage("Pesquisa preservada na fila; aguardando a próxima tentativa…")
+      await new Promise((resolve) => setTimeout(resolve, 15_000))
+    }
+    return parseHunterJob(await requestHunter(`/api/hunter/searches/${encodeURIComponent(id)}`))
+  }, [])
   const load = useCallback(async () => {
     const version = ++requestVersion.current
     setLoading(true)
@@ -59,6 +71,16 @@ export function HunterClient() {
   // Synchronize persisted history without allowing an old GET to replace a new search.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const running = jobs.find((job) => job.status === "running")
+    if (!running || inFlight.current || loading) return
+    inFlight.current = true
+    setBusy(true); setStage("Retomando a pesquisa salva…")
+    void processQueued(running.id)
+      .then(() => router.refresh())
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Não foi possível retomar a pesquisa."))
+      .finally(() => { inFlight.current = false; setBusy(false) })
+  }, [jobs, loading, processQueued, router])
   const latest = jobs.find((job) => job.id === selectedId) ?? jobs[0]
   function focusResults() {
     requestAnimationFrame(() => {
@@ -97,8 +119,11 @@ export function HunterClient() {
       }))
       setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
       setSelectedId(job.id)
+      setStage("Colocando a pesquisa na fila durável…")
+      const queued = parseHunterJob(await requestHunter(`/api/hunter/searches/${encodeURIComponent(job.id)}/confirm`, { method: "POST" }))
+      setJobs((current) => [queued, ...current.filter((item) => item.id !== queued.id)])
       setStage("Consultando fontes e verificando os critérios…")
-      const completed = parseHunterJob(await requestHunter(`/api/hunter/searches/${encodeURIComponent(job.id)}/confirm`, { method: "POST" }, 210_000))
+      const completed = await processQueued(job.id)
       setJobs((current) => [completed, ...current.filter((item) => item.id !== completed.id)])
       // The same completion may have created/updated CRM rows. Invalidate any
       // prefetched server pages so Dashboard, Pipeline and Inbox read them.
