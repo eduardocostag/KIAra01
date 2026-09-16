@@ -23,6 +23,7 @@ from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .hunter_crm import sync_hunter_results
+from .hunter_intelligence import expand_provider_query, understand_search
 from .hunter_research import (
     clean_summary,
     extract_contacts,
@@ -880,6 +881,14 @@ def research_query(search: dict[str, Any]) -> str:
     return base
 
 
+def expanded_research_query(search: dict[str, Any]) -> str:
+    """Expanded query for indexes; Maps receives the concise user wording."""
+    options = research_options(search)
+    base = expand_provider_query(options["provider_query"], search.get("location"))
+    objective = options["remaining_objective"]
+    return f"{base}. Critério de interesse: {objective}" if objective else base
+
+
 def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
     """Keep indexed Instagram candidates; record what the public evidence actually proves."""
     url = safe_public_url(row.get("url"))
@@ -892,7 +901,9 @@ def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> b
     if not profile and not publication:
         return False
     options = research_options(search)
-    niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(options["provider_query"]))
+    plan = understand_search(options["provider_query"], search.get("location"))
+    semantic_terms = [plan.get("entity") or "", *plan.get("services", []), *plan.get("alternatives", [])]
+    niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(" ".join(semantic_terms) or options["provider_query"]))
              if word not in {"para", "com", "sem", "quero", "buscar", "encontrar"}]
     place = [word for word in re.findall(r"[a-z]{4,}", folded(search.get("location") or ""))]
     indexed = folded(" ".join(str(row.get(key) or "") for key in ("title", "summary")) + " " + (segments[0] if profile else ""))
@@ -910,6 +921,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
     query = research_query(search)
+    expanded_query = expanded_research_query(search)
     logger.info("hunter.research.started", extra={
         "sources": search["sources"], "result_limit": search["result_limit"],
         "has_location": bool(search.get("location")), "research_mode": search.get("research_mode", "broad"),
@@ -918,7 +930,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     # Filter after recall: never spend the user's result allowance on rejects.
     per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
     tasks = {source: asyncio.create_task(maps_search(query, per_source) if source == "google_maps"
-                                        else public_search(query, source, per_source)) for source in search["sources"]}
+                                        else public_search(expanded_query, source, per_source)) for source in search["sources"]}
     _, pending = await asyncio.wait(tasks.values(), timeout=SOURCE_TIMEOUT_SECONDS)
     for task in pending:
         task.cancel()

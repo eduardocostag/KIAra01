@@ -70,7 +70,11 @@ export function HunterClient() {
   const inferredWebsite = inferredWebsiteFilter(query, "")
   const effectiveWebsite = inferredWebsite !== "any" ? inferredWebsite : websiteFilter
   const requiresMaps = effectiveWebsite === "without_website"
-  const effectiveSources = requiresMaps && !sources.includes("google_maps") ? [...sources, "google_maps" as Source] : sources
+  const mentionsInstagram = /\b(?:instagram|insta|perfil|publica(?:ç|c)[aã]o|reels?)\b/i.test(query)
+  const sourceSet = new Set<Source>(sources)
+  if (requiresMaps) sourceSet.add("google_maps")
+  if (mentionsInstagram) sourceSet.add("instagram")
+  const effectiveSources = [...sourceSet]
   function toggle(source: Source) {
     if (source === "google_maps" && requiresMaps) return
     setSources((all) => all.includes(source) ? all.filter((item) => item !== source) : [...all, source])
@@ -116,19 +120,20 @@ export function HunterClient() {
   }
 
   return <div className={styles.workspace}>
-    <header className="mb-6"><h1 id="hunter-title" className="kiara-editorial text-3xl sm:text-4xl">Encontrar contatos</h1><p className="mt-1 text-sm text-muted-foreground">Defina o público e veja os resultados ao lado.</p></header>
+    <header className="mb-6"><h1 id="hunter-title" className="kiara-editorial text-3xl sm:text-4xl">Encontrar contatos</h1><p className="mt-1 text-sm text-muted-foreground">Descreva o cliente ideal em linguagem natural e veja os resultados ao lado.</p></header>
 
     <Card className={cn(styles.searchPanel, "gap-0 self-start py-0 shadow-none")}>
       <CardHeader className={cn(styles.panelHeader, "border-b p-5")}>
         <div className="flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" aria-hidden="true" /><CardTitle className="text-sm font-semibold">Configurar pesquisa</CardTitle></div>
-        <p className="mt-1 text-xs text-muted-foreground">Defina seu público. A Kiara verifica as fontes.</p>
+        <p className="mt-1 text-xs text-muted-foreground">A Kiara entende segmento, serviço, localização e presença digital.</p>
       </CardHeader>
       <CardContent className={cn(styles.panelContent, "p-5")}>
         <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); if (query.trim().length >= 2 && effectiveSources.length && !busy) setReview(true) }}>
           <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
             <div className="space-y-2">
-              <Label htmlFor="hunter-query">Quem você quer encontrar?</Label>
-              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: dentistas em Porto Alegre sem site" />
+              <Label htmlFor="hunter-query">Descreva o cliente que você quer encontrar</Label>
+              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: Clínicas de estética com Instagram, mas sem site" />
+              <p className="text-xs leading-5 text-muted-foreground">Combine profissão, segmento, serviço e sinais comerciais. A busca expande sinônimos automaticamente.</p>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_80px] gap-3">
               <div className="space-y-2"><Label htmlFor="hunter-location">Cidade ou região</Label><Input id="hunter-location" maxLength={200} className="h-10 text-base sm:text-sm" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Localização (opcional)" /></div>
@@ -159,6 +164,7 @@ export function HunterClient() {
                 return <Button key={source} type="button" variant="outline" title={info.detail} aria-pressed={active} aria-disabled={source === "google_maps" && requiresMaps} onClick={() => toggle(source)} className={cn("h-10 justify-start gap-2 rounded-lg px-3 text-xs", active && "border-primary/35 bg-brand-subtle text-brand-subtle-foreground hover:bg-brand-subtle")}><Icon className="size-3.5" /><span className="flex-1 text-left">{info.label}</span>{active && <Check className="size-3.5" />}</Button>
               })}</div>
               {requiresMaps && <p className="mt-2 text-xs text-muted-foreground">Google Maps incluído para verificar o critério de site.</p>}
+              {mentionsInstagram && !sources.includes("instagram") && <p className="mt-2 text-xs text-muted-foreground">Instagram incluído porque foi citado na descrição.</p>}
             </fieldset>
           </fieldset>
           {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{error}</p>}
