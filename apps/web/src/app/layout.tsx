@@ -35,7 +35,7 @@ export const viewport: Viewport = {
 const themeBootScript = `
 (function () {
   try {
-    var stored = localStorage.getItem("kiara-theme") || "system";
+    var stored = localStorage.getItem("kiara-theme") || "dark";
     var dark = stored === "dark" || (stored === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.classList.toggle("dark", dark);
     document.documentElement.dataset.theme = stored;

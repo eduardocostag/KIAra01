@@ -32,7 +32,7 @@
 .heroCopy { padding: 2rem; }
 .eyebrow { display: inline-flex; align-items: center; gap: .5rem; color: var(--primary); font-size: .67rem; font-weight: 750; letter-spacing: .17em; }
 .eyebrow svg { width: .9rem; height: .9rem; }
-.hero h2 { max-width: 700px; margin-top: 1rem; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2rem, 4vw, 3.3rem); font-weight: 500; line-height: .98; letter-spacing: -.045em; }
+.hero h2 { max-width: 700px; margin-top: 1rem; font-family: var(--font-geist-sans), 'Geist', sans-serif; font-size: clamp(2rem, 4vw, 3.3rem); font-weight: 700; line-height: 1.06; letter-spacing: -.055em; }
 .hero h2 em { color: var(--primary); font-style: italic; }
 .heroCopy > p { max-width: 640px; margin-top: 1rem; color: var(--muted-foreground); font-size: .9rem; line-height: 1.65; }
 .heroSignals { display: flex; flex-wrap: wrap; gap: .65rem 1rem; margin-top: 1.4rem; color: var(--muted-foreground); font-size: .7rem; font-weight: 550; }
@@ -52,7 +52,7 @@
 .resultsCard { min-width: 0; gap: 0; padding: 0; }
 .resultsHeader { gap: 1rem; border-bottom: 1px solid var(--border); padding: 1.25rem; }
 .resultsEyebrow { margin-bottom: .3rem; color: var(--primary); font-size: .62rem; font-weight: 750; letter-spacing: .17em; }
-.resultsTitle { font-family: Georgia, 'Times New Roman', serif; font-size: 1.45rem; font-weight: 500; letter-spacing: -.025em; }
+.resultsTitle { font-family: var(--font-geist-sans), 'Geist', sans-serif; font-size: 1.45rem; font-weight: 700; letter-spacing: -.035em; }
 .summaryBlock { border-bottom: 1px solid var(--border); padding: 1.25rem; }
 .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin-top: 1.25rem; }
 .metrics div { position: relative; overflow: hidden; border: 1px solid color-mix(in oklab, var(--primary) 12%, var(--border)); border-radius: 14px; background: color-mix(in oklab, var(--muted) 50%, transparent); padding: .85rem; }

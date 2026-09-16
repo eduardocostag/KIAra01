@@ -28,9 +28,9 @@ export function ThemeToggle() {
     },
     () => {
       const stored = localStorage.getItem("kiara-theme")
-      return themes.includes(stored as Theme) ? (stored as Theme) : "system"
+      return themes.includes(stored as Theme) ? (stored as Theme) : "dark"
     },
-    () => "system" as Theme,
+    () => "dark" as Theme,
   )
 
   useEffect(() => {

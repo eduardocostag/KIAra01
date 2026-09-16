@@ -12,9 +12,10 @@ import { cn } from "@/lib/utils"
 
 const nav = [
   { href: "/app", label: "Visão geral", icon: Gauge },
-  { href: "/app/hunter", label: "Hunter", icon: Target },
+  { href: "/app/hunter", label: "Encontrar leads", icon: Target },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/integrations", label: "Integrações", icon: Plug },
+  { href: "/app/settings", label: "Configurações", icon: Settings },
 ]
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
@@ -35,13 +36,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = nav.find((item) => item.href !== "/app" && pathname.startsWith(item.href))?.label ?? (pathname.startsWith("/app/settings") ? "Configurações" : "Visão geral")
   return <div className="kiara-workspace min-h-screen bg-background text-foreground">
     <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
-    <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-52 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
+    <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
       <Link href="/app" className="mb-9 flex min-h-10 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
       <p className="mb-3 px-3 text-[9px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/40">Workspace comercial</p>
       <Navigation />
     </aside>
-    <div className="min-w-0 pt-16 lg:pl-52">
-      <header className="app-shell-header fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/90 px-4 shadow-[0_10px_35px_-28px_rgb(0_0_0/.8)] backdrop-blur-xl sm:px-6 lg:left-52 lg:px-10">
+    <div className="min-w-0 pt-16 lg:pl-56">
+      <header className="app-shell-header fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/90 px-4 shadow-[0_10px_35px_-28px_rgb(0_0_0/.8)] backdrop-blur-xl sm:px-6 lg:left-56 lg:px-10">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 lg:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
           <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground">
@@ -51,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Sheet>
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><PanelsTopLeft className="hidden size-4 sm:block" aria-hidden="true" /><span className="hidden sm:inline">Workspace</span><ChevronRight className="hidden size-3 sm:block" aria-hidden="true" /><span className="truncate font-medium text-foreground">{current}</span></div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Button asChild variant="ghost" className="hidden h-9 gap-2 text-xs sm:inline-flex"><Link href="/app/hunter"><Search className="size-3.5" />Pesquisar leads</Link></Button>
+          <Button asChild variant="outline" className="hidden h-10 min-w-48 justify-start gap-2 rounded-full border-border/80 bg-card/70 text-xs text-muted-foreground sm:inline-flex lg:min-w-64"><Link href="/app/hunter"><Search className="size-3.5" />Pesquisar leads...</Link></Button>
           <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" /><ThemeToggle />
           <Button asChild variant="outline" size="icon" className="size-9 rounded-lg"><Link href="/app/settings" aria-label="Configurações do workspace"><Settings className="size-4" /></Link></Button>
         </div>
