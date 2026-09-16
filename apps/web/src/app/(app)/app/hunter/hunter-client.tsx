@@ -132,8 +132,7 @@ export function HunterClient() {
           <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
             <div className="space-y-2">
               <Label htmlFor="hunter-query">Descreva o cliente que você quer encontrar</Label>
-              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: Clínicas de estética com Instagram, mas sem site" />
-              <p className="text-xs leading-5 text-muted-foreground">Combine profissão, segmento, serviço e sinais comerciais. A busca expande sinônimos automaticamente.</p>
+              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: Dentistas em Porto Alegre" />
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_80px] gap-3">
               <div className="space-y-2"><Label htmlFor="hunter-location">Cidade ou região</Label><Input id="hunter-location" maxLength={200} className="h-10 text-base sm:text-sm" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Localização (opcional)" /></div>

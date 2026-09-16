@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
+from psycopg.types.json import Jsonb
 
 from .adapters.postgres import PostgresRepository, _iso, _uuid
 from .http.context import RequestContext
@@ -76,7 +77,7 @@ class SalesRepository:
                    ON CONFLICT (organization_id) DO UPDATE SET business_name=excluded.business_name,sender_name=excluded.sender_name,
                    offer=excluded.offer,tone=excluded.tone,follow_up_hours=excluded.follow_up_hours,contact_start=excluded.contact_start,
                    contact_end=excluded.contact_end,templates=excluded.templates,updated_at=now()""",
-                (organization_uuid, profile["business_name"].strip(), profile["sender_name"].strip(), profile["offer"].strip(), profile["tone"].strip(), profile["follow_up_hours"], profile["contact_start"], profile["contact_end"], templates),
+                (organization_uuid, profile["business_name"].strip(), profile["sender_name"].strip(), profile["offer"].strip(), profile["tone"].strip(), profile["follow_up_hours"], profile["contact_start"], profile["contact_end"], Jsonb(templates)),
             )
         return await self.get_profile(organization_id)
 
