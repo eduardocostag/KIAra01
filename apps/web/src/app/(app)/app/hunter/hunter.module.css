@@ -1,8 +1,10 @@
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  gap: 1.15rem;
   align-items: start;
+  width: min(100%, 1180px);
+  margin-inline: auto;
 }
 
 .hero {
@@ -43,7 +45,7 @@
 .orbStatus { position: absolute; bottom: 1.4rem; display: inline-flex; align-items: center; gap: .4rem; border: 1px solid color-mix(in oklab, var(--primary) 22%, var(--border)); border-radius: 999px; background: color-mix(in oklab, var(--card) 80%, transparent); padding: .4rem .75rem; color: var(--muted-foreground); font-size: .68rem; backdrop-filter: blur(12px); }
 .orbStatus::before { width: 6px; height: 6px; border-radius: 50%; background: #42d792; box-shadow: 0 0 10px #42d792; content: ""; }
 
-.searchPanel, .resultsCard { overflow: hidden; border: 1px solid color-mix(in oklab, var(--primary) 13%, var(--border)); border-radius: 22px; background: color-mix(in oklab, var(--card) 97%, var(--primary)); box-shadow: 0 18px 50px -38px color-mix(in oklab, var(--primary) 45%, transparent); }
+.searchPanel, .resultsCard { overflow: hidden; border: 1px solid color-mix(in oklab, var(--primary) 17%, var(--border)); border-radius: 22px; background: linear-gradient(145deg, color-mix(in oklab, var(--card) 98%, #161129), color-mix(in oklab, var(--card) 98%, #080b14)); box-shadow: 0 18px 50px -38px color-mix(in oklab, var(--primary) 45%, transparent); }
 .panelHeader, .resultsHeader { background: linear-gradient(135deg, color-mix(in oklab, var(--card) 98%, var(--primary)), var(--card)); }
 .panelContent input, .panelContent button[role="combobox"], .panelContent textarea { border-color: color-mix(in oklab, var(--primary) 13%, var(--border)); border-radius: 12px; background: color-mix(in oklab, var(--background) 76%, transparent); }
 .searchButton { border-radius: 13px; box-shadow: 0 12px 26px -14px color-mix(in oklab, var(--primary) 85%, transparent); transition: transform .2s ease, box-shadow .2s ease; }
@@ -66,6 +68,25 @@
 .leadTitle { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: .9rem; font-weight: 650; line-height: 1.45rem; letter-spacing: -.01em; }
 .intelligenceStrip { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .75rem; border: 1px solid color-mix(in oklab, var(--primary) 11%, var(--border)); border-radius: 13px; background: color-mix(in oklab, var(--primary) 4%, var(--muted)); padding: .65rem; }
 .contactActions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .75rem; }
+.discoveryIntro { display: flex; min-height: 540px; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; padding: 2rem 2rem 2.4rem; text-align: center; background: radial-gradient(circle at 50% 36%, color-mix(in oklab, var(--primary) 25%, transparent), transparent 33%), linear-gradient(155deg, transparent, color-mix(in oklab, var(--primary) 5%, transparent)); }
+.discoveryScene { position: relative; width: min(100%, 390px); height: 270px; }
+.discoveryOrb { position: absolute; z-index: 3; left: 50%; top: 48%; display: flex; width: 145px; height: 145px; align-items: center; justify-content: center; gap: 14px; border: 1px solid #c8a5ff; border-radius: 50%; background: radial-gradient(circle at 32% 19%, #eedcff, transparent 22%), radial-gradient(circle at 60% 72%, #4c0eae, #7d35ef 54%, #b786ff); box-shadow: inset -18px -22px 32px rgb(28 3 70 / .6), 0 0 18px #aa70ff, 0 0 55px rgb(116 46 232 / .65); transform: translate(-50%,-50%); }
+.discoveryOrb i { width: 9px; height: 13px; border-radius: 50%; background: #17042f; box-shadow: 0 0 5px rgb(255 255 255 / .45); }
+.discoveryOrbit, .discoveryOrbitAlt { position: absolute; z-index: 2; left: 50%; top: 48%; width: 310px; height: 100px; border: 1px solid rgb(150 84 255 / .65); border-radius: 50%; box-shadow: 0 0 10px rgb(137 61 255 / .35); transform: translate(-50%,-50%) rotate(-8deg); }
+.discoveryOrbitAlt { width: 285px; height: 120px; opacity: .55; transform: translate(-50%,-50%) rotate(35deg); }
+.sourceBubble { position: absolute; z-index: 4; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid rgb(157 104 255 / .23); border-radius: 50%; background: #241752; color: #bea2ff; box-shadow: 0 0 22px rgb(114 54 242 / .35); }
+.sourceBubble svg { width: 19px; height: 19px; }
+.instagramBubble { left: 14%; top: 22%; color: #ff7bbd; }
+.mapsBubble { right: 12%; top: 17%; color: #ffca69; }
+.webBubble { right: 4%; top: 54%; }
+.discoveryIntro > h2 { max-width: 390px; margin-top: -.1rem; color: #f3f0fb; font-size: clamp(1.25rem, 2.3vw, 1.75rem); font-weight: 680; line-height: 1.3; letter-spacing: -.025em; }
+.discoveryBenefits { display: grid; width: 100%; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; margin-top: 2rem; }
+.discoveryBenefits div { min-width: 0; }
+.discoveryBenefits span { display: grid; width: 2rem; height: 2rem; margin: 0 auto .55rem; place-items: center; border-radius: 50%; background: #261956; color: #b897ff; }
+.discoveryBenefits svg { width: 15px; height: 15px; }
+.discoveryBenefits strong, .discoveryBenefits small { display: block; }
+.discoveryBenefits strong { color: #ded9eb; font-size: .72rem; }
+.discoveryBenefits small { margin-top: .25rem; color: var(--muted-foreground); font-size: .62rem; line-height: 1.4; }
 
 .activity {
   min-height: 350px;
@@ -95,5 +116,6 @@
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
 @media (min-width: 640px) { .leadAvatar { display: grid; } .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 860px) { .hero { grid-template-columns: minmax(0, 1fr) 280px; } .orbStage { display: grid; } }
-@media (min-width: 1200px) { .workspace { grid-template-columns: minmax(300px, 350px) minmax(0, 1fr); gap: 1.25rem; } .workspace > header { grid-column: 1 / -1; } .searchPanel { grid-column: 1; position: sticky; top: 5.5rem; } .resultsPanel { grid-column: 2; } }
+@media (min-width: 1200px) { .workspace { grid-template-columns: minmax(330px, 390px) minmax(0, 1fr); gap: 1.15rem; } .workspace > header { grid-column: 1 / -1; } .searchPanel { grid-column: 1; position: sticky; top: 5.5rem; } .resultsPanel { grid-column: 2; } }
+@media (max-width: 560px) { .discoveryIntro { min-height: 450px; padding-inline: 1rem; } .discoveryScene { height: 230px; transform: scale(.85); } .discoveryBenefits { gap: .4rem; } }
 @media (prefers-reduced-motion: reduce) { .track span { animation: none; } }

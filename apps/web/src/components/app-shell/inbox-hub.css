@@ -1,0 +1,50 @@
+.kiara-contact-workspace { display: grid; min-height: 590px; grid-template-columns: minmax(230px, 285px) minmax(0, 1fr); overflow: hidden; border: 1px solid var(--border); border-radius: 1.1rem; background: #0f121b; box-shadow: 0 18px 55px rgb(0 0 0 / .22); }
+.kiara-contact-list { min-width: 0; overflow-y: auto; border-right: 1px solid var(--border); background: #11141d; padding: .8rem; }
+.kiara-contact-list-title { display: flex; align-items: center; justify-content: space-between; padding: .35rem .45rem .85rem; font-size: .78rem; }
+.kiara-contact-list-title span { border-radius: 999px; background: #292044; padding: .15rem .5rem; color: #c6adff; font-size: .67rem; }
+.kiara-contact-list > button { display: flex; width: 100%; align-items: center; gap: .7rem; border: 1px solid transparent; border-radius: .85rem; padding: .75rem; text-align: left; transition: background .18s ease, border-color .18s ease; }
+.kiara-contact-list > button:hover { background: rgb(143 103 244 / .08); }
+.kiara-contact-list > button.is-active { border-color: rgb(151 110 248 / .28); background: linear-gradient(100deg, rgb(99 62 182 / .21), rgb(99 62 182 / .07)); }
+.kiara-contact-list > button > span:last-child { min-width: 0; }
+.kiara-contact-list button strong, .kiara-contact-list button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kiara-contact-list button strong { color: #edeaf5; font-size: .75rem; }
+.kiara-contact-list button small { margin-top: .22rem; color: #8f91a0; font-size: .64rem; }
+.kiara-contact-initial { display: grid; width: 2.15rem; height: 2.15rem; flex: none; place-items: center; border-radius: .7rem; background: #2c2050; color: #c2a2ff; font-size: .72rem; font-weight: 750; }
+.kiara-contact-dossier { min-width: 0; padding: 1.25rem; background: radial-gradient(circle at 80% 0%, rgb(95 46 190 / .08), transparent 27%), #0f121b; }
+.kiara-contact-dossier > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.kiara-contact-identity { display: flex; min-width: 0; align-items: center; gap: .85rem; }
+.kiara-contact-identity > span { display: grid; width: 3.2rem; height: 3.2rem; flex: none; place-items: center; border-radius: 50%; background: #f7f4ff; }
+.kiara-contact-identity > span svg { width: 1.9rem; height: 1.9rem; }
+.kiara-contact-identity > div { min-width: 0; }
+.kiara-contact-identity > div > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.kiara-contact-identity h2 { color: #f2f0f8; font-size: clamp(1.05rem, 2vw, 1.35rem); font-weight: 740; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.kiara-contact-identity p { margin-top: .23rem; color: #91909e; font-size: .72rem; }
+.kiara-contact-status { border-radius: 999px; background: #302266; padding: .23rem .65rem; color: #cab4ff; font-size: .62rem; font-weight: 700; }
+.kiara-contact-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+.kiara-contact-header-actions button { border-radius: 999px; }
+.kiara-contact-header-actions > a { display: inline-flex; height: 2.25rem; align-items: center; gap: .3rem; border: 1px solid var(--border); border-radius: 999px; padding: 0 .75rem; color: #bbb8c6; font-size: .7rem; }
+.kiara-contact-header-actions > a svg { width: .8rem; }
+.kiara-contact-dossier > nav { display: flex; gap: 1.8rem; overflow-x: auto; border-bottom: 1px solid var(--border); margin-top: 1.15rem; white-space: nowrap; }
+.kiara-contact-dossier > nav > * { padding: .7rem .15rem; color: #8f8d9b; font-size: .73rem; font-weight: 650; }
+.kiara-contact-dossier > nav span { border-bottom: 2px solid #b69aff; color: #e5ddf8; }
+.kiara-contact-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .7rem; margin-top: .75rem; }
+.kiara-contact-grid > section, .kiara-contact-description { min-width: 0; border: 1px solid var(--border); border-radius: .9rem; background: linear-gradient(135deg, #171a25, #141720); padding: 1rem; }
+.kiara-contact-grid h3, .kiara-contact-description h3 { border-bottom: 1px solid rgb(255 255 255 / .05); padding-bottom: .6rem; color: #ddd9e7; font-size: .76rem; font-weight: 750; }
+.kiara-contact-grid dl { display: grid; gap: .75rem; margin-top: .75rem; }
+.kiara-contact-grid dl > div { display: grid; grid-template-columns: minmax(90px,.42fr) minmax(0,1fr); gap: .55rem; font-size: .7rem; }
+.kiara-contact-grid dt { display: flex; align-items: center; gap: .5rem; color: #92909f; }
+.kiara-contact-grid dt svg { width: .9rem; height: .9rem; flex: none; }
+.kiara-contact-grid dd { color: #d6d2de; overflow-wrap: anywhere; }
+.kiara-contact-quick-actions { display: grid; gap: .38rem; margin-top: .6rem; }
+.kiara-contact-quick-actions > * { display: flex; min-width: 0; align-items: center; gap: .6rem; border: 1px solid rgb(154 125 218 / .09); border-radius: .75rem; background: rgb(100 75 157 / .09); padding: .55rem .65rem; }
+.kiara-contact-quick-actions > * > span { display: grid; width: 1.8rem; height: 1.8rem; flex: none; place-items: center; border-radius: .55rem; background: #302064; color: #c1a5ff; }
+.kiara-contact-quick-actions svg { width: .9rem; height: .9rem; }
+.kiara-contact-quick-actions > * > div { min-width: 0; flex: 1; }
+.kiara-contact-quick-actions strong, .kiara-contact-quick-actions small { display: block; }
+.kiara-contact-quick-actions strong { color: #ded9e9; font-size: .69rem; }
+.kiara-contact-quick-actions small { margin-top: .1rem; color: #8e8b9c; font-size: .61rem; }
+.kiara-contact-description { margin-top: .7rem; }
+.kiara-contact-description p { margin-top: .65rem; color: #aaa7b4; font-size: .72rem; line-height: 1.6; }
+@media (max-width: 850px) { .kiara-contact-workspace { grid-template-columns: 1fr; } .kiara-contact-list { display: flex; border-right: 0; border-bottom: 1px solid var(--border); gap: .4rem; overflow-x: auto; } .kiara-contact-list-title { display: none; } .kiara-contact-list > button { min-width: 210px; } }
+@media (max-width: 600px) { .kiara-contact-dossier { padding: .8rem; } .kiara-contact-dossier > header { align-items: flex-start; flex-direction: column; } .kiara-contact-header-actions { justify-content: flex-start; } .kiara-contact-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .kiara-contact-list > button { transition: none; } }
