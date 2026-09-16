@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, CheckCircle2, Clock3, MessageCircle, PlugZap, Radar, Search, TrendingUp } from "lucide-react"
+import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, CheckCircle2, Clock3, MessageCircle, PlugZap, Radar, Search, Timer, TrendingUp } from "lucide-react"
 import { OrbitScene } from "@/components/brand/orbit-scene"
 import { SourceMark } from "@/components/brand/source-mark"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
@@ -19,6 +19,13 @@ function relativeTime(value: string, now: number) {
   return `Há ${days} ${days === 1 ? "dia" : "dias"}`
 }
 
+function reminderLabel(value: string, now: number) {
+  const date = new Date(value)
+  if (date.getTime() < now) return "Vencido"
+  if (date.toDateString() === new Date(now).toDateString()) return "Hoje"
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date)
+}
+
 export default async function DashboardPage() {
   const [pipeline, inbox] = await Promise.all([
     getPipelineDTO().then((entries) => ({ entries, available: true })).catch(() => ({ entries: [], available: false })),
@@ -26,6 +33,9 @@ export default async function DashboardPage() {
   ])
   const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
   const scheduled = pipeline.entries.filter((entry) => entry.next_action_at && !["won", "lost"].includes(entry.stage))
+  const now = new Date().getTime()
+  const reminders = scheduled.filter((entry) => entry.next_action_at).sort((a, b) => new Date(a.next_action_at!).getTime() - new Date(b.next_action_at!).getTime()).slice(0, 6)
+  const overdue = scheduled.filter((entry) => new Date(entry.next_action_at!).getTime() < now).length
   const activities = pipeline.entries.flatMap((entry) => entry.activities ?? [])
   const contacts = activities.filter((activity) => activity.status === "sent").length
   const replies = activities.filter((activity) => activity.status === "replied").length
@@ -40,8 +50,6 @@ export default async function DashboardPage() {
   const recent = [...pipeline.entries].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5)
 
   const dateLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).format(new Date())
-  const now = new Date().getTime()
-
   return <div className="kiara-dashboard kiara-orbit-dashboard">
     {(!pipeline.available || !inbox.available) && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm">Parte dos dados não pôde ser carregada. Os indicadores indisponíveis aparecem como “—”.</div>}
     <section className="kiara-dashboard-hero" aria-labelledby="dashboard-title">
@@ -66,6 +74,10 @@ export default async function DashboardPage() {
         {[{ label: "Leads gerados", value: pipeline.available ? pipeline.entries.length : "—", detail: "No Pipeline", icon: Radar }, { label: "Contatos registrados", value: pipeline.available ? contacts : "—", detail: "Envios confirmados", icon: MessageCircle }, { label: "Respostas", value: pipeline.available ? replies : "—", detail: "Atividades recebidas", icon: CheckCircle2 }, { label: "Ganhos", value: pipeline.available ? wins : "—", detail: pipeline.available ? `${conversionRate}% de conversão` : "Dados indisponíveis", icon: TrendingUp }].map(({ label, value, detail, icon: Icon }) => <div key={label} className="kiara-dashboard-roi-stat"><span><Icon className="size-4" /></span><div><strong>{value}</strong><p>{label}</p><small>{detail}</small></div></div>)}
       </div>
       <div className="kiara-dashboard-roi-foot"><span>Receita atribuída</span><strong>Não calculada</strong><small>Informe o ticket médio e registre os ganhos para acompanhar o retorno financeiro.</small></div>
+    </section>
+    <section className="kiara-dashboard-reminders" aria-labelledby="reminders-title">
+      <div className="kiara-dashboard-reminders-head"><div><p className="kiara-dashboard-section-eyebrow"><Timer className="size-3.5" />Execução comercial</p><h2 id="reminders-title">Follow-ups e lembretes</h2><p>{overdue ? `${overdue} ${overdue === 1 ? "ação vencida" : "ações vencidas"} precisam de atenção.` : "Nenhuma ação vencida. Mantenha o ritmo da operação."}</p></div><Link href="/app/pipeline" className="kiara-dashboard-roi-link">Abrir Pipeline <ArrowRight className="size-3.5" /></Link></div>
+      {reminders.length ? <ul className="kiara-dashboard-reminders-list">{reminders.map((entry) => { const due = new Date(entry.next_action_at!).getTime() < now; return <li key={entry.id} className={due ? "is-overdue" : undefined}><span className="kiara-dashboard-reminder-dot" aria-hidden="true" /><div className="min-w-0"><Link href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`} className="kiara-dashboard-reminder-name">{leadDisplayName(entry.consumer)}</Link><p>{entry.next_action || "Revisar oportunidade"}</p></div><time dateTime={entry.next_action_at!}>{reminderLabel(entry.next_action_at!, now)}</time><Link href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`} className="kiara-dashboard-reminder-open" aria-label={`Abrir lembrete de ${leadDisplayName(entry.consumer)}`}><ArrowRight className="size-4" /></Link></li> })}</ul> : <div className="kiara-dashboard-reminders-empty"><Clock3 className="size-4" /><span>Follow-ups aparecem aqui quando um contato for confirmado ou uma próxima ação for agendada.</span><Link href="/app/pipeline">Ver Pipeline</Link></div>}
     </section>
     <section className="kiara-dashboard-table" aria-labelledby="recent-title">
       <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><RefreshWorkspace /><Link href="/app/inbox?view=contacts" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
