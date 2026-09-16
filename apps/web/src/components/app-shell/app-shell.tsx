@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import { ChevronRight, Gauge, Inbox, Menu, PanelsTopLeft, Plug, Search, Settings, Target } from "lucide-react"
+import { Bell, House, Inbox, Menu, PlugZap, Search, Settings2, UsersRound } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { ThemeToggle } from "@/components/brand/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -11,20 +11,20 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { cn } from "@/lib/utils"
 
 const nav = [
-  { href: "/app", label: "Visão geral", icon: Gauge },
-  { href: "/app/hunter", label: "Encontrar leads", icon: Target },
+  { href: "/app", label: "Visão geral", icon: House },
+  { href: "/app/hunter", label: "Leads", icon: UsersRound },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
-  { href: "/app/integrations", label: "Integrações", icon: Plug },
-  { href: "/app/settings", label: "Configurações", icon: Settings },
+  { href: "/app/integrations", label: "Integrações", icon: PlugZap },
+  { href: "/app/settings", label: "Configurações", icon: Settings2 },
 ]
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
-  return <nav aria-label="Navegação principal" className="space-y-1">
+  return <nav aria-label="Navegação principal" className="kiara-shell-nav space-y-2">
     {nav.map(({ href, label, icon: Icon }) => {
       const active = href === "/app" ? pathname === href : pathname.startsWith(href)
-      return <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn("group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-200", active ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_rgb(255_255_255/.06),0_8px_24px_rgb(91_47_190/.16)]" : "text-sidebar-foreground/55 hover:translate-x-0.5 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground")}>
-        <Icon className={cn("size-4", active && "text-sidebar-primary")} aria-hidden="true" /><span className="flex-1">{label}</span>{active && <span className="size-1.5 rounded-full bg-sidebar-primary" aria-hidden="true" />}
+      return <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn("kiara-shell-nav-link group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-200", active ? "is-active text-sidebar-accent-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground")}>
+        <Icon className="kiara-shell-nav-icon size-[18px] shrink-0" strokeWidth={active ? 2.3 : 1.9} aria-hidden="true" /><span className="flex-1">{label}</span>
       </Link>
     })}
   </nav>
@@ -33,28 +33,32 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const pathname = usePathname()
-  const current = nav.find((item) => item.href !== "/app" && pathname.startsWith(item.href))?.label ?? (pathname.startsWith("/app/settings") ? "Configurações" : "Visão geral")
+  const current = nav.find((item) => item.href !== "/app" && pathname.startsWith(item.href))?.label ?? "Visão geral"
   return <div className="kiara-workspace min-h-screen bg-background text-foreground">
     <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
-    <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
-      <Link href="/app" className="mb-9 flex min-h-10 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
-      <p className="mb-3 px-3 text-[9px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/40">Workspace comercial</p>
+    <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-[202px] flex-col border-r border-sidebar-border bg-sidebar px-3 py-6 md:flex">
+      <Link href="/app" className="kiara-shell-brand mb-8 flex min-h-12 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
       <Navigation />
+      <div className="kiara-shell-sidebar-footer mt-auto flex items-center justify-between px-2 pt-5">
+        <span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">KIARA</span>
+        <ThemeToggle />
+      </div>
     </aside>
-    <div className="min-w-0 pt-16 lg:pl-56">
-      <header className="app-shell-header fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/90 px-4 shadow-[0_10px_35px_-28px_rgb(0_0_0/.8)] backdrop-blur-xl sm:px-6 lg:left-56 lg:px-10">
+    <div className="min-w-0 pt-16 md:pl-[202px]">
+      <header className="app-shell-header fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/90 px-4 backdrop-blur-xl sm:px-6 md:left-[202px] md:px-8">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-          <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 lg:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
+          <SheetTrigger asChild><Button variant="ghost" size="icon" className="size-10 md:hidden" aria-label="Abrir menu"><Menu /></Button></SheetTrigger>
           <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground">
             <SheetHeader className="p-0 text-left"><SheetTitle><KiaraBrand inverse /></SheetTitle><SheetDescription className="sr-only">Navegação do workspace comercial Kiara</SheetDescription></SheetHeader>
             <div className="mt-7"><Navigation onNavigate={() => setMenuOpen(false)} /></div>
+            <div className="kiara-shell-sidebar-footer mt-auto flex items-center justify-between px-2 pt-5"><span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">KIARA</span><ThemeToggle /></div>
           </SheetContent>
         </Sheet>
-        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><PanelsTopLeft className="hidden size-4 sm:block" aria-hidden="true" /><span className="hidden sm:inline">Workspace</span><ChevronRight className="hidden size-3 sm:block" aria-hidden="true" /><span className="truncate font-medium text-foreground">{current}</span></div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Button asChild variant="outline" className="hidden h-10 min-w-48 justify-start gap-2 rounded-full border-border/80 bg-card/70 text-xs text-muted-foreground sm:inline-flex lg:min-w-64"><Link href="/app/hunter"><Search className="size-3.5" />Pesquisar leads...</Link></Button>
-          <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" /><ThemeToggle />
-          <Button asChild variant="outline" size="icon" className="size-9 rounded-lg"><Link href="/app/settings" aria-label="Configurações do workspace"><Settings className="size-4" /></Link></Button>
+        <span className="truncate text-sm font-medium text-foreground/75 md:hidden">{current}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <Link href="/app/hunter" className="kiara-shell-search hidden h-10 w-[280px] items-center gap-3 rounded-full px-4 text-xs text-muted-foreground sm:flex" aria-label="Pesquisar leads"><Search className="size-[17px]" aria-hidden="true" /><span>Pesquisar leads...</span></Link>
+          <Link href="/app/inbox" className="kiara-shell-icon-button" aria-label="Abrir inbox de mensagens"><Bell className="size-[19px]" strokeWidth={1.9} aria-hidden="true" /></Link>
+          <Link href="/app/settings" className="kiara-shell-icon-button" aria-label="Configurações do workspace"><Settings2 className="size-[20px]" strokeWidth={1.9} aria-hidden="true" /></Link>
         </div>
       </header>
       <main id="conteudo" tabIndex={-1} className="relative mx-auto w-full min-w-0 max-w-[1540px] p-4 outline-none sm:p-7 lg:p-10">{children}</main>
