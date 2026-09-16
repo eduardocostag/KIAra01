@@ -7,7 +7,7 @@ import { SourceMark } from "@/components/brand/source-mark"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { InboxWorkspace } from "./inbox-workspace"
 import { LeadContactActions } from "./lead-contact-actions"
 import type { InboxConversationDTO } from "@/lib/api/inbox"
@@ -24,7 +24,7 @@ export function InboxHub({ conversations, entries, conversationError, prospectEr
   const filtered = contacts.filter((entry) => `${leadDisplayName(entry.consumer)} ${entry.consumer.display_name} ${entry.consumer.phone ?? ""}`.toLowerCase().includes(query.toLowerCase()))
   const selectedContact = contacts.find((entry) => entry.id === selectedContactId) ?? filtered[0] ?? contacts[0]
   return <Tabs value={view} onValueChange={setView} className="inbox-premium gap-5">
-    <div className="kiara-inbox-toolbar"><TabsList className="h-11 w-full sm:w-fit"><TabsTrigger value="conversations" className="px-4"><MessageCircle />Conversas <span className="ml-1 text-xs tabular-nums">{conversationError ? "—" : conversations.length}</span></TabsTrigger><TabsTrigger value="contacts" className="px-4"><Users />Contatos <span className="ml-1 text-xs tabular-nums">{prospectError ? "—" : contacts.length}</span></TabsTrigger></TabsList>{view === "contacts" ? <div className="kiara-inbox-search"><Search aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-10" placeholder="Buscar um contato" aria-label="Buscar prospectados" /></div> : null}</div>
+    <div className="kiara-inbox-toolbar">{view === "contacts" ? <div className="kiara-inbox-search"><Search aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-10" placeholder="Buscar um contato" aria-label="Buscar prospectados" /></div> : null}</div>
     <TabsContent value="conversations">
       {conversationError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{conversationError}</div> : <InboxWorkspace initialConversations={conversations} />}
     </TabsContent>

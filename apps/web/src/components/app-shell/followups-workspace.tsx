@@ -40,7 +40,7 @@ export function FollowUpsWorkspace({ entries }: { entries: PipelineEntry[] }) {
     setSaving(true); setNotice(null)
     try {
       const templates = { ...profile.templates, follow_up: followUp.trim(), reactivation: reactivation.trim() }
-      const saved = await salesRequest<SalesProfile>("/api/sales/profile", { method: "PUT", body: JSON.stringify({ ...profile, follow_up_hours: hours, templates }) })
+      const saved = await salesRequest<SalesProfile>("/api/sales/profile", { method: "PUT", body: JSON.stringify({ business_name: profile.business_name, sender_name: profile.sender_name, offer: profile.offer, tone: profile.tone, follow_up_hours: hours, contact_start: profile.contact_start, contact_end: profile.contact_end, templates }) })
       setProfile(saved); setFollowUp(saved.templates.follow_up ?? ""); setReactivation(saved.templates.reactivation ?? ""); setNotice({ ok: true, text: "Configuração de follow-up salva neste workspace." })
     } catch (error) { setNotice({ ok: false, text: error instanceof Error ? error.message : "Não foi possível salvar a configuração." }) }
     finally { setSaving(false) }
