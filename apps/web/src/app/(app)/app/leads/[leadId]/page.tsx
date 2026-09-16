@@ -1,21 +1,46 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, Globe2, MapPin, MessageCircle, Sparkles } from "lucide-react"
-import { KiaraOrb } from "@/components/brand/kiara-orb"
+import { ArrowLeft, ArrowUpRight, Clock3, ExternalLink, Globe2, MapPin, MessageCircle, Radar, Search, UserRound } from "lucide-react"
+import { SourceMark } from "@/components/brand/source-mark"
 import { LeadContactActions } from "@/components/app-shell/lead-contact-actions"
 import { LeadActivityTimeline } from "@/components/app-shell/lead-activity-timeline"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
-import { Button } from "@/components/ui/button"
 import { getPipelineDTO } from "@/lib/api/pipeline-server"
-import { pipelineStages, sourceLabels, websiteLabel } from "@/lib/api/pipeline"
+import { pipelineStages, safePublicUrl, sourceLabels, websiteLabel } from "@/lib/api/pipeline"
+import "./lead-detail.css"
 
 export default async function LeadPage({ params }: { params: Promise<{ leadId: string }> }) {
   const { leadId } = await params
   const result = await getPipelineDTO().then((entries) => ({ entries, error: false })).catch(() => ({ entries: [], error: true }))
-  if (result.error) return <div className="kiara-soft-panel p-8"><h1 className="kiara-editorial text-3xl">Contato indisponível</h1><p className="mt-3 text-muted-foreground">Não foi possível consultar o CRM agora. Seus dados não foram apagados.</p><div className="mt-5"><RefreshWorkspace /></div></div>
+  if (result.error) return <div className="kiara-soft-panel p-8"><h1 className="text-2xl font-semibold">Contato indisponível</h1><p className="mt-3 text-muted-foreground">Não foi possível consultar os leads agora. Seus dados não foram apagados.</p><div className="mt-5"><RefreshWorkspace /></div></div>
   const entry = result.entries.find((item) => item.consumer.id === leadId)
   if (!entry) notFound()
+
   const consumer = entry.consumer
-  const facts = [["Etapa", pipelineStages.find((stage) => stage.id === entry.stage)?.label], ["Número para WhatsApp", consumer.phone || "Não informado"], ["WhatsApp", consumer.whatsapp_url ? "Link público encontrado" : "Não confirmado"], ["Website", websiteLabel(consumer.website_status)], ["Endereço", consumer.address || "Não informado"], ["Pesquisa de origem", consumer.research_query || "Não informada"]]
-  return <div className="space-y-6"><Button asChild variant="ghost" className="-ml-3"><Link href="/app/pipeline"><ArrowLeft />Voltar à fila</Link></Button><section className="kiara-copilot-stage overflow-hidden rounded-[30px] border bg-card shadow-[var(--shadow-2)]"><div className="grid lg:grid-cols-[minmax(0,1fr)_320px]"><div className="p-7 sm:p-10"><p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">{sourceLabels[consumer.source ?? ""] ?? "CRM"}</p><h1 className="kiara-editorial mt-3 max-w-3xl text-4xl leading-tight sm:text-5xl">{consumer.display_name}</h1><p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Dados públicos organizados para uma decisão comercial responsável.</p><div className="mt-7"><LeadContactActions entry={entry} /></div></div><div className="flex flex-col items-center justify-center border-t bg-primary/5 p-8 text-center lg:border-l lg:border-t-0"><KiaraOrb size="lg" active /><p className="mt-6 flex items-center gap-2 text-xs font-semibold text-primary"><Sparkles className="size-3.5" />Próximo movimento</p><p className="kiara-editorial mt-2 text-2xl leading-tight">{entry.next_action || "Revise o contexto antes da primeira abordagem."}</p></div></div></section><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]"><section className="rounded-[26px] bg-card p-6 shadow-[var(--shadow-1)] sm:p-8"><h2 className="kiara-editorial text-2xl">Inteligência do contato</h2><dl className="mt-7 grid gap-6 sm:grid-cols-2">{facts.map(([label, value]) => <div key={label} className="border-b pb-4"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm font-medium">{value}</dd></div>)}</dl><div className="mt-6 flex flex-wrap gap-3 text-xs text-muted-foreground">{consumer.phone && <span className="flex items-center gap-2"><MessageCircle className="size-4 text-primary" />Contato público</span>}{consumer.address && <span className="flex items-center gap-2"><MapPin className="size-4 text-primary" />Localização identificada</span>}<span className="flex items-center gap-2"><Globe2 className="size-4 text-primary" />{websiteLabel(consumer.website_status)}</span></div></section><section className="rounded-[26px] bg-card p-6 shadow-[var(--shadow-1)]"><h2 className="kiara-editorial text-2xl">Pulso recente</h2><div className="mt-5"><LeadActivityTimeline activities={entry.activities} /></div></section></div></div>
+  const sourceLabel = sourceLabels[consumer.source ?? ""] ?? "Web pública"
+  const kind = /instagram/i.test((consumer.source ?? "") + sourceLabel) ? "instagram" : /maps|google/i.test((consumer.source ?? "") + sourceLabel) ? "maps" : "web"
+  const sourceUrl = safePublicUrl(consumer.source_url)
+  const websiteUrl = safePublicUrl(consumer.website_url)
+  const stage = pipelineStages.find((item) => item.id === entry.stage)?.label ?? entry.stage
+  const facts = [
+    { label: "Fonte", value: sourceLabel, icon: Radar },
+    { label: "Telefone", value: consumer.phone || "Não informado", icon: MessageCircle },
+    { label: "WhatsApp", value: consumer.whatsapp_url ? "Link público encontrado" : "Não confirmado", icon: MessageCircle },
+    { label: "Site", value: websiteLabel(consumer.website_status), icon: Globe2 },
+    { label: "Endereço", value: consumer.address || "Não informado", icon: MapPin },
+    { label: "Pesquisa", value: consumer.research_query || "Não informada", icon: Search },
+  ]
+
+  return <main className="kiara-lead-detail">
+    <nav className="kiara-lead-breadcrumb" aria-label="Caminho"><Link href="/app">Workspace</Link><span aria-hidden="true">›</span><Link href="/app/inbox?view=contacts">Leads</Link><span aria-hidden="true">›</span><span>Detalhes</span></nav>
+    <div className="kiara-lead-topline"><Link href="/app/inbox?view=contacts" className="kiara-lead-back"><ArrowLeft className="size-4" />Voltar</Link><div className="kiara-lead-top-actions"><LeadContactActions entry={entry} />{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="kiara-lead-source-link">Acessar fonte<ExternalLink className="size-3.5" /></a> : null}</div></div>
+    <header className="kiara-lead-heading"><span className="kiara-lead-mark"><SourceMark kind={kind} /></span><div className="min-w-0"><div className="kiara-lead-title-row"><h1>{consumer.display_name}</h1><span className="kiara-lead-stage">{stage}</span></div><p>{sourceLabel}{consumer.instagram_username ? ` · @${consumer.instagram_username.replace(/^@/, "")}` : ""}</p></div></header>
+    <nav className="kiara-lead-tabs" aria-label="Seções do lead"><a href="#overview" className="kiara-lead-tab-active">Visão geral</a><a href="#activities">Atividades</a><a href="#context">Contexto</a></nav>
+    <div id="overview" className="kiara-lead-main-grid">
+      <section className="kiara-lead-panel" aria-labelledby="lead-information-title"><h2 id="lead-information-title">Informações</h2><dl className="kiara-lead-facts">{facts.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon className="size-4" aria-hidden="true" />{label}</dt><dd>{value}</dd></div>)}</dl>{websiteUrl ? <a href={websiteUrl} target="_blank" rel="noreferrer" className="kiara-lead-inline-link">Abrir site identificado<ArrowUpRight className="size-4" /></a> : null}</section>
+      <section className="kiara-lead-panel" aria-labelledby="lead-actions-title"><h2 id="lead-actions-title">Ações rápidas</h2><div className="kiara-lead-action-list"><a href="#activities"><span><Clock3 className="size-4" /></span><div><strong>Ver atividades</strong><small>Consulte o relacionamento registrado</small></div><ArrowUpRight className="size-4" /></a>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer"><span><Globe2 className="size-4" /></span><div><strong>Abrir fonte</strong><small>Confira o dado público original</small></div><ArrowUpRight className="size-4" /></a> : null}<Link href="/app/inbox?view=contacts"><span><UserRound className="size-4" /></span><div><strong>Ver outros contatos</strong><small>Volte para a sua fila de leads</small></div><ArrowUpRight className="size-4" /></Link><Link href="/app/hunter"><span><Search className="size-4" /></span><div><strong>Nova pesquisa</strong><small>Encontre outras oportunidades</small></div><ArrowUpRight className="size-4" /></Link></div></section>
+    </div>
+    <section id="context" className="kiara-lead-panel kiara-lead-context" aria-labelledby="lead-context-title"><h2 id="lead-context-title">Contexto</h2><p>{consumer.research_query ? `Encontrado na pesquisa “${consumer.research_query}”.` : "Lead identificado em uma fonte pública."}{consumer.address ? ` Localização informada: ${consumer.address}.` : ""} Revise a fonte antes de iniciar uma abordagem.</p></section>
+    <section id="activities" className="kiara-lead-panel kiara-lead-activities" aria-labelledby="lead-activities-title"><h2 id="lead-activities-title">Atividades</h2><LeadActivityTimeline activities={entry.activities} /></section>
+  </main>
 }
