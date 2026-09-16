@@ -25,7 +25,6 @@ export default async function DashboardPage() {
     getInboxDTO().then((data) => ({ conversations: data.conversations, available: true })).catch(() => ({ conversations: [], available: false })),
   ])
   const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
-  const won = pipeline.entries.filter((entry) => entry.stage === "won")
   const scheduled = pipeline.entries.filter((entry) => entry.next_action_at && !["won", "lost"].includes(entry.stage))
   const nextHref = fresh.length ? "/app/inbox?view=contacts" : "/app/hunter"
   const metrics = [
@@ -54,7 +53,7 @@ export default async function DashboardPage() {
       </div>
     </section>
     <section className="kiara-dashboard-table" aria-labelledby="recent-title">
-      <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><span className="kiara-dashboard-wins">{pipeline.available ? `${won.length} ganhos` : "Ganhos indisponíveis"}</span><RefreshWorkspace /><Link href="/app/inbox?view=contacts" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
+      <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><RefreshWorkspace /><Link href="/app/inbox?view=contacts" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
       {recent.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><caption className="sr-only">Leads recentes com origem e status</caption><thead><tr><th scope="col">Lead</th><th scope="col">Origem</th><th scope="col">Tempo</th><th scope="col">Status</th></tr></thead><tbody>{recent.map((entry) => {
         const source = entry.consumer.source ?? ""
         const sourceLabel = sourceLabels[source] ?? "Web pública"
