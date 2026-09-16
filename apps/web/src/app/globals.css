@@ -391,6 +391,24 @@
 .kiara-dashboard-source-maps, .kiara-dashboard-source-instagram, .kiara-dashboard-source-web { background: transparent; }
 .kiara-dashboard-status { display: inline-flex; min-width: 3.1rem; justify-content: center; border-radius: 999px; background: #30265e; padding: .22rem .56rem; color: #d1beff; font-size: .62rem; font-weight: 750; }
 .kiara-dashboard-empty { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; border-top: 1px solid #252936; padding: 1.6rem; color: #abb0bf; font-size: .8rem; }
+.kiara-dashboard-roi { margin-top: 1rem; overflow: hidden; border: 1px solid #252936; border-radius: .77rem; background: #151a23; box-shadow: 0 14px 32px rgb(0 0 0 / .18); }
+.kiara-dashboard-roi-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #252936; padding: 1.1rem 1.2rem; }
+.kiara-dashboard-section-eyebrow { display: flex; align-items: center; gap: .35rem; color: #b697ff; font-size: .65rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.kiara-dashboard-roi h2 { margin-top: .35rem; color: #f2f3fa; font-size: 1rem; font-weight: 750; }
+.kiara-dashboard-roi-head p:last-child { margin-top: .3rem; color: #848b9d; font-size: .73rem; }
+.kiara-dashboard-roi-link { display: inline-flex; flex: none; align-items: center; gap: .3rem; color: #b697ff; font-size: .72rem; font-weight: 750; }
+.kiara-dashboard-roi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.kiara-dashboard-roi-stat { display: flex; min-width: 0; gap: .7rem; border-right: 1px solid #252936; padding: 1rem 1.2rem; }
+.kiara-dashboard-roi-stat:last-child { border-right: 0; }
+.kiara-dashboard-roi-stat > span { display: grid; width: 2rem; height: 2rem; flex: none; place-items: center; border-radius: .55rem; background: #2a214e; color: #c29eff; }
+.kiara-dashboard-roi-stat strong { color: #fafaff; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.kiara-dashboard-roi-stat p { margin-top: .2rem; color: #c3c7d2; font-size: .72rem; font-weight: 700; }
+.kiara-dashboard-roi-stat small { display: block; margin-top: .25rem; color: #848b9d; font-size: .65rem; }
+.kiara-dashboard-roi-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: .55rem; border-top: 1px solid #252936; padding: .8rem 1.2rem; color: #848b9d; font-size: .72rem; }
+.kiara-dashboard-roi-foot strong { color: #f2f3fa; }
+.kiara-dashboard-roi-foot small { color: #848b9d; }
+@media (max-width: 700px) { .kiara-dashboard-roi-head { flex-direction: column; } .kiara-dashboard-roi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kiara-dashboard-roi-stat:nth-child(2) { border-right: 0; } .kiara-dashboard-roi-stat:nth-child(-n+2) { border-bottom: 1px solid #252936; } }
+@media (max-width: 430px) { .kiara-dashboard-roi-grid { grid-template-columns: 1fr; } .kiara-dashboard-roi-stat { border-right: 0; border-bottom: 1px solid #252936; } .kiara-dashboard-roi-stat:last-child { border-bottom: 0; } }
 @media (max-width: 980px) { .kiara-dashboard { padding-inline: 1rem; } .kiara-dashboard-hero { grid-template-columns: minmax(275px,1fr) minmax(160px,.5fr) minmax(185px,.61fr); } .kiara-dashboard-planet .kiara-orb { left: 44%; width: 415px; height: 415px; } }
 @media (min-width: 768px) and (max-width: 910px) { .kiara-dashboard-hero { grid-template-columns: minmax(275px,1fr) minmax(160px,.68fr); } .kiara-dashboard-copy { min-height: 305px; } .kiara-dashboard-metrics { grid-column: 1 / -1; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .5rem; padding: 0 .35rem .85rem; } .kiara-dashboard-metric { min-width: 0; min-height: 70px; gap: .5rem; padding: .55rem; } .kiara-dashboard-metric-icon { width: 2.2rem; height: 2.2rem; } .kiara-dashboard-planet .kiara-orb { left: 45%; top: 7%; width: 350px; height: 350px; } }
 @media (max-width: 700px) { .kiara-dashboard { padding-inline: .75rem; } .kiara-dashboard-hero { display: block; min-height: 0; } .kiara-dashboard-copy { min-height: 330px; padding: 1.5rem .55rem; } .kiara-dashboard-copy h1 { font-size: clamp(2.15rem, 8vw, 3rem); } .kiara-dashboard-planet .kiara-orb { left: 48%; top: 18%; width: 360px; height: 360px; opacity: .45; } .kiara-dashboard-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); padding: 0 .55rem 1rem; } .kiara-dashboard-metric { min-height: 78px; flex-direction: column; align-items: flex-start; gap: .4rem; padding: .6rem; } .kiara-dashboard-metric-icon { width: 2rem; height: 2rem; } .kiara-dashboard-metric-value { font-size: 1.2rem; } .kiara-dashboard-table { margin-top: .2rem; } .kiara-dashboard-wins { display: none; } }

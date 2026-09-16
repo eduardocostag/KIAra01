@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, Clock3, MessageCircle, PlugZap, Radar, Search } from "lucide-react"
+import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, CheckCircle2, Clock3, MessageCircle, PlugZap, Radar, Search, TrendingUp } from "lucide-react"
 import { OrbitScene } from "@/components/brand/orbit-scene"
 import { SourceMark } from "@/components/brand/source-mark"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
@@ -26,6 +26,11 @@ export default async function DashboardPage() {
   ])
   const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
   const scheduled = pipeline.entries.filter((entry) => entry.next_action_at && !["won", "lost"].includes(entry.stage))
+  const activities = pipeline.entries.flatMap((entry) => entry.activities ?? [])
+  const contacts = activities.filter((activity) => activity.status === "sent").length
+  const replies = activities.filter((activity) => activity.status === "replied").length
+  const wins = pipeline.entries.filter((entry) => entry.stage === "won").length
+  const conversionRate = pipeline.entries.length ? Math.round((wins / pipeline.entries.length) * 100) : 0
   const nextHref = fresh.length ? "/app/inbox?view=contacts" : "/app/hunter"
   const metrics = [
     { label: "Novos leads", value: pipeline.available ? fresh.length : "—", icon: ChartNoAxesColumnIncreasing },
@@ -51,6 +56,16 @@ export default async function DashboardPage() {
       <div className="kiara-dashboard-metrics" role="group" aria-label="Indicadores da operação">
         {metrics.map(({ label, value, icon: Icon }) => <div key={label} className="kiara-dashboard-metric"><span className="kiara-dashboard-metric-icon"><Icon className="size-5" aria-hidden="true" /></span><div><p className="kiara-dashboard-metric-value">{value}</p><p className="kiara-dashboard-metric-label">{label}</p></div></div>)}
       </div>
+    </section>
+    <section className="kiara-dashboard-roi" aria-labelledby="roi-title">
+      <div className="kiara-dashboard-roi-head">
+        <div><p className="kiara-dashboard-section-eyebrow"><TrendingUp className="size-3.5" />Impacto comercial</p><h2 id="roi-title">ROI da operação</h2><p>Resultado calculado a partir dos leads e atividades registrados neste workspace.</p></div>
+        <Link href="/app/settings" className="kiara-dashboard-roi-link">Configurar ticket médio <ArrowRight className="size-3.5" /></Link>
+      </div>
+      <div className="kiara-dashboard-roi-grid">
+        {[{ label: "Leads gerados", value: pipeline.available ? pipeline.entries.length : "—", detail: "No Pipeline", icon: Radar }, { label: "Contatos registrados", value: pipeline.available ? contacts : "—", detail: "Envios confirmados", icon: MessageCircle }, { label: "Respostas", value: pipeline.available ? replies : "—", detail: "Atividades recebidas", icon: CheckCircle2 }, { label: "Ganhos", value: pipeline.available ? wins : "—", detail: pipeline.available ? `${conversionRate}% de conversão` : "Dados indisponíveis", icon: TrendingUp }].map(({ label, value, detail, icon: Icon }) => <div key={label} className="kiara-dashboard-roi-stat"><span><Icon className="size-4" /></span><div><strong>{value}</strong><p>{label}</p><small>{detail}</small></div></div>)}
+      </div>
+      <div className="kiara-dashboard-roi-foot"><span>Receita atribuída</span><strong>Não calculada</strong><small>Informe o ticket médio e registre os ganhos para acompanhar o retorno financeiro.</small></div>
     </section>
     <section className="kiara-dashboard-table" aria-labelledby="recent-title">
       <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><RefreshWorkspace /><Link href="/app/inbox?view=contacts" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
