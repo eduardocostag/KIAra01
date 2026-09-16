@@ -20,16 +20,17 @@
 .kiara-contact-list button small { margin-top: .22rem; color: #8f91a0; font-size: .64rem; }
 .kiara-contact-initial { display: grid; width: 2.15rem; height: 2.15rem; flex: none; place-items: center; border-radius: .7rem; background: #2c2050; color: #c2a2ff; font-size: .72rem; font-weight: 750; }
 .kiara-contact-dossier { min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1.25rem; background: radial-gradient(circle at 80% 0%, rgb(95 46 190 / .08), transparent 27%), #0f121b; }
-.kiara-contact-dossier > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.kiara-contact-dossier > header { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 1rem; }
 .kiara-contact-identity { display: flex; min-width: 0; align-items: center; gap: .85rem; }
 .kiara-contact-identity > span { display: grid; width: 3.2rem; height: 3.2rem; flex: none; place-items: center; border-radius: 50%; background: #f7f4ff; }
 .kiara-contact-identity > span svg { width: 1.9rem; height: 1.9rem; }
 .kiara-contact-identity > div { min-width: 0; }
-.kiara-contact-identity > div > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: .65rem; }
-.kiara-contact-identity h2 { color: #f2f0f8; font-size: clamp(1.05rem, 2vw, 1.35rem); font-weight: 740; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.kiara-contact-identity > div > div { display: grid; min-width: 0; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: .65rem; }
+.kiara-contact-identity h2 { min-width: 0; overflow: hidden; color: #f2f0f8; font-size: clamp(1.05rem, 2vw, 1.35rem); font-weight: 740; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
 .kiara-contact-identity p { margin-top: .23rem; color: #91909e; font-size: .72rem; }
 .kiara-contact-status { border-radius: 999px; background: #302266; padding: .23rem .65rem; color: #cab4ff; font-size: .62rem; font-weight: 700; }
-.kiara-contact-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+.kiara-contact-header-actions { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: .4rem; }
+.kiara-contact-header-actions > * { flex: none; }
 .kiara-contact-header-actions button { border-radius: 999px; }
 .kiara-contact-header-actions > a { display: inline-flex; height: 2.25rem; align-items: center; gap: .3rem; border: 1px solid var(--border); border-radius: 999px; padding: 0 .75rem; color: #bbb8c6; font-size: .7rem; }
 .kiara-contact-header-actions > a svg { width: .8rem; }
@@ -55,6 +56,7 @@
 .kiara-contact-description { margin-top: .7rem; }
 .kiara-contact-description p { margin-top: .65rem; color: #aaa7b4; font-size: .72rem; line-height: 1.6; }
 @media (max-width: 850px) { .kiara-contact-workspace { height: auto; min-height: 0; grid-template-columns: 1fr; } .kiara-contact-list { display: flex; border-right: 0; border-bottom: 1px solid var(--border); gap: .4rem; overflow-x: auto; overflow-y: hidden; } .kiara-contact-list-title { display: none; } .kiara-contact-list > button { min-width: 210px; } .kiara-contact-dossier { overflow-y: visible; } }
-@media (max-width: 600px) { .kiara-contact-dossier { padding: .8rem; } .kiara-contact-dossier > header { align-items: flex-start; flex-direction: column; } .kiara-contact-header-actions { justify-content: flex-start; } .kiara-contact-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .kiara-contact-dossier > header { grid-template-columns: minmax(0,1fr); } .kiara-contact-header-actions { justify-content: flex-start; } }
+@media (max-width: 600px) { .kiara-contact-dossier { padding: .8rem; } .kiara-contact-header-actions { flex-wrap: wrap; justify-content: flex-start; } .kiara-contact-grid { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .kiara-inbox-toolbar { align-items: stretch; flex-direction: column; } .kiara-inbox-toolbar > [role="tablist"] { width: 100%; } .kiara-inbox-search { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .kiara-contact-list > button { transition: none; } }
