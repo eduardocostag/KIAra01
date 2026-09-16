@@ -32,6 +32,13 @@ export type PipelineEntry = {
   }
 }
 
+export class PipelineRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code = "pipeline_error") {
+    super(message)
+    this.name = "PipelineRequestError"
+  }
+}
+
 export function safePublicUrl(value: unknown): string | null {
   if (typeof value !== "string") return null
   try {
@@ -126,11 +133,14 @@ export async function requestPipeline(path: string, init: RequestInit = {}): Pro
   const timer = setTimeout(() => controller.abort(), 20_000)
   try {
     const response = await fetch(path, { ...init, cache: "no-store", signal: controller.signal })
-    let payload: { error?: { message?: string } }
-    try { payload = await response.json() } catch { throw new Error("A API retornou uma resposta inválida. Atualize o Pipeline antes de repetir.") }
-    if (response.status === 401) throw new Error("Sua sessão expirou. Entre novamente para acessar o CRM.")
-    if (response.status === 412) throw new Error("Este lead foi alterado em outra sessão. Atualize o Pipeline antes de tentar novamente.")
-    if (!response.ok) throw new Error(typeof payload?.error?.message === "string" ? payload.error.message : "Não foi possível atualizar o Pipeline.")
+    let payload: { error?: { code?: string; message?: string } }
+    try { payload = await response.json() } catch {
+      if (response.status === 412) throw new PipelineRequestError("Este lead foi atualizado em outra sessão.", 412, "version_conflict")
+      throw new PipelineRequestError(`A API retornou uma resposta inválida (HTTP ${response.status}).`, response.status, "invalid_response")
+    }
+    if (response.status === 401) throw new PipelineRequestError("Sua sessão expirou. Entre novamente para acessar o CRM.", 401, payload.error?.code)
+    if (response.status === 412) throw new PipelineRequestError(payload.error?.message || "Este lead foi atualizado em outra sessão.", 412, payload.error?.code || "version_conflict")
+    if (!response.ok) throw new PipelineRequestError(typeof payload?.error?.message === "string" ? payload.error.message : "Não foi possível atualizar o Pipeline.", response.status, payload.error?.code)
     return payload
   } catch (error) {
     if (controller.signal.aborted || error instanceof TypeError) throw new Error("A conexão com o CRM foi interrompida. Atualize o Pipeline para conferir os dados antes de repetir.")

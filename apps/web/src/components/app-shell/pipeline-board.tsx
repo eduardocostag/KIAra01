@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import { ArrowRight, Check, ChevronDown, CircleDollarSign, Clock3, ExternalLink, Filter, Loader2, Mail, MapPin, MessageCircle, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { leadDisplayName, parsePipeline, pipelineStages, requestPipeline, sourceLabels, type PipelineEntry, type PipelineStage, websiteLabel } from "@/lib/api/pipeline"
+import { leadDisplayName, parsePipeline, PipelineRequestError, pipelineStages, requestPipeline, sourceLabels, type PipelineEntry, type PipelineStage, websiteLabel } from "@/lib/api/pipeline"
 import { cn } from "@/lib/utils"
 
 const stageTheme: Record<PipelineStage, { dot: string; text: string; border: string; glow: string }> = {
@@ -39,7 +39,19 @@ export function PipelineBoard({ initialEntries }: { initialEntries: PipelineEntr
     if (!selected) return
     setSaving(true); setError(""); setNotice("")
     try {
-      const updated = parsePipeline({ items: [await requestPipeline(`/api/pipeline/${encodeURIComponent(selected.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": `"${selected.version}"`, "Idempotency-Key": `pipeline-${selected.id}-${Date.now()}` }, body: JSON.stringify(changes) })] })[0]
+      const save = (entry: PipelineEntry) => requestPipeline(`/api/pipeline/${encodeURIComponent(entry.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": `"${entry.version}"`, "Idempotency-Key": `pipeline-${entry.id}-${Date.now()}` }, body: JSON.stringify(changes) })
+      let saved: unknown
+      try {
+        saved = await save(selected)
+      } catch (caught) {
+        if (!(caught instanceof PipelineRequestError) || caught.status !== 412) throw caught
+        const latestEntries = parsePipeline(await requestPipeline("/api/pipeline"))
+        const latest = latestEntries.find((entry) => entry.id === selected.id)
+        if (!latest) throw new Error("Este lead não está mais disponível no Pipeline.")
+        setEntries(latestEntries)
+        saved = await save(latest)
+      }
+      const updated = parsePipeline({ items: [saved] })[0]
       setEntries((current) => current.map((entry) => entry.id === updated.id ? updated : entry)); setNotice("Alterações salvas.")
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível atualizar o Pipeline.") } finally { setSaving(false) }
   }
