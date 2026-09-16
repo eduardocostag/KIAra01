@@ -178,7 +178,7 @@ export function HunterClient() {
 
     <Dialog open={review} onOpenChange={setReview}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" onCloseAutoFocus={(event) => { if (inFlight.current) { event.preventDefault(); focusResults() } }}>
-        <DialogHeader><DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />Confirmar pesquisa</DialogTitle><DialogDescription>Revise os critérios antes de consultar as fontes externas.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />Confirmar pesquisa</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div><p className="text-lg font-semibold tracking-tight">{query}</p><p className="text-sm text-muted-foreground">{location || "Todas as regiões"} · até {limit} resultados</p></div>
           <dl className="divide-y rounded-lg border px-4 text-sm">
@@ -187,7 +187,6 @@ export function HunterClient() {
             <div className="py-3"><dt className="text-xs text-muted-foreground">Fontes</dt><dd className="mt-1">{effectiveSources.map((source) => sourceInfo[source].label).join(" · ")}</dd></div>
           </dl>
           {requiresMaps && <p className="text-xs leading-5 text-muted-foreground">Perfis com site informado ou sem evidência suficiente serão excluídos. “Sem site” significa que o campo não foi encontrado no perfil inspecionado do Maps.</p>}
-          <p className="text-xs text-muted-foreground">Contatos aceitos aparecem no Inbox. Nenhuma mensagem é enviada.</p>
         </div>
         <DialogFooter><Button variant="outline" className="h-10" onClick={() => setReview(false)}>Voltar e editar</Button><Button className="h-10" disabled={busy} onClick={() => void confirm()}><Search />Confirmar e pesquisar</Button></DialogFooter>
       </DialogContent>
