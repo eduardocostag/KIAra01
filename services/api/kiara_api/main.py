@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import logging
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -33,6 +34,9 @@ from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .sales import SalesRepository, create_sales_router
+
+
+logger = logging.getLogger(__name__)
 
 
 class CorrelationMiddleware(BaseHTTPMiddleware):
@@ -141,6 +145,34 @@ def create_app(
                     "details": exc.details,
                 }
             },
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        correlation_id = getattr(request.state, "correlation_id", str(uuid4()))
+        logger.exception(
+            "api.unexpected_error",
+            extra={
+                "request_id": correlation_id,
+                "method": request.method,
+                "path": request.url.path,
+                "error_class": type(exc).__name__,
+            },
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "internal_error",
+                    "message": (
+                        "A API encontrou um erro interno ao concluir a operação. "
+                        "Use o ID da ocorrência para consultar os logs."
+                    ),
+                    "request_id": correlation_id,
+                    "details": {},
+                }
+            },
+            headers={"X-Correlation-ID": correlation_id},
         )
 
     @app.get("/health/live")
