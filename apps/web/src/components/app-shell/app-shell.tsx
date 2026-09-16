@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils"
 
 const nav = [
   { href: "/app", label: "Visão geral", icon: House },
-  { href: "/app/hunter", label: "Leads", icon: UsersRound },
-  { href: "/app/inbox", label: "Inbox", icon: Inbox },
+  { href: "/app/hunter", label: "Hunter", icon: UsersRound },
+  { href: "/app/inbox", label: "Leads", icon: Inbox },
   { href: "/app/integrations", label: "Integrações", icon: PlugZap },
   { href: "/app/settings", label: "Configurações", icon: Settings2 },
 ]

@@ -45,7 +45,7 @@ export default async function DashboardPage() {
         <h1 id="dashboard-title"><span>Converse.</span><span>Entenda.</span><span className="kiara-dashboard-gradient-word">Conquiste.</span></h1>
         <p className="kiara-dashboard-lead">{fresh.length ? `Você tem ${fresh.length} ${fresh.length === 1 ? "lead novo" : "leads novos"} esperando uma primeira abordagem.` : "A Kiara reúne oportunidades reais e organiza o próximo passo da sua operação."}</p>
         <Button asChild size="lg" className="kiara-dashboard-cta"><Link href={nextHref}>{fresh.length ? "Começar minha fila" : "Pesquisar leads"}<ArrowRight className="size-4" /></Link></Button>
-        <div className="kiara-dashboard-capabilities" aria-label="Acessos rápidos"><Link href="/app/hunter"><span><Search className="size-3.5" /></span>Encontrar leads</Link><Link href="/app/inbox"><span><AudioLines className="size-3.5" /></span>Inbox</Link><Link href="/app/integrations"><span><PlugZap className="size-3.5" /></span>Integrações</Link></div>
+        <div className="kiara-dashboard-capabilities" aria-label="Acessos rápidos"><Link href="/app/hunter"><span><Search className="size-3.5" /></span>Hunter</Link><Link href="/app/inbox"><span><AudioLines className="size-3.5" /></span>Leads</Link><Link href="/app/integrations"><span><PlugZap className="size-3.5" /></span>Integrações</Link></div>
       </div>
       <div className="kiara-dashboard-planet" aria-hidden="true"><OrbitScene /></div>
       <div className="kiara-dashboard-metrics" role="group" aria-label="Indicadores da operação">

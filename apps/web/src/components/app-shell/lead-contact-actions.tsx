@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { AtSign, Check, Copy, ExternalLink, LoaderCircle, MessageCircle, Send, ShieldCheck, Sparkles } from "lucide-react"
+import { AtSign, Check, Copy, ExternalLink, LoaderCircle, MessageCircle, Send, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -69,7 +69,6 @@ export function LeadContactActions({ entry, onRecorded }: { entry: PipelineEntry
           <div className="grid gap-2"><Label>Tipo de abordagem</Label><Select value={templateKey} onValueChange={chooseTemplate}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.keys(profile?.templates || { first_contact: FALLBACK }).map((key) => <SelectItem key={key} value={key}>{templateLabels[key] || key}</SelectItem>)}</SelectContent></Select></div>
           <div className="grid gap-2"><Label htmlFor={`message-${consumer.id}`}>Mensagem</Label><Textarea id={`message-${consumer.id}`} value={template} onChange={(event) => setTemplate(event.target.value)} className="min-h-32 resize-y leading-relaxed" /><div className="rounded-xl border bg-muted/35 p-4"><p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Prévia personalizada</p><p className="whitespace-pre-wrap leading-relaxed">{message}</p></div></div>
           <div className="grid gap-3 sm:grid-cols-2"><Channel icon={<MessageCircle className="size-4 text-emerald-600" />} title="WhatsApp" text={whatsapp?.confirmed ? "Canal confirmado na fonte." : whatsapp ? "Número encontrado; confirme se pertence ao WhatsApp." : "Nenhum número compatível disponível."} /><Channel icon={<AtSign className="size-4 text-fuchsia-600" />} title="Instagram" text={instagram ? `Perfil @${consumer.instagram_username?.replace(/^@/, "")} disponível.` : "Nenhum perfil público disponível."} /></div>
-          <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-muted-foreground"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-600" /><p>Respeite recusas e evite disparos em massa. A Kiara abre o canal e aguarda sua confirmação; ela não pressiona o botão de envio.</p></div>
           {notice ? <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{notice}</p> : null}
         </div>}
         <DialogFooter className="flex-wrap"><Button variant="outline" onClick={() => void copyMessage()} disabled={!message.trim()}>{copied ? <Check /> : <Copy />}{copied ? "Copiada" : "Copiar"}</Button>{instagram ? <Button variant="outline" disabled={!ready} onClick={() => openChannel("instagram", instagram)}><AtSign />Copiar e abrir Instagram</Button> : null}{whatsapp ? <Button disabled={!ready} onClick={() => openChannel("whatsapp", whatsapp.url)}><MessageCircle />{whatsapp.confirmed ? "Abrir WhatsApp" : "Tentar no WhatsApp"}</Button> : null}{openedChannel ? <Button onClick={() => void confirmSent()} disabled={saving}>{saving ? <LoaderCircle className="animate-spin" /> : <Check />}Confirmar que enviei</Button> : null}</DialogFooter>
