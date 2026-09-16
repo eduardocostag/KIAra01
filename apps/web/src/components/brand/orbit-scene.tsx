@@ -47,8 +47,11 @@ export function OrbitScene() {
     <span className="kiara-orbit-ring kiara-orbit-ring-one" />
     <span className="kiara-orbit-ring kiara-orbit-ring-two" />
     <span className="kiara-orbit-ring kiara-orbit-ring-three" />
+    <span className="kiara-orbit-ring kiara-orbit-ring-four" />
+    <span className="kiara-orbit-ring kiara-orbit-ring-five" />
     <span className="kiara-orbit-arc kiara-orbit-arc-one" />
     <span className="kiara-orbit-arc kiara-orbit-arc-two" />
+    <span className="kiara-orbit-arc kiara-orbit-arc-three" />
     <KiaraOrb size="lg" />
     <span className="kiara-orbit-spark kiara-orbit-spark-one" />
     <span className="kiara-orbit-spark kiara-orbit-spark-two" />
