@@ -20,12 +20,16 @@ export function OrbitScene() {
     function followPointer(event: PointerEvent) {
       if (!scene || motionPreference.matches || event.pointerType === "touch") return
       const bounds = scene.getBoundingClientRect()
-      const x = Math.max(-1, Math.min(1, (event.clientX - bounds.left - bounds.width / 2) / Math.max(bounds.width / 2, 1)))
-      const y = Math.max(-1, Math.min(1, (event.clientY - bounds.top - bounds.height / 2) / Math.max(bounds.height / 2, 1)))
+      const dx = event.clientX - (bounds.left + bounds.width / 2)
+      const dy = event.clientY - (bounds.top + bounds.height / 2)
+      const distance = Math.max(1, Math.hypot(dx, dy))
+      const strength = Math.min(1, distance / Math.max(120, Math.min(window.innerWidth, window.innerHeight) * .34))
+      const x = dx / distance * strength
+      const y = dy / distance * strength
       if (frame) cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        scene.style.setProperty("--eye-x", `${(x * 5).toFixed(1)}px`)
-        scene.style.setProperty("--eye-y", `${(y * 4).toFixed(1)}px`)
+        scene.style.setProperty("--eye-x", `${(x * 19).toFixed(1)}px`)
+        scene.style.setProperty("--eye-y", `${(y * 15).toFixed(1)}px`)
       })
     }
 
@@ -49,6 +53,12 @@ export function OrbitScene() {
     <span className="kiara-orbit-spark kiara-orbit-spark-one" />
     <span className="kiara-orbit-spark kiara-orbit-spark-two" />
     <span className="kiara-orbit-spark kiara-orbit-spark-three" />
+    <span className="kiara-orbit-moon kiara-orbit-moon-one" />
+    <span className="kiara-orbit-moon kiara-orbit-moon-two" />
+    <span className="kiara-orbit-moon kiara-orbit-moon-three" />
+    <span className="kiara-orbit-moon kiara-orbit-moon-four" />
+    <span className="kiara-orbit-moon kiara-orbit-moon-five" />
+    <span className="kiara-orbit-moon kiara-orbit-moon-six" />
     <span className="kiara-orbit-callout kiara-orbit-callout-top"><Sparkles className="size-3" />Buscas organizadas</span>
     <span className="kiara-orbit-callout kiara-orbit-callout-right"><AudioLines className="size-3" />Próxima ação clara</span>
     <span className="kiara-orbit-callout kiara-orbit-callout-bottom"><Globe2 className="size-3" />Fontes públicas</span>
