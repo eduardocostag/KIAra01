@@ -44,7 +44,17 @@ export function SettingsForm() {
     if (!profile) return
     setBusy(true); setMessage(null)
     try {
-      const saved = await salesRequest<SalesProfile>("/api/sales/profile", { method: "PUT", body: JSON.stringify(profile) })
+      const update = {
+        business_name: profile.business_name,
+        sender_name: profile.sender_name,
+        offer: profile.offer,
+        tone: profile.tone,
+        follow_up_hours: profile.follow_up_hours,
+        contact_start: profile.contact_start,
+        contact_end: profile.contact_end,
+        templates: profile.templates,
+      }
+      const saved = await salesRequest<SalesProfile>("/api/sales/profile", { method: "PUT", body: JSON.stringify(update) })
       setProfile(saved); setMessage({ ok: true, text: "Alterações salvas neste workspace." })
     } catch (error) { setMessage({ ok: false, text: error instanceof Error ? error.message : "Falha ao salvar." }) }
     finally { setBusy(false) }
