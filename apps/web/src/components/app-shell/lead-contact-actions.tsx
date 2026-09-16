@@ -9,19 +9,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { instagramProfileUrl, safePublicUrl, type PipelineEntry, whatsappComposerUrl } from "@/lib/api/pipeline"
+import { instagramProfileUrl, leadDisplayName, safePublicUrl, type PipelineEntry, whatsappComposerUrl } from "@/lib/api/pipeline"
 import { salesRequest, type SalesProfile, templateLabels } from "@/lib/api/sales"
 
 const FALLBACK = "Olá! Tudo bem? Meu nome é {remetente} e encontrei {nome} durante uma pesquisa sobre {nicho} em {cidade}. Posso compartilhar uma sugestão breve?"
 
 function personalize(template: string, sender: string, profile: SalesProfile | null, consumer: PipelineEntry["consumer"]): string {
-  const values: Record<string, string> = { remetente: sender.trim() || "[seu nome ou empresa]", nome: consumer.display_name, nicho: consumer.research_query?.trim() || "seu segmento", cidade: consumer.address?.trim() || "sua região", oferta: profile?.offer.trim() || "uma solução para sua presença digital" }
+  const values: Record<string, string> = { remetente: sender.trim() || "[seu nome ou empresa]", nome: leadDisplayName(consumer), nicho: consumer.research_query?.trim() || "seu segmento", cidade: consumer.address?.trim() || "sua região", oferta: profile?.offer.trim() || "uma solução para sua presença digital" }
   return template.replace(/\{(remetente|nome|nicho|cidade|oferta)\}/g, (_, key: string) => values[key])
 }
 
 export function LeadContactActions({ entry, onRecorded }: { entry: PipelineEntry; onRecorded?: () => void | Promise<void> }) {
   const router = useRouter()
   const { consumer } = entry
+  const displayName = leadDisplayName(consumer)
   const [profile, setProfile] = useState<SalesProfile | null>(null)
   const [sender, setSender] = useState("")
   const [templateKey, setTemplateKey] = useState("first_contact")
@@ -62,7 +63,7 @@ export function LeadContactActions({ entry, onRecorded }: { entry: PipelineEntry
     <Dialog onOpenChange={(open) => void loadProfile(open)}>
       <DialogTrigger asChild><Button size="sm" className="shadow-sm"><Sparkles />Preparar abordagem</Button></DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader><div className="mb-1 flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Send className="size-5" /></div><DialogTitle className="text-xl">Abordagem para {consumer.display_name}</DialogTitle><DialogDescription>Escolha um modelo, revise e abra o canal. O envio só é registrado após sua confirmação.</DialogDescription></DialogHeader>
+        <DialogHeader><div className="mb-1 flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Send className="size-5" /></div><DialogTitle className="text-xl">Abordagem para {displayName}</DialogTitle><DialogDescription>Escolha um modelo, revise e abra o canal. O envio só é registrado após sua confirmação.</DialogDescription></DialogHeader>
         {loading ? <div className="flex min-h-52 items-center justify-center"><LoaderCircle className="animate-spin" /><span className="ml-2">Carregando seus modelos…</span></div> : <div className="grid gap-5 py-2">
           <div className="grid gap-2"><Label htmlFor={`sender-${consumer.id}`}>Quem está entrando em contato?</Label><Input id={`sender-${consumer.id}`} value={sender} onChange={(event) => setSender(event.target.value)} placeholder="Seu nome ou empresa" autoComplete="organization" /><p className="text-xs text-muted-foreground">Você pode preencher aqui mesmo; para reutilizar automaticamente, salve em Configurações.</p></div>
           <div className="grid gap-2"><Label>Tipo de abordagem</Label><Select value={templateKey} onValueChange={chooseTemplate}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.keys(profile?.templates || { first_contact: FALLBACK }).map((key) => <SelectItem key={key} value={key}>{templateLabels[key] || key}</SelectItem>)}</SelectContent></Select></div>
@@ -74,7 +75,7 @@ export function LeadContactActions({ entry, onRecorded }: { entry: PipelineEntry
         <DialogFooter className="flex-wrap"><Button variant="outline" onClick={() => void copyMessage()} disabled={!message.trim()}>{copied ? <Check /> : <Copy />}{copied ? "Copiada" : "Copiar"}</Button>{instagram ? <Button variant="outline" disabled={!ready} onClick={() => openChannel("instagram", instagram)}><AtSign />Copiar e abrir Instagram</Button> : null}{whatsapp ? <Button disabled={!ready} onClick={() => openChannel("whatsapp", whatsapp.url)}><MessageCircle />{whatsapp.confirmed ? "Abrir WhatsApp" : "Tentar no WhatsApp"}</Button> : null}{openedChannel ? <Button onClick={() => void confirmSent()} disabled={saving}>{saving ? <LoaderCircle className="animate-spin" /> : <Check />}Confirmar que enviei</Button> : null}</DialogFooter>
       </DialogContent>
     </Dialog>
-    {source ? <Button asChild variant="ghost" size="sm"><a href={source} target="_blank" rel="noreferrer" aria-label={`Ver fonte de ${consumer.display_name}`}>Fonte<ExternalLink className="size-3" /></a></Button> : null}
+    {source ? <Button asChild variant="ghost" size="sm"><a href={source} target="_blank" rel="noreferrer" aria-label={`Ver fonte de ${displayName}`}>Fonte<ExternalLink className="size-3" /></a></Button> : null}
     {!whatsapp && !instagram ? <span className="text-xs text-muted-foreground">WhatsApp ou Instagram não encontrados</span> : null}
   </div>
 }

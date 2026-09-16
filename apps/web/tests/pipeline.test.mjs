@@ -1,8 +1,14 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { instagramProfileUrl, parsePipeline, parsePipelineEntry, safeWhatsAppUrl, phoneHref, requestPipeline, whatsappComposerUrl } from "../src/lib/api/pipeline.ts"
+import { instagramProfileUrl, leadDisplayName, parsePipeline, parsePipelineEntry, safeWhatsAppUrl, phoneHref, requestPipeline, whatsappComposerUrl } from "../src/lib/api/pipeline.ts"
 
 const entry = { id: "entry-1", stage: "new", next_action: null, version: 1, updated_at: "2026-09-09T00:00:00Z", consumer: { id: "lead-1", display_name: "Contato de teste", instagram_username: null, phone: "+5511987654321" } }
+
+test("lead labels prefer Instagram handles and remove index boilerplate", () => {
+  assert.equal(leadDisplayName({ ...entry.consumer, source: "instagram", instagram_username: "dr.felipe", display_name: "Consultório (@dr.felipe) · Instagram photos and videos" }), "@dr.felipe")
+  assert.equal(leadDisplayName({ ...entry.consumer, source: "instagram", display_name: "Consultório Prime (@consultorio.prime) - Instagram" }), "@consultorio.prime")
+  assert.equal(leadDisplayName({ ...entry.consumer, source: "google_maps", display_name: "Consulta Fácil" }), "Consulta Fácil")
+})
 
 test("Maps contact has no invented Instagram or WhatsApp", () => {
   const parsed = parsePipeline({ items: [entry] })[0]

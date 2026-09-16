@@ -43,6 +43,7 @@ export type HunterJob = {
   sources: HunterSource[]
   result_limit: number
   status: "pending_confirmation" | "running" | "completed" | "failed" | "cancelled"
+  error_code?: string | null
   results: HunterResult[]
   research_mode?: "broad" | "focused"
   objective?: string
@@ -85,6 +86,7 @@ export function parseHunterJob(value: unknown): HunterJob {
   const job = value as HunterJob
   if (typeof job.id !== "string" || !job.id || typeof job.query !== "string" ||
       !["b2b", "b2c"].includes(job.market) || !statuses.has(job.status) ||
+      (job.error_code != null && typeof job.error_code !== "string") ||
       !Array.isArray(job.sources) || !job.sources.every((source) => sources.has(source)) ||
       !Array.isArray(job.results) || !job.results.every((result) => {
         if (!result || typeof result.id !== "string" || typeof result.title !== "string" ||
@@ -125,6 +127,14 @@ export function parseHunterHistory(value: unknown): HunterJob[] {
   return (value as { items: unknown[] }).items.map(parseHunterJob)
 }
 
+function apiErrorMessage(value: unknown, status: number): string {
+  const error = (value as { error?: { message?: unknown; code?: unknown; request_id?: unknown } } | null)?.error
+  const message = typeof error?.message === "string" && error.message.trim() ? error.message.trim() : `Não foi possível concluir a consulta (HTTP ${status}).`
+  const code = typeof error?.code === "string" && error.code.trim() ? error.code.trim() : `http_${status}`
+  const requestId = typeof error?.request_id === "string" && error.request_id.trim() ? error.request_id.trim() : ""
+  return `${message} Código: ${code}.${requestId ? ` Referência: ${requestId}.` : ""}`
+}
+
 export async function requestHunter(path: string, init: RequestInit = {}, timeoutMs = 20_000): Promise<unknown> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -136,8 +146,7 @@ export async function requestHunter(path: string, init: RequestInit = {}, timeou
     }
     if (!response.ok) {
       if (response.status === 401) throw new Error("Sua sessão expirou. Entre novamente para acessar suas pesquisas.")
-      const message = (value as { error?: { message?: unknown } } | null)?.error?.message
-      throw new Error(typeof message === "string" ? message : `Não foi possível concluir a consulta (HTTP ${response.status}).`)
+      throw new Error(apiErrorMessage(value, response.status))
     }
     return value
   } catch (error) {

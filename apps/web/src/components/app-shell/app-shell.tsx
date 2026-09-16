@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Bell, House, Inbox, Menu, PlugZap, Search, Settings2, UsersRound } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
-import { ThemeToggle } from "@/components/brand/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -15,7 +14,6 @@ const nav = [
   { href: "/app/hunter", label: "Leads", icon: UsersRound },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/integrations", label: "Integrações", icon: PlugZap },
-  { href: "/app/settings", label: "Configurações", icon: Settings2 },
 ]
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
@@ -39,10 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-[202px] flex-col border-r border-sidebar-border bg-sidebar px-3 py-6 md:flex">
       <Link href="/app" className="kiara-shell-brand mb-8 flex min-h-12 items-center px-2" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
       <Navigation />
-      <div className="kiara-shell-sidebar-footer mt-auto flex items-center justify-between px-2 pt-5">
-        <span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">KIARA</span>
-        <ThemeToggle />
-      </div>
+      <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5"><span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">KIARA</span></div>
     </aside>
     <div className="min-w-0 pt-16 md:pl-[202px]">
       <header className="app-shell-header fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/90 px-4 backdrop-blur-xl sm:px-6 md:left-[202px] md:px-8">
@@ -51,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground">
             <SheetHeader className="p-0 text-left"><SheetTitle><KiaraBrand inverse /></SheetTitle><SheetDescription className="sr-only">Navegação do workspace comercial Kiara</SheetDescription></SheetHeader>
             <div className="mt-7"><Navigation onNavigate={() => setMenuOpen(false)} /></div>
-            <div className="kiara-shell-sidebar-footer mt-auto flex items-center justify-between px-2 pt-5"><span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">KIARA</span><ThemeToggle /></div>
+            <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5"><span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">KIARA</span></div>
           </SheetContent>
         </Sheet>
         <span className="truncate text-sm font-medium text-foreground/75 md:hidden">{current}</span>

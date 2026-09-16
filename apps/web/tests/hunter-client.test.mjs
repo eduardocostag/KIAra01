@@ -24,6 +24,14 @@ test("expired sessions have an actionable message", async (t) => {
   t.mock.method(globalThis, "fetch", async () => Response.json({}, { status: 401 }))
   await assert.rejects(requestHunter("/test"), /sessão expirou/)
 })
+test("API errors preserve the diagnostic code and request reference", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: { code: "upstream_route_not_found", message: "A rota da API não foi encontrada.", request_id: "req-123" } }, { status: 502 }))
+  await assert.rejects(requestHunter("/test"), /Código: upstream_route_not_found\. Referência: req-123\./)
+})
+test("unknown HTTP errors still identify their status", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({}, { status: 503 }))
+  await assert.rejects(requestHunter("/test"), /Código: http_503/)
+})
 test("a network request is bounded and advises recovering saved results", async (t) => {
   t.mock.method(globalThis, "fetch", (_, { signal }) => new Promise((resolve, reject) => {
     signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))

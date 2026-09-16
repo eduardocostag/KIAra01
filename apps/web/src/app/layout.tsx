@@ -25,34 +25,18 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8f7fb" },
-    { media: "(prefers-color-scheme: dark)", color: "#151421" },
-  ],
+  colorScheme: "dark",
+  themeColor: "#151421",
 };
-
-const themeBootScript = `
-(function () {
-  try {
-    var stored = localStorage.getItem("kiara-theme") || "dark";
-    var dark = stored === "dark" || (stored === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.classList.toggle("dark", dark);
-    document.documentElement.dataset.theme = stored;
-  } catch (_) {}
-})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="pt-BR"
       data-scroll-behavior="smooth"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
+      data-theme="dark"
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <head>
-        <script id="kiara-theme-boot" dangerouslySetInnerHTML={{ __html: themeBootScript }} />
-      </head>
       <body className={`${geistSans.className} flex min-h-full flex-col`}>
         <AuthProvider>{children}</AuthProvider>
       </body>

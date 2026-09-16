@@ -13,7 +13,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from kiara_api.adapters.postgres import PostgresRepository
-from kiara_api.hunter_crm import identity_keys, sync_hunter_results
+from kiara_api.hunter_crm import _consumer_display_name, identity_keys, sync_hunter_results
+
+
+def test_consumer_display_name_uses_instagram_handle_and_cleans_index_suffixes():
+    assert _consumer_display_name({"title": "Clínica (@clinica) · Instagram photos and videos"}, "clinica") == "@clinica"
+    assert _consumer_display_name({"title": "Consulta Fácil - Instagram"}, None) == "Consulta Fácil"
 
 
 class Cursor:

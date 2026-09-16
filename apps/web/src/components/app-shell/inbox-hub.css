@@ -1,3 +1,8 @@
+.kiara-inbox-toolbar { display: flex; width: 100%; align-items: center; gap: .8rem; }
+.kiara-inbox-toolbar > [role="tablist"] { flex: none; }
+.kiara-inbox-search { position: relative; min-width: 0; flex: 1; }
+.kiara-inbox-search > svg { position: absolute; z-index: 1; left: .85rem; top: 50%; width: 1rem; height: 1rem; color: var(--muted-foreground); transform: translateY(-50%); pointer-events: none; }
+.kiara-inbox-search input { border-radius: .9rem; background: color-mix(in oklab, var(--card) 96%, var(--primary)); }
 .kiara-contact-workspace { display: grid; min-height: 590px; grid-template-columns: minmax(230px, 285px) minmax(0, 1fr); overflow: hidden; border: 1px solid var(--border); border-radius: 1.1rem; background: #0f121b; box-shadow: 0 18px 55px rgb(0 0 0 / .22); }
 .kiara-contact-list { min-width: 0; overflow-y: auto; border-right: 1px solid var(--border); background: #11141d; padding: .8rem; }
 .kiara-contact-list-title { display: flex; align-items: center; justify-content: space-between; padding: .35rem .45rem .85rem; font-size: .78rem; }
@@ -47,4 +52,5 @@
 .kiara-contact-description p { margin-top: .65rem; color: #aaa7b4; font-size: .72rem; line-height: 1.6; }
 @media (max-width: 850px) { .kiara-contact-workspace { grid-template-columns: 1fr; } .kiara-contact-list { display: flex; border-right: 0; border-bottom: 1px solid var(--border); gap: .4rem; overflow-x: auto; } .kiara-contact-list-title { display: none; } .kiara-contact-list > button { min-width: 210px; } }
 @media (max-width: 600px) { .kiara-contact-dossier { padding: .8rem; } .kiara-contact-dossier > header { align-items: flex-start; flex-direction: column; } .kiara-contact-header-actions { justify-content: flex-start; } .kiara-contact-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .kiara-inbox-toolbar { align-items: stretch; flex-direction: column; } .kiara-inbox-toolbar > [role="tablist"] { width: 100%; } .kiara-inbox-search { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .kiara-contact-list > button { transition: none; } }

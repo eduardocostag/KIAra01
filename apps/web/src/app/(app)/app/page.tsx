@@ -6,7 +6,7 @@ import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
 import { Button } from "@/components/ui/button"
 import { getInboxDTO } from "@/lib/api/inbox"
 import { getPipelineDTO } from "@/lib/api/pipeline-server"
-import { pipelineStages, sourceLabels } from "@/lib/api/pipeline"
+import { leadDisplayName, pipelineStages, sourceLabels } from "@/lib/api/pipeline"
 
 function relativeTime(value: string, now: number) {
   const minutes = Math.max(0, Math.floor((now - new Date(value).getTime()) / 60000))
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
         const source = entry.consumer.source ?? ""
         const sourceLabel = sourceLabels[source] ?? "Web pública"
         const kind = /instagram/i.test(source + sourceLabel) ? "instagram" : /maps|google/i.test(source + sourceLabel) ? "maps" : "web"
-        return <tr key={entry.id}><td><Link href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`} className="kiara-dashboard-lead-link"><span className="kiara-dashboard-lead-name">{entry.consumer.display_name}</span></Link></td><td><span className="kiara-dashboard-source"><span className={`kiara-dashboard-source-icon kiara-dashboard-source-${kind}`}><SourceMark kind={kind} /></span>{sourceLabel}</span></td><td><time dateTime={entry.updated_at}>{relativeTime(entry.updated_at, now)}</time></td><td><span className="kiara-dashboard-status">{pipelineStages.find((stage) => stage.id === entry.stage)?.label ?? entry.stage}</span></td></tr>
+        return <tr key={entry.id}><td><Link href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`} className="kiara-dashboard-lead-link"><span className="kiara-dashboard-lead-name">{leadDisplayName(entry.consumer)}</span></Link></td><td><span className="kiara-dashboard-source"><span className={`kiara-dashboard-source-icon kiara-dashboard-source-${kind}`}><SourceMark kind={kind} /></span>{sourceLabel}</span></td><td><time dateTime={entry.updated_at}>{relativeTime(entry.updated_at, now)}</time></td><td><span className="kiara-dashboard-status">{pipelineStages.find((stage) => stage.id === entry.stage)?.label ?? entry.stage}</span></td></tr>
       })}</tbody></table></div> : <div className="kiara-dashboard-empty"><Radar className="size-5 text-primary" /><p>Seus primeiros leads aparecerão aqui depois de uma pesquisa.</p><Link href="/app/hunter" className="font-semibold text-primary hover:underline">Encontrar leads <ArrowRight className="inline size-3.5" /></Link></div>}
     </section>
   </div>

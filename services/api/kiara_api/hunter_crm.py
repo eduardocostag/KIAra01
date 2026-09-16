@@ -47,6 +47,17 @@ def _instagram_username(url: str) -> str | None:
     return path[0].lower() if re.fullmatch(r"[a-zA-Z0-9_.]{1,30}", path[0]) else None
 
 
+def _consumer_display_name(result: dict[str, Any], username: str | None) -> str:
+    """Return a human label, never the search-engine document title."""
+    if username:
+        return f"@{username}"[:500]
+    title = str(result.get("title") or "")
+    title = re.sub(r"\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$", "", title, flags=re.I)
+    title = re.sub(r"\s*Instagram\s+photos?\s+and\s+videos?\s*$", "", title, flags=re.I)
+    title = re.sub(r"\s+[.…]{2,}\s*$", "", title).strip()
+    return (title or "Contato sem nome")[:500]
+
+
 def identity_keys(result: dict[str, Any]) -> list[str]:
     """Stable, tenant-independent aliases; the consumer UUID also includes tenant.
 
@@ -163,6 +174,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
 
         consumer_id = uuid5(NAMESPACE_URL, f"kiara:hunter-consumer:{org_uuid}:{keys[0]}")
         username = _instagram_username(result["url"])
+        display_name = _consumer_display_name(result, username)
         consumer = await (await connection.execute(
             """SELECT id,display_name,attributes,consent_status,lifecycle_status FROM consumers
                WHERE organization_id=%s AND
@@ -188,13 +200,13 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
             await connection.execute(
                 """UPDATE consumers SET attributes=%s,display_name=COALESCE(NULLIF(display_name,''),%s),
                    version=version+1,updated_at=now() WHERE organization_id=%s AND id=%s""",
-                (json.dumps(attrs), result["title"][:500], org_uuid, consumer_id),
+                (json.dumps(attrs), display_name, org_uuid, consumer_id),
             )
         else:
             inserted = await (await connection.execute(
                 """INSERT INTO consumers (organization_id,id,display_name,instagram_username,attributes)
                    VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id""",
-                (org_uuid, consumer_id, result["title"][:500], username, json.dumps(attrs)),
+                (org_uuid, consumer_id, display_name, username, json.dumps(attrs)),
             )).fetchone()
             if not inserted:
                 # Another writer (e.g. inbound Instagram ingestion) can create this
@@ -218,7 +230,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
                 await connection.execute(
                     """UPDATE consumers SET attributes=%s,display_name=COALESCE(NULLIF(display_name,''),%s),
                        version=version+1,updated_at=now() WHERE organization_id=%s AND id=%s""",
-                    (json.dumps(attrs), result["title"][:500], org_uuid, consumer_id),
+                    (json.dumps(attrs), display_name, org_uuid, consumer_id),
                 )
 
         entry = await (await connection.execute(

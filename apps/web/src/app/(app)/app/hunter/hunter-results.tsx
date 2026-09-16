@@ -12,11 +12,35 @@ import styles from "./hunter.module.css"
 
 const labels: Record<string, string> = { web: "Web pública", google_maps: "Google Maps", instagram: "Instagram", linkedin: "LinkedIn" }
 const statuses: Record<string, string> = { completed: "Concluída", running: "Em execução", pending_confirmation: "Aguardando confirmação", failed: "Falhou", cancelled: "Cancelada" }
+const failureMessages: Record<string, string> = {
+  provider_timeout: "As fontes selecionadas ultrapassaram o tempo máximo de resposta.",
+  provider_error: "Todas as fontes selecionadas falharam durante a consulta.",
+  exa_not_configured: "A fonte de busca Web não está configurada no backend.",
+  firecrawl_not_configured: "O enriquecimento Firecrawl não está configurado no backend.",
+  browserbase_not_configured: "O navegador usado para consultar o Google Maps não está configurado.",
+  browser_provider_unavailable: "O navegador de pesquisa do Google Maps estava indisponível.",
+}
 
 function readableExcerpt(summary: string | null) {
   return (summary ?? "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/https?:\/\/\S+/g, " ").replace(/<[^>]*>/g, " ").replace(/[#*_`>|\[\]]/g, " ")
     .replace(/\s+/g, " ").trim().slice(0, 260)
+}
+
+function resultDisplayName(result: HunterResult) {
+  if (result.source === "instagram") {
+    const handle = result.public_data?.profile_handle?.trim().replace(/^@/, "") || result.title.match(/@([A-Za-z0-9._]{1,30})/)?.[1]
+    if (handle && /^[A-Za-z0-9._]{1,30}$/.test(handle)) return `@${handle}`
+    try {
+      const segment = new URL(result.url).pathname.split("/").filter(Boolean)[0]
+      if (segment && /^[A-Za-z0-9._]{1,30}$/.test(segment) && !["p", "reel", "reels"].includes(segment.toLowerCase())) return `@${segment}`
+    } catch { /* URL validity is enforced by parseHunterJob. */ }
+  }
+  return result.title
+    .replace(/\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$/i, "")
+    .replace(/\s*Instagram\s+photos?\s+and\s+videos?\s*$/i, "")
+    .replace(/\s+[.…]{2,}\s*$/u, "")
+    .replace(/\s+/g, " ").trim() || "Resultado sem nome"
 }
 
 function LeadRow({ result, location, historical }: { result: HunterResult; location: string | null; historical: boolean }) {
@@ -30,17 +54,18 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
   const publication = result.source === "instagram" && data?.content_kind === "publication"
   const excerpt = readableExcerpt(result.summary)
   const opportunity = data?.website_status === "not_listed" ? 100 : typeof data?.website_quality_score === "number" ? 100 - data.website_quality_score : null
+  const displayName = resultDisplayName(result)
   async function copyPhone() {
     if (!contact) return
     try { await navigator.clipboard.writeText(contact); setCopyStatus("Número copiado") }
     catch { setCopyStatus("Não foi possível copiar. Selecione o número manualmente.") }
   }
-  return <article className={styles.leadCard} aria-label={result.title}>
+  return <article className={styles.leadCard} aria-label={displayName}>
     <div className="flex gap-3">
-      <div className={styles.leadAvatar} aria-hidden="true">{result.title.trim().slice(0, 1).toUpperCase()}</div>
+      <div className={styles.leadAvatar} aria-hidden="true">{displayName.replace(/^@/, "").slice(0, 1).toUpperCase()}</div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <h3 className={styles.leadTitle}>{result.title}</h3>
+          <h3 className={styles.leadTitle}>{displayName}</h3>
           {publication && <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Publicação</span>}
           {synced ? <span className="inline-flex items-center gap-1 rounded-md bg-success-subtle px-2 py-1 text-[10px] font-medium text-success"><CheckCheck className="size-3" />No Inbox</span> : <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">{historical ? "Histórico · não validado" : "Ainda não salvo"}</span>}
         </div>
@@ -101,7 +126,7 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, onR
         </div>
         {selected.warnings && selected.warnings.length > 0 && <details className="border-b bg-warning-subtle/25 px-4 py-3 text-xs sm:px-5"><summary className="cursor-pointer font-medium text-warning">{selected.warnings.length} observação{selected.warnings.length === 1 ? "" : "ões"} da pesquisa</summary><ul className="mt-2 list-disc space-y-1 pl-5 leading-5 text-muted-foreground">{selected.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></details>}
         {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}
-        {selected.status === "failed" && <p role="alert" className="p-5 text-sm text-destructive">A fonte externa não concluiu a pesquisa. Tente novamente ou escolha outras fontes.</p>}
+        {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa."} Código: {selected.error_code || "provider_error"}. Revise as integrações ou escolha outras fontes.</p></div>}
         {selected.status === "cancelled" && <p className="p-5 text-sm">Esta pesquisa foi cancelada.</p>}
         {selected.status === "pending_confirmation" && <p className="p-5 text-sm text-muted-foreground">A pesquisa foi registrada, mas a execução ainda não foi confirmada. Prepare e confirme uma nova busca.</p>}
         {selected.status === "completed" && !selected.results.length && <div className="flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center"><ListFilter className="size-7 text-muted-foreground" /><h3 className="mt-4 font-semibold">Nenhum resultado encontrado</h3><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Nenhum contato atendeu aos filtros com evidência suficiente nas fontes consultadas. Revise a região ou os critérios; dados não confirmados não são apresentados como correspondências.</p><Button variant="outline" className="mt-5 h-10" onClick={() => onBroaden(selected)}>Ajustar pesquisa</Button></div>}

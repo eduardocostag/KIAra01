@@ -103,6 +103,20 @@ export function parsePipeline(value: unknown): PipelineEntry[] {
 
 export const sourceLabels: Record<string, string> = { google_maps: "Google Maps", web: "Web pública", instagram: "Instagram", linkedin: "LinkedIn", hunter: "Hunter" }
 
+export function leadDisplayName(consumer: PipelineEntry["consumer"]): string {
+  const username = consumer.instagram_username?.trim().replace(/^@/, "")
+  if (username && /^[A-Za-z0-9._]{1,30}$/.test(username)) return `@${username}`
+  const embeddedHandle = consumer.display_name.match(/@([A-Za-z0-9._]{1,30})/i)?.[1]
+  if (consumer.source === "instagram" && embeddedHandle) return `@${embeddedHandle}`
+  const cleaned = consumer.display_name
+    .replace(/\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$/i, "")
+    .replace(/\s*Instagram\s+photos?\s+and\s+videos?\s*$/i, "")
+    .replace(/\s+[.…]{2,}\s*$/u, "")
+    .replace(/\s+/g, " ")
+    .trim()
+  return cleaned || (consumer.source === "instagram" ? "Perfil do Instagram" : "Contato sem nome")
+}
+
 export function websiteLabel(status: string | null | undefined): string {
   return status === "present" ? "Site informado" : status === "not_listed" ? "Sem site informado na fonte" : "Site não verificado"
 }
