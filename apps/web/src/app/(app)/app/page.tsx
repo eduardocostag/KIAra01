@@ -1,6 +1,6 @@
 import Link from "next/link"
-import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, Clock3, Globe2, MessageCircle, PlugZap, Radar, Search, Sparkles } from "lucide-react"
-import { KiaraOrb } from "@/components/brand/kiara-orb"
+import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, Clock3, MessageCircle, PlugZap, Radar, Search } from "lucide-react"
+import { OrbitScene } from "@/components/brand/orbit-scene"
 import { SourceMark } from "@/components/brand/source-mark"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
 import { Button } from "@/components/ui/button"
@@ -48,7 +48,7 @@ export default async function DashboardPage() {
         <Button asChild size="lg" className="kiara-dashboard-cta"><Link href={nextHref}>{fresh.length ? "Começar minha fila" : "Pesquisar leads"}<ArrowRight className="size-4" /></Link></Button>
         <div className="kiara-dashboard-capabilities" aria-label="Acessos rápidos"><Link href="/app/hunter"><span><Search className="size-3.5" /></span>Encontrar leads</Link><Link href="/app/inbox"><span><AudioLines className="size-3.5" /></span>Inbox</Link><Link href="/app/integrations"><span><PlugZap className="size-3.5" /></span>Integrações</Link></div>
       </div>
-      <div className="kiara-dashboard-planet" aria-hidden="true"><div className="kiara-orbit-scene"><span className="kiara-orbit-glow" /><span className="kiara-orbit-ring kiara-orbit-ring-one" /><span className="kiara-orbit-ring kiara-orbit-ring-two" /><span className="kiara-orbit-ring kiara-orbit-ring-three" /><span className="kiara-orbit-arc kiara-orbit-arc-one" /><span className="kiara-orbit-arc kiara-orbit-arc-two" /><KiaraOrb size="lg" /><span className="kiara-orbit-spark kiara-orbit-spark-one" /><span className="kiara-orbit-spark kiara-orbit-spark-two" /><span className="kiara-orbit-spark kiara-orbit-spark-three" /><span className="kiara-orbit-callout kiara-orbit-callout-top"><Sparkles className="size-3" />Buscas organizadas</span><span className="kiara-orbit-callout kiara-orbit-callout-right"><AudioLines className="size-3" />Próxima ação clara</span><span className="kiara-orbit-callout kiara-orbit-callout-bottom"><Globe2 className="size-3" />Fontes públicas</span></div></div>
+      <div className="kiara-dashboard-planet" aria-hidden="true"><OrbitScene /></div>
       <div className="kiara-dashboard-metrics" role="group" aria-label="Indicadores da operação">
         {metrics.map(({ label, value, icon: Icon }) => <div key={label} className="kiara-dashboard-metric"><span className="kiara-dashboard-metric-icon"><Icon className="size-5" aria-hidden="true" /></span><div><p className="kiara-dashboard-metric-value">{value}</p><p className="kiara-dashboard-metric-label">{label}</p></div></div>)}
       </div>

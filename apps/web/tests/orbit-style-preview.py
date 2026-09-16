@@ -6,8 +6,9 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 WEB_ROOT = Path(__file__).parents[1]
-STYLES = [WEB_ROOT / ".next" / "static" / "chunks" / "44m3qusy0k8cd.css",
-          WEB_ROOT / "src" / "app" / "(app)" / "app" / "orbit-dashboard.css"]
+STYLES = sorted(path for path in (WEB_ROOT / ".next" / "static" / "chunks").glob("*.css")
+                if "kiara-dashboard-hero" in path.read_text(encoding="utf-8"))
+STYLES.append(WEB_ROOT / "src" / "app" / "(app)" / "app" / "orbit-dashboard.css")
 OUT = Path(__file__).parent / "visual-artifacts"
 
 HTML = """<div class="kiara-workspace min-h-screen bg-background text-foreground">
@@ -31,8 +32,11 @@ def preview(page, width: int, height: int, name: str) -> dict[str, object]:
     page.evaluate("(html) => { document.body.innerHTML = html; document.body.className = ''; }", HTML)
     page.wait_for_timeout(400)
     first_transform = page.locator(".kiara-orbit-ring-one").evaluate("el => getComputedStyle(el).transform")
+    first_orb_transform = page.locator(".kiara-orbit-scene .kiara-orb").evaluate("el => getComputedStyle(el).transform")
     page.wait_for_timeout(300)
     second_transform = page.locator(".kiara-orbit-ring-one").evaluate("el => getComputedStyle(el).transform")
+    second_orb_transform = page.locator(".kiara-orbit-scene .kiara-orb").evaluate("el => getComputedStyle(el).transform")
+    page.wait_for_timeout(1800)
     page.screenshot(path=str(OUT / f"{name}.png"), full_page=True)
     report = page.evaluate("""() => ({
       viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth,
@@ -41,9 +45,11 @@ def preview(page, width: int, height: int, name: str) -> dict[str, object]:
       hero: document.querySelector('.kiara-dashboard-hero').getBoundingClientRect().toJSON(),
       orb: document.querySelector('.kiara-orbit-scene .kiara-orb').getBoundingClientRect().toJSON(),
       metrics: document.querySelector('.kiara-dashboard-metrics').getBoundingClientRect().toJSON(),
-      ringAnimation: getComputedStyle(document.querySelector('.kiara-orbit-ring-one')).animationName
+      ringAnimation: getComputedStyle(document.querySelector('.kiara-orbit-ring-one')).animationName,
+      pupilOpacity: getComputedStyle(document.querySelector('.kiara-orb-face i'), '::after').opacity
     })""")
     report["ring_transform_changed"] = first_transform != second_transform
+    report["orb_transform_changed"] = first_orb_transform != second_orb_transform
     return report
 
 
@@ -52,7 +58,7 @@ def main() -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
-        reports = [preview(page, 912, 605, "orbit-912"), preview(page, 390, 844, "orbit-390")]
+        reports = [preview(page, 1440, 900, "orbit-1440"), preview(page, 912, 605, "orbit-912"), preview(page, 390, 844, "orbit-390")]
         reduced = browser.new_page(reduced_motion="reduce")
         reports.append(preview(reduced, 912, 605, "orbit-reduced"))
         print(json.dumps(reports, ensure_ascii=False))
