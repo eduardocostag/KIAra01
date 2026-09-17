@@ -90,7 +90,7 @@ class SalesRepository:
             exists = await (await connection.execute("SELECT stage FROM pipeline_entries WHERE organization_id=%s AND id=%s FOR UPDATE", (organization_uuid, entry_uuid))).fetchone()
             if exists is None:
                 raise ApiError(404, "pipeline_entry_not_found", "Lead não encontrado no Pipeline.")
-            await connection.execute("INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING", (user_uuid, context.user_id))
+            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (context.user_id,))
             row = await (await connection.execute(
                 """INSERT INTO outreach_activities (organization_id,id,pipeline_entry_id,actor_user_id,channel,status,body,next_follow_up_at)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id,pipeline_entry_id,channel,status,body,next_follow_up_at,created_at""",

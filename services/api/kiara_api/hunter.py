@@ -144,10 +144,7 @@ class HunterRepository:
         filters = research_options(payload.model_dump())
         async with self.database._transaction(context.organization_id) as connection:
             await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
-            await connection.execute(
-                "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
-                (user, context.user_id),
-            )
+            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (context.user_id,))
             row = await (await connection.execute(
                 """INSERT INTO hunter_searches
                    (organization_id,requested_by,market,query,location,sources,result_limit)
@@ -197,10 +194,7 @@ class HunterRepository:
         org, user = _uuid("organization", context.organization_id), _uuid("user", context.user_id)
         async with self.database._transaction(context.organization_id) as connection:
             await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
-            await connection.execute(
-                "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
-                (user, context.user_id),
-            )
+            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (context.user_id,))
             running = await (await connection.execute(
                 "SELECT count(*) count FROM hunter_searches WHERE organization_id=%s AND status='running'", (org,)
             )).fetchone()
@@ -222,10 +216,7 @@ class HunterRepository:
                           _uuid("hunter_search", search_id), _uuid("user", context.user_id))
         async with self.database._transaction(context.organization_id) as connection:
             await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
-            await connection.execute(
-                "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
-                (user, context.user_id),
-            )
+            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (context.user_id,))
             row = await (await connection.execute(
                 "SELECT * FROM hunter_searches WHERE organization_id=%s AND id=%s FOR UPDATE", (org, sid)
             )).fetchone()

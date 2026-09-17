@@ -26,8 +26,7 @@ def main() -> None:
             connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
             connection.execute("INSERT INTO organizations(id,slug,name) VALUES (%s,%s,'Queue verification')",
                                (organization, f"verify-{organization.hex[:12]}"))
-            connection.execute("INSERT INTO users(id,identity_provider,external_subject) VALUES (%s,'test',%s)",
-                               (user, f"verify-{user}"))
+            connection.execute("SELECT kiara.ensure_current_user('test', %s)", (f"verify-{user}",))
             connection.execute(
                 """INSERT INTO hunter_searches
                    (organization_id,id,requested_by,market,query,sources,result_limit,status,confirmed_by,confirmed_at)

@@ -54,10 +54,17 @@ def main() -> None:
         role_row = connection.execute("SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user").fetchone()
         if not role_row or role_row[1] or role_row[2]:
             raise SystemExit("A role de runtime ainda possui privilégio para ignorar RLS")
-        first, second = uuid4(), uuid4()
+        first, second, user = uuid4(), uuid4(), uuid4()
         connection.execute("SELECT set_config('app.organization_id', %s, true)", (str(first),))
+        connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
         connection.execute("INSERT INTO organizations(id,slug,name) VALUES (%s,%s,'RLS verification')",
                            (first, f"verify-{first.hex[:12]}"))
+        ensured = connection.execute(
+            "SELECT kiara.ensure_current_user('verification', %s)",
+            (f"verify-{user}",),
+        ).fetchone()
+        if not ensured or ensured[0] != user:
+            raise SystemExit("A role de runtime não conseguiu garantir o usuário autenticado")
         connection.execute("SELECT set_config('app.organization_id', %s, true)", (str(second),))
         visible = connection.execute("SELECT id FROM organizations WHERE id=%s", (first,)).fetchall()
         if visible:

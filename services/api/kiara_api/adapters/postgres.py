@@ -127,8 +127,8 @@ class PostgresRepository:
             system_user = _uuid("user", f"system-draft:{organization_id}")
             await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(system_user),))
             await connection.execute(
-                "INSERT INTO users (id, identity_provider, external_subject) VALUES (%s,'kiara',%s) ON CONFLICT (id) DO NOTHING",
-                (system_user, f"system-draft:{organization_id}"),
+                "SELECT kiara.ensure_current_user('kiara', %s)",
+                (f"system-draft:{organization_id}",),
             )
             row = await (await connection.execute(
                 """INSERT INTO message_drafts
@@ -152,10 +152,7 @@ class PostgresRepository:
             replay = await self._replay(connection, organization_uuid, "approve_draft", idempotency_key, request_fingerprint)
             if replay is not None:
                 return replay
-            await connection.execute(
-                "INSERT INTO users (id, identity_provider, external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
-                (user_uuid, actor_user_id),
-            )
+            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (actor_user_id,))
             await connection.execute(
                 """INSERT INTO memberships (organization_id,id,user_id,role,status)
                    VALUES (%s,%s,%s,'operator','active') ON CONFLICT (organization_id,user_id) DO NOTHING""",
