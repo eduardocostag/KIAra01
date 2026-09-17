@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from uuid import uuid4
@@ -19,9 +20,9 @@ def main() -> None:
     args = parser.parse_args()
     load_env(args.env_file)
     admin_url = os.getenv("POSTGRES_URL_NON_POOLING") or os.getenv("POSTGRES_URL")
-    password = os.getenv("KIARA_RUNTIME_DB_PASSWORD")
-    if not admin_url or not password:
-        raise SystemExit("Credencial administrativa ou KIARA_RUNTIME_DB_PASSWORD ausente")
+    if not admin_url:
+        raise SystemExit("Credencial administrativa ausente")
+    password = os.getenv("KIARA_RUNTIME_DB_PASSWORD") or secrets.token_urlsafe(48)
     role = "kiara_app"
     with psycopg.connect(admin_url, connect_timeout=10, autocommit=True) as connection:
         connection.execute(sql.SQL(

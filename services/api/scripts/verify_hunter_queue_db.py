@@ -23,6 +23,7 @@ def main() -> None:
     with psycopg.connect(url, connect_timeout=10) as connection:
         for organization, user, search in tenants:
             connection.execute("SELECT set_config('app.organization_id', %s, true)", (str(organization),))
+            connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
             connection.execute("INSERT INTO organizations(id,slug,name) VALUES (%s,%s,'Queue verification')",
                                (organization, f"verify-{organization.hex[:12]}"))
             connection.execute("INSERT INTO users(id,identity_provider,external_subject) VALUES (%s,'test',%s)",
