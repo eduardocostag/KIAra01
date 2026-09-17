@@ -54,7 +54,7 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
   }
 
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-  const timeoutMs = path.endsWith("/confirm") ? 190_000 : 15_000
+  const timeoutMs = path.endsWith("/confirm") || path.endsWith("/process") ? 290_000 : 15_000
   log("info", "kiara_api.request_started", { upstream_host: target.host, timeout_ms: timeoutMs })
   try {
     const response = await fetch(target, {

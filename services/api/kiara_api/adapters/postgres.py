@@ -125,6 +125,7 @@ class PostgresRepository:
             if not exists:
                 raise ApiError(404, "thread_not_found", "Conversa não encontrada.")
             system_user = _uuid("user", f"system-draft:{organization_id}")
+            await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(system_user),))
             await connection.execute(
                 "INSERT INTO users (id, identity_provider, external_subject) VALUES (%s,'kiara',%s) ON CONFLICT (id) DO NOTHING",
                 (system_user, f"system-draft:{organization_id}"),
@@ -147,6 +148,7 @@ class PostgresRepository:
         organization_uuid, draft_uuid = _uuid("organization", organization_id), _uuid("draft", draft_id)
         user_uuid = _uuid("user", actor_user_id)
         async with self._transaction(organization_id) as connection:
+            await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user_uuid),))
             replay = await self._replay(connection, organization_uuid, "approve_draft", idempotency_key, request_fingerprint)
             if replay is not None:
                 return replay

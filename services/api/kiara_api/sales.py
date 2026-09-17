@@ -5,8 +5,8 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field
 from psycopg.types.json import Jsonb
+from pydantic import BaseModel, ConfigDict, Field
 
 from .adapters.postgres import PostgresRepository, _iso, _uuid
 from .http.context import RequestContext
@@ -86,6 +86,7 @@ class SalesRepository:
         entry_uuid, user_uuid = _uuid("pipeline", activity.pipeline_entry_id), _uuid("user", context.user_id)
         follow_up_at = datetime.now(UTC) + timedelta(hours=activity.follow_up_hours) if activity.status == "sent" and activity.follow_up_hours else None
         async with self._postgres._transaction(context.organization_id) as connection:
+            await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user_uuid),))
             exists = await (await connection.execute("SELECT stage FROM pipeline_entries WHERE organization_id=%s AND id=%s FOR UPDATE", (organization_uuid, entry_uuid))).fetchone()
             if exists is None:
                 raise ApiError(404, "pipeline_entry_not_found", "Lead não encontrado no Pipeline.")

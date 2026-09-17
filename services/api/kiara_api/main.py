@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-import logging
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -34,7 +34,6 @@ from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .sales import SalesRepository, create_sales_router
-
 
 logger = logging.getLogger(__name__)
 
@@ -150,14 +149,10 @@ def create_app(
     @app.exception_handler(Exception)
     async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
         correlation_id = getattr(request.state, "correlation_id", str(uuid4()))
+        database_code = getattr(exc, "sqlstate", None)
         logger.exception(
-            "api.unexpected_error",
-            extra={
-                "request_id": correlation_id,
-                "method": request.method,
-                "path": request.url.path,
-                "error_class": type(exc).__name__,
-            },
+            "api.unexpected_error request_id=%s method=%s path=%s error_class=%s database_code=%s",
+            correlation_id, request.method, request.url.path, type(exc).__name__, database_code,
         )
         return JSONResponse(
             status_code=500,
@@ -166,10 +161,11 @@ def create_app(
                     "code": "internal_error",
                     "message": (
                         "A API encontrou um erro interno ao concluir a operação. "
-                        "Use o ID da ocorrência para consultar os logs."
+                        f"Tipo: {type(exc).__name__}. A ocorrência foi registrada para diagnóstico."
                     ),
                     "request_id": correlation_id,
-                    "details": {},
+                    "details": {"error_type": type(exc).__name__,
+                                **({"database_code": database_code} if database_code else {})},
                 }
             },
             headers={"X-Correlation-ID": correlation_id},

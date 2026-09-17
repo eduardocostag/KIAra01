@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import json
-import ipaddress
-import hashlib
-import re
 import asyncio
+import hashlib
+import ipaddress
+import json
+import re
 import socket
-from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request as UrlRequest, build_opener
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, build_opener
+from urllib.request import Request as UrlRequest
 
-from cryptography.fernet import Fernet, InvalidToken
 import psycopg
-from fastapi import APIRouter, Depends, Request
+from cryptography.fernet import Fernet, InvalidToken
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 
 from .adapters.postgres import PostgresRepository, _uuid

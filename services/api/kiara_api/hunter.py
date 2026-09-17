@@ -43,6 +43,7 @@ from .scraping_adapters import analyze_with_scrapegraph, parse_with_scrapling
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "linkedin"}
 DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "linkedin": "linkedin.com", "google_maps": "google.com"}
 SOURCE_TIMEOUT_SECONDS = 130
+SOURCE_RETRY_TIMEOUT_SECONDS = 90
 ENRICHMENT_TIMEOUT_SECONDS = 25
 HUNTER_MAX_RESULTS = 100
 SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "linkedin": "LinkedIn"}
@@ -142,6 +143,7 @@ class HunterRepository:
         org, user = _uuid("organization", context.organization_id), _uuid("user", context.user_id)
         filters = research_options(payload.model_dump())
         async with self.database._transaction(context.organization_id) as connection:
+            await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
             await connection.execute(
                 "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
                 (user, context.user_id),
@@ -194,6 +196,7 @@ class HunterRepository:
             raise ApiError(403, "insufficient_role", "Seu perfil não pode limpar pesquisas.")
         org, user = _uuid("organization", context.organization_id), _uuid("user", context.user_id)
         async with self.database._transaction(context.organization_id) as connection:
+            await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
             await connection.execute(
                 "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
                 (user, context.user_id),
@@ -218,6 +221,7 @@ class HunterRepository:
         org, sid, user = (_uuid("organization", context.organization_id),
                           _uuid("hunter_search", search_id), _uuid("user", context.user_id))
         async with self.database._transaction(context.organization_id) as connection:
+            await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user),))
             await connection.execute(
                 "INSERT INTO users (id,identity_provider,external_subject) VALUES (%s,'clerk',%s) ON CONFLICT (id) DO NOTHING",
                 (user, context.user_id),
@@ -1144,12 +1148,32 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     strict = any(options[key] != "any" for key in ("website_filter", "contact_filter", "email_filter", "website_quality_filter"))
     # Filter after recall: never spend the user's result allowance on rejects.
     per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
-    tasks = {source: asyncio.create_task(maps_search(query, per_source) if source == "google_maps"
-                                        else public_search(expanded_query, source, per_source)) for source in search["sources"]}
+    def source_task(source: str) -> asyncio.Task[list[dict[str, Any]]]:
+        operation = maps_search(query, per_source) if source == "google_maps" else public_search(expanded_query, source, per_source)
+        return asyncio.create_task(operation)
+
+    def valid_task(task: asyncio.Task[Any]) -> bool:
+        if task.cancelled() or task.exception() is not None:
+            return False
+        value = task.result()
+        return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+    tasks = {source: source_task(source) for source in search["sources"]}
     _, pending = await asyncio.wait(tasks.values(), timeout=SOURCE_TIMEOUT_SECONDS)
     for task in pending:
         task.cancel()
     await asyncio.gather(*pending, return_exceptions=True)
+    retry_sources = [source for source, task in tasks.items() if not valid_task(task)]
+    if retry_sources:
+        retries = {source: source_task(source) for source in retry_sources}
+        _, retry_pending = await asyncio.wait(retries.values(), timeout=SOURCE_RETRY_TIMEOUT_SECONDS)
+        for task in retry_pending:
+            task.cancel()
+        await asyncio.gather(*retry_pending, return_exceptions=True)
+        for source, retry in retries.items():
+            if valid_task(retry):
+                tasks[source] = retry
+                logger.info("hunter.research.source_recovered", extra={"source": source})
     candidates: list[dict[str, Any]] = []
     warnings: list[str] = []
     failures: list[str] = []

@@ -15,12 +15,13 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from kiara_api import hunter
+from kiara_api.http.errors import ApiError
 from kiara_api.hunter import (
     SearchCreate,
+    _instagram_profile_matches,
     execute_research,
     firecrawl_search,
     maps_index_search,
-    _instagram_profile_matches,
     parse_instagram_import,
     public_search,
     research_query,
@@ -58,7 +59,7 @@ def test_instagram_manual_import_parses_profiles_and_deduplicates():
     "https://www.instagram.com/ana.psi/extra/", "@invalid handle",
 ])
 def test_instagram_manual_import_rejects_non_profiles(value):
-    with pytest.raises(Exception):
+    with pytest.raises(ApiError):
         parse_instagram_import(value)
 
 
@@ -255,6 +256,25 @@ def test_partial_provider_failure_keeps_results_and_reports_warning(monkeypatch)
     assert len(outcome["results"]) == 1
     assert outcome["validation"]["source_failures"] == 1
     assert any("Web pública não concluiu" in message for message in outcome["warnings"])
+
+
+def test_transient_source_failure_is_retried_before_returning_partial_results(monkeypatch):
+    attempts = 0
+
+    async def maps(*args):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("temporary_browser_failure")
+        return [maps_result("recovered")]
+
+    monkeypatch.setattr(hunter, "maps_search", maps)
+    payload = SearchCreate(market="b2b", query="psicólogos", sources=["google_maps"]).model_dump()
+    outcome = asyncio.run(execute_research(payload))
+    assert attempts == 2
+    assert outcome["error"] is None
+    assert outcome["validation"]["source_failures"] == 0
+    assert len(outcome["results"]) == 1
 
 
 def test_maps_public_index_fallback_keeps_only_maps_profiles(monkeypatch):

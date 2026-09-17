@@ -52,8 +52,8 @@ def _consumer_display_name(result: dict[str, Any], username: str | None) -> str:
     if username:
         return f"@{username}"[:500]
     title = str(result.get("title") or "")
-    title = re.sub(r"\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$", "", title, flags=re.I)
-    title = re.sub(r"\s*Instagram\s+photos?\s+and\s+videos?\s*$", "", title, flags=re.I)
+    title = re.sub(r"\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"\s*Instagram\s+photos?\s+and\s+videos?\s*$", "", title, flags=re.IGNORECASE)
     title = re.sub(r"\s+[.…]{2,}\s*$", "", title).strip()
     return (title or "Contato sem nome")[:500]
 
