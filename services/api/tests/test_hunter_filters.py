@@ -41,6 +41,12 @@ def search(query="psicólogos sem site", **options):
     return SearchCreate(market="b2b", query=query, sources=["web", "google_maps"], **options).model_dump()
 
 
+def test_result_limit_contract_accepts_database_maximum_and_rejects_above_it():
+    assert SearchCreate(market="b2b", query="dentistas", sources=["web"], result_limit=100).result_limit == 100
+    with pytest.raises(ValidationError):
+        SearchCreate(market="b2b", query="dentistas", sources=["web"], result_limit=101)
+
+
 def maps_result(name, *, loaded=True, website=None, phone="+55 (11) 91234-5678", whatsapp=False, website_button=False):
     return maps_detail_result({"title": name, "url": f"https://www.google.com/maps/place/{name}/data=!1s{name}"},
         {"title": name, "loaded": loaded, "website": website, "website_button": website_button or bool(website),

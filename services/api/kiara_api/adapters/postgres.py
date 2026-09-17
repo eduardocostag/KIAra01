@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections.abc import AsyncIterator
@@ -37,12 +38,29 @@ class PostgresRepository:
     def __init__(self, database_url: str) -> None:
         self._database_url = _psycopg_url(database_url)
 
+    async def _connect(self, *, row_factory: Any = dict_row) -> psycopg.AsyncConnection:
+        """Open a database connection with bounded retries for transient pool failures."""
+        last_error: psycopg.OperationalError | None = None
+        for delay in (0.0, 0.2, 0.5):
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                options: dict[str, Any] = {
+                    "conninfo": self._database_url,
+                    "connect_timeout": 5,
+                }
+                if row_factory is not None:
+                    options["row_factory"] = row_factory
+                return await psycopg.AsyncConnection.connect(**options)
+            except psycopg.OperationalError as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
+
     @asynccontextmanager
     async def _transaction(self, organization_id: str) -> AsyncIterator[psycopg.AsyncConnection]:
         organization_uuid = _uuid("organization", organization_id)
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url, row_factory=dict_row, connect_timeout=5
-        ) as connection, connection.transaction():
+        async with await self._connect() as connection, connection.transaction():
             await connection.execute(
                 "SELECT set_config('app.organization_id', %s, true)",
                 (str(organization_uuid),),
@@ -56,9 +74,7 @@ class PostgresRepository:
 
     async def ready(self) -> bool:
         try:
-            async with await psycopg.AsyncConnection.connect(
-                self._database_url, connect_timeout=5
-            ) as connection:
+            async with await self._connect(row_factory=None) as connection:
                 row = await (await connection.execute("SELECT to_regclass('public.organizations')")).fetchone()
                 return bool(row and row[0])
         except psycopg.Error:

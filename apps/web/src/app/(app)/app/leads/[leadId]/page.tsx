@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, ArrowUpRight, Clock3, ExternalLink, Globe2, MapPin, MessageCircle, Radar, Search, UserRound } from "lucide-react"
+import { ArrowLeft, ArrowUpRight, Clock3, Globe2, MapPin, MessageCircle, Radar, Search, UserRound } from "lucide-react"
 import { SourceMark } from "@/components/brand/source-mark"
 import { LeadContactActions } from "@/components/app-shell/lead-contact-actions"
 import { LeadActivityTimeline } from "@/components/app-shell/lead-activity-timeline"
@@ -34,9 +34,8 @@ export default async function LeadPage({ params }: { params: Promise<{ leadId: s
 
   return <main className="kiara-lead-detail">
     <nav className="kiara-lead-breadcrumb" aria-label="Caminho"><Link href="/app">Workspace</Link><span aria-hidden="true">›</span><Link href="/app/inbox?view=contacts">Leads</Link><span aria-hidden="true">›</span><span>Detalhes</span></nav>
-    <div className="kiara-lead-topline"><Link href="/app/inbox?view=contacts" className="kiara-lead-back"><ArrowLeft className="size-4" />Voltar</Link><div className="kiara-lead-top-actions"><LeadContactActions entry={entry} />{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="kiara-lead-source-link">Acessar fonte<ExternalLink className="size-3.5" /></a> : null}</div></div>
+    <div className="kiara-lead-topline"><Link href="/app/inbox?view=contacts" className="kiara-lead-back"><ArrowLeft className="size-4" />Voltar</Link><div className="kiara-lead-top-actions"><LeadContactActions entry={entry} /></div></div>
     <header className="kiara-lead-heading"><span className="kiara-lead-mark"><SourceMark kind={kind} /></span><div className="min-w-0"><div className="kiara-lead-title-row"><h1>{displayName}</h1><span className="kiara-lead-stage">{stage}</span></div><p>{sourceLabel}</p></div></header>
-    <nav className="kiara-lead-tabs" aria-label="Seções do lead"><a href="#overview" className="kiara-lead-tab-active">Visão geral</a><a href="#activities">Atividades</a><a href="#context">Contexto</a></nav>
     <div id="overview" className="kiara-lead-main-grid">
       <section className="kiara-lead-panel" aria-labelledby="lead-information-title"><h2 id="lead-information-title">Informações</h2><dl className="kiara-lead-facts">{facts.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon className="size-4" aria-hidden="true" />{label}</dt><dd>{value}</dd></div>)}</dl>{websiteUrl ? <a href={websiteUrl} target="_blank" rel="noreferrer" className="kiara-lead-inline-link">Abrir site identificado<ArrowUpRight className="size-4" /></a> : null}</section>
       <section className="kiara-lead-panel" aria-labelledby="lead-actions-title"><h2 id="lead-actions-title">Ações rápidas</h2><div className="kiara-lead-action-list"><a href="#activities"><span><Clock3 className="size-4" /></span><div><strong>Ver atividades</strong><small>Consulte o relacionamento registrado</small></div><ArrowUpRight className="size-4" /></a>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer"><span><Globe2 className="size-4" /></span><div><strong>Abrir fonte</strong><small>Confira o dado público original</small></div><ArrowUpRight className="size-4" /></a> : null}<Link href="/app/inbox?view=contacts"><span><UserRound className="size-4" /></span><div><strong>Ver outros contatos</strong><small>Volte para a sua fila de leads</small></div><ArrowUpRight className="size-4" /></Link><Link href="/app/hunter"><span><Search className="size-4" /></span><div><strong>Nova pesquisa</strong><small>Encontre outras oportunidades</small></div><ArrowUpRight className="size-4" /></Link></div></section>

@@ -21,12 +21,6 @@ const failureMessages: Record<string, string> = {
   browser_provider_unavailable: "O navegador de pesquisa do Google Maps estava indisponível.",
 }
 
-function readableExcerpt(summary: string | null) {
-  return (summary ?? "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, " ").replace(/<[^>]*>/g, " ").replace(/[#*_`>|\[\]]/g, " ")
-    .replace(/\s+/g, " ").trim().slice(0, 260)
-}
-
 function resultDisplayName(result: HunterResult) {
   if (result.source === "instagram") {
     const handle = result.public_data?.profile_handle?.trim().replace(/^@/, "") || result.title.match(/@([A-Za-z0-9._]{1,30})/)?.[1]
@@ -52,7 +46,6 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
   const contact = phone || (whatsappNumber ? `+${whatsappNumber}` : null)
   const synced = Boolean(data?.lead_id && data?.pipeline_entry_id)
   const publication = result.source === "instagram" && data?.content_kind === "publication"
-  const excerpt = readableExcerpt(result.summary)
   const opportunity = data?.website_status === "not_listed" ? 100 : typeof data?.website_quality_score === "number" ? 100 - data.website_quality_score : null
   const displayName = resultDisplayName(result)
   async function copyPhone() {
@@ -89,7 +82,6 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
           <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1 text-primary underline-offset-4 hover:underline">{labels[result.source]}<ExternalLink className="size-3" /><span className="sr-only">Abrir fonte em nova aba</span></a>
         </div>
         {(data?.criterion_status === "not_verified" || historical) && <p className="mt-2 text-xs leading-5 text-warning">{historical ? "Pesquisa anterior à verificação de critérios. Refaça a busca para validar e integrar os leads." : publication ? "Publicação salva como pista de pesquisa; não representa um contato confirmado." : result.source === "instagram" ? "Perfil indexado, mas bio ou região não confirmadas. Confira antes de abordar." : `Objetivo ainda não comprovado${data?.research_objective ? `: ${data.research_objective}` : ". Revise as evidências antes de prospectar."}`}</p>}
-        {(data?.website_evidence || excerpt) && <details className="mt-2 text-xs text-muted-foreground"><summary className="w-fit cursor-pointer py-1 font-medium underline-offset-4 hover:text-foreground hover:underline">{data?.manual_import ? "Ver observação fornecida pelo usuário" : "Ver evidências da fonte"}</summary><p className="mt-2 max-w-2xl break-words leading-5">{data?.website_evidence || excerpt}</p></details>}
       </div>
     </div>
   </article>
@@ -124,7 +116,6 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, onR
           {selected.validation && <p className="mt-3 text-xs text-muted-foreground">{withPhone} com telefone · {synced} nos contatos</p>}
           {synced > 0 && <Button asChild variant="outline" className="mt-4 h-9 text-xs"><Link href="/app/inbox?view=contacts"><Inbox className="size-3.5" />Ver contatos<ArrowRight className="size-3.5" /></Link></Button>}
         </div>
-        {selected.warnings && selected.warnings.length > 0 && <details className="border-b bg-warning-subtle/25 px-4 py-3 text-xs sm:px-5"><summary className="cursor-pointer font-medium text-warning">{selected.warnings.length} observação{selected.warnings.length === 1 ? "" : "ões"} da pesquisa</summary><ul className="mt-2 list-disc space-y-1 pl-5 leading-5 text-muted-foreground">{selected.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></details>}
         {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}
         {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa."} Código: {selected.error_code || "provider_error"}. Revise as integrações ou escolha outras fontes.</p></div>}
         {selected.status === "cancelled" && <p className="p-5 text-sm">Esta pesquisa foi cancelada.</p>}

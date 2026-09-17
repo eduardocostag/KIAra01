@@ -1,12 +1,12 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
-from fastapi import FastAPI
+import psycopg
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from kiara_api.main import CorrelationMiddleware, create_app
+from kiara_api.main import create_app
 
 
 def test_unexpected_errors_return_json_with_a_traceable_request_id():
@@ -36,3 +36,85 @@ def test_unexpected_errors_return_json_with_a_traceable_request_id():
         }
     }
     assert "database detail" not in response.text
+
+
+def test_database_connection_errors_are_explicit_and_retryable():
+    app = create_app()
+
+    @app.get("/test/database-unavailable")
+    async def database_unavailable():
+        raise psycopg.OperationalError("secret connection detail")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/test/database-unavailable",
+            headers={"X-Correlation-ID": "database-unavailable-test"},
+        )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "2"
+    assert response.json()["error"] == {
+        "code": "database_unavailable",
+        "message": "O banco de dados está temporariamente indisponível. A operação pode ser repetida.",
+        "request_id": "database-unavailable-test",
+        "details": {"retryable": True},
+    }
+    assert "secret connection detail" not in response.text
+
+
+def test_database_policy_errors_identify_the_rejected_policy_without_leaking_sql():
+    app = create_app()
+
+    @app.get("/test/database-policy")
+    async def database_policy():
+        raise psycopg.errors.InsufficientPrivilege("secret policy detail")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/test/database-policy",
+            headers={"X-Correlation-ID": "database-policy-test"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "code": "database_policy_rejected",
+        "message": "Uma política de segurança do banco rejeitou a operação. A ocorrência foi registrada.",
+        "request_id": "database-policy-test",
+        "details": {"retryable": False, "database_code": "42501"},
+    }
+    assert "secret policy detail" not in response.text
+
+
+def test_known_database_constraints_return_actionable_messages():
+    class Diagnostic:
+        constraint_name = "hunter_searches_result_limit_check"
+
+    class ResultLimitViolation(psycopg.errors.CheckViolation):
+        @property
+        def diag(self):
+            return Diagnostic()
+
+    app = create_app()
+
+    @app.get("/test/result-limit-policy")
+    async def result_limit_policy():
+        raise ResultLimitViolation("secret row detail")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/test/result-limit-policy",
+            headers={"X-Correlation-ID": "result-limit-test"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"] == {
+        "code": "hunter_result_limit_invalid",
+        "message": "Informe um limite entre 1 e 100 resultados.",
+        "request_id": "result-limit-test",
+        "details": {
+            "retryable": False,
+            "database_code": "23514",
+            "constraint": "hunter_searches_result_limit_check",
+        },
+    }
+    assert "secret row detail" not in response.text

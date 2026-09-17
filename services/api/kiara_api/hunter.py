@@ -16,7 +16,6 @@ from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request as UrlRequest
 from uuid import UUID
 
-import psycopg
 from fastapi import APIRouter, Depends, Header, Request
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, field_validator
@@ -324,9 +323,7 @@ class HunterRepository:
 
     async def claim_next_global(self, worker_id: str) -> tuple[RequestContext, str] | None:
         """Claim identifiers globally, then recover the payload inside its tenant RLS context."""
-        async with await psycopg.AsyncConnection.connect(
-            self.database._database_url, row_factory=dict_row, connect_timeout=5
-        ) as connection, connection.transaction():
+        async with await self.database._connect(row_factory=dict_row) as connection, connection.transaction():
             row = await (await connection.execute(
                 """WITH candidate AS (
                      SELECT organization_id,search_id FROM hunter_work_queue
