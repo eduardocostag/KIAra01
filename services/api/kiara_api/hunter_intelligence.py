@@ -75,6 +75,8 @@ ONTOLOGY: tuple[CommercialEntity, ...] = (
 _DIGITAL_SIGNALS = {
     "instagram": (r"\bcom instagram\b", r"\btenham? instagram\b", r"\bpossua(?:m)? instagram\b"),
     "without_instagram": (r"\bsem instagram\b", r"\bnao (?:tem|possui) instagram\b"),
+    "facebook": (r"\bcom facebook\b", r"\btenham? facebook\b", r"\bpossua(?:m)? facebook\b"),
+    "without_facebook": (r"\bsem facebook\b", r"\bnao (?:tem|possui) facebook\b"),
     "website": (r"\bcom (?:site|website)\b",),
     "without_website": (r"\bsem (?:site|website)\b", r"\bnao (?:tem|tenham?|possui|possuam?) (?:site|website)\b"),
     "whatsapp": (r"\bcom whatsapp\b",),

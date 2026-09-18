@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BriefcaseBusiness, Check, ChevronRight, Globe2, Loader2, MapPinned, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
+import { Check, ChevronRight, Globe2, Loader2, MapPinned, MessagesSquare, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -18,7 +18,7 @@ const sourceInfo = {
   web: { label: "Web", detail: "Sites e páginas públicas indexadas", icon: Globe2 },
   google_maps: { label: "Google Maps", detail: "Estabelecimentos e contatos locais", icon: MapPinned },
   instagram: { label: "Instagram", detail: "Perfis e posts públicos indexados", icon: Users },
-  linkedin: { label: "LinkedIn", detail: "Empresas e perfis públicos indexados", icon: BriefcaseBusiness },
+  facebook: { label: "Facebook", detail: "Páginas e perfis públicos indexados", icon: MessagesSquare },
 } satisfies Record<Source, { label: string; detail: string; icon: typeof Globe2 }>
 
 const websiteLabels = { any: "Qualquer presença digital", without_website: "Sem site informado no Maps", with_website: "Com site identificado" }
@@ -92,10 +92,12 @@ export function HunterClient() {
   const inferredWebsite = inferredWebsiteFilter(query, "")
   const effectiveWebsite = inferredWebsite !== "any" ? inferredWebsite : websiteFilter
   const requiresMaps = effectiveWebsite === "without_website"
-  const mentionsInstagram = /\b(?:instagram|insta|perfil|publica(?:ç|c)[aã]o|reels?)\b/i.test(query)
+  const mentionsInstagram = /\b(?:instagram|insta|reels?)\b/i.test(query)
+  const mentionsFacebook = /\b(?:facebook|fb|p[aá]gina)\b/i.test(query)
   const sourceSet = new Set<Source>(sources)
   if (requiresMaps) sourceSet.add("google_maps")
   if (mentionsInstagram) sourceSet.add("instagram")
+  if (mentionsFacebook) sourceSet.add("facebook")
   const effectiveSources = [...sourceSet]
   function toggle(source: Source) {
     if (source === "google_maps" && requiresMaps) return

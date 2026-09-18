@@ -18,10 +18,12 @@ from kiara_api import hunter
 from kiara_api.http.errors import ApiError
 from kiara_api.hunter import (
     SearchCreate,
+    _facebook_profile_matches,
     _instagram_profile_matches,
     execute_research,
     firecrawl_search,
     maps_index_search,
+    parse_facebook_import,
     parse_instagram_import,
     public_search,
     research_query,
@@ -60,6 +62,13 @@ def test_instagram_manual_import_parses_profiles_and_deduplicates():
     assert rows[0]["public_data"]["manual_import"] is True
 
 
+def test_facebook_manual_import_parses_profiles_and_deduplicates():
+    rows = parse_facebook_import("@clinica.viver | Clínica em Curitiba\nhttps://www.facebook.com/lojafabricio/\n@CLINICA.VIVER")
+    assert [row["public_data"]["profile_handle"] for row in rows] == ["clinica.viver", "lojafabricio"]
+    assert rows[0]["summary"] == "Clínica em Curitiba"
+    assert rows[0]["public_data"]["manual_import"] is True
+
+
 @pytest.mark.parametrize("value", [
     "https://www.instagram.com/p/ABC123/", "@explore", "https://evil.example/ana.psi",
     "https://www.instagram.com/ana.psi/extra/", "@invalid handle",
@@ -67,6 +76,37 @@ def test_instagram_manual_import_parses_profiles_and_deduplicates():
 def test_instagram_manual_import_rejects_non_profiles(value):
     with pytest.raises(ApiError):
         parse_instagram_import(value)
+
+
+@pytest.mark.parametrize("value", [
+    "https://www.facebook.com/posts/123", "@marketplace", "https://evil.example/clinica",
+    "https://www.facebook.com/clinica/photos/", "@invalid handle with spaces",
+])
+def test_facebook_manual_import_rejects_non_profiles(value):
+    with pytest.raises(ApiError):
+        parse_facebook_import(value)
+
+
+def test_facebook_profile_kept_with_unverified_location_evidence():
+    search_data = {"query": "dentistas", "location": "Porto Alegre", "sources": ["facebook"], "market": "b2c"}
+    matched = {"source": "facebook", "url": "https://www.facebook.com/clinica_alegre/",
+               "summary": "Clínica", "public_data": {"profile_bio": "Dentista em Porto Alegre"}}
+    other_city = {**matched, "public_data": {"profile_bio": "Dentista em Curitiba"}}
+    assert _facebook_profile_matches(matched, search_data)
+    assert _facebook_profile_matches(other_city, search_data)
+    assert matched["public_data"]["bio_location_evidence"] is True
+    assert other_city["public_data"]["bio_location_evidence"] is False
+
+
+def test_facebook_publication_is_saved_but_not_presented_as_profile():
+    search_data = {"query": "educador fisico", "location": "Curitiba", "sources": ["facebook"]}
+    post = {"source": "facebook", "title": "Treino funcional", "url": "https://facebook.com/posts/ABC123/",
+            "summary": "Educador fisico em Curitiba"}
+    assert _facebook_profile_matches(post, search_data)
+    kept, stats = filter_results([post], search_data)
+    assert stats["accepted"] == 1
+    assert kept[0]["public_data"]["content_kind"] == "publication"
+    assert kept[0]["public_data"]["criterion_status"] == "not_verified"
 
 
 def test_manual_profile_notes_do_not_become_public_contact_evidence():
@@ -416,10 +456,10 @@ def test_editorial_pages_and_social_posts_are_not_crm_contacts():
     items = [
         {"source": "web", "title": "10 melhores psicólogos: como escolher", "url": "https://portal.example/blog/melhores-psicologos"},
         {"source": "instagram", "title": "Conheça nossa equipe", "url": "https://instagram.com/p/abc123"},
-        {"source": "linkedin", "title": "Notícia da empresa", "url": "https://linkedin.com/posts/example"},
+        {"source": "facebook", "title": "Grupo de discussão", "url": "https://facebook.com/groups/psicologos"},
         {"source": "web", "title": "Como Psicologia — Clínica", "url": "https://clinica.example/equipe"},
         {"source": "instagram", "title": "Clínica", "url": "https://instagram.com/clinica"},
-        {"source": "linkedin", "title": "Empresa", "url": "https://linkedin.com/company/empresa"},
+        {"source": "facebook", "title": "Empresa", "url": "https://facebook.com/empresa"},
     ]
     kept, stats = filter_results(items, search("psicólogos"))
     assert any(item["public_data"].get("content_kind") == "publication" for item in kept)

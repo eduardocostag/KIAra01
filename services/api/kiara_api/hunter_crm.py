@@ -47,6 +47,33 @@ def _instagram_username(url: str) -> str | None:
     return path[0].lower() if re.fullmatch(r"[a-zA-Z0-9_.]{1,30}", path[0]) else None
 
 
+def _facebook_username(url: str) -> str | None:
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower().removeprefix("www.") not in {"facebook.com", "fb.com"}:
+        return None
+    path = parts.path.strip("/").split("/")
+    if not path or path == [""]:
+        return None
+    first = path[0].lower()
+    if first in {
+        "p", "posts", "photos", "videos", "watch", "groups", "events", "share",
+        "sharer", "story.php", "permalink.php", "login", "pages", "help",
+        "marketplace", "about", "policies", "recover", "settings",
+    }:
+        return None
+    if len(path) == 1 and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", path[0]):
+        return path[0].lower()
+    if first in {"pages", "people"} and len(path) >= 2:
+        return path[1].lower()
+    if first == "profile.php":
+        from urllib.parse import parse_qs
+        params = parse_qs(parts.query)
+        uid = (params.get("id") or [""])[0]
+        if uid:
+            return uid.lower()
+    return None
+
+
 def _consumer_display_name(result: dict[str, Any], username: str | None) -> str:
     """Return a human label, never the search-engine document title."""
     if username:
@@ -54,6 +81,8 @@ def _consumer_display_name(result: dict[str, Any], username: str | None) -> str:
     title = str(result.get("title") or "")
     title = re.sub(r"\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$", "", title, flags=re.IGNORECASE)
     title = re.sub(r"\s*Instagram\s+photos?\s+and\s+videos?\s*$", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"\s*[•|·-]\s*Facebook(?:\s+p[aá]gina|\s+perfil)?\s*$", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"\s*Facebook\s*$", "", title, flags=re.IGNORECASE)
     title = re.sub(r"\s+[.…]{2,}\s*$", "", title).strip()
     return (title or "Contato sem nome")[:500]
 
@@ -79,6 +108,9 @@ def identity_keys(result: dict[str, Any]) -> list[str]:
     username = _instagram_username(url)
     if username:
         keys.append(f"instagram:{username}")
+    fb_user = _facebook_username(url)
+    if fb_user:
+        keys.append(f"facebook:{fb_user}")
     keys.append(f"url:{_canonical_url(url)}")
     return list(dict.fromkeys(keys))
 
@@ -116,7 +148,7 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
 def _skip_reason(search: dict[str, Any], result: dict[str, Any]) -> str | None:
     options = search.get("search_options") or search
     data = result.get("public_data") or {}
-    if result.get("source") == "instagram" and data.get("content_kind") == "publication":
+    if result.get("source") in {"instagram", "facebook"} and data.get("content_kind") == "publication":
         return "publication_not_contact"
     status = data.get("criterion_status")
     if status in {"rejected", "not_matched"}:

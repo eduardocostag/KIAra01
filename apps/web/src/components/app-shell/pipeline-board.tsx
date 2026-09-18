@@ -19,7 +19,7 @@ const stageTheme: Record<PipelineStage, { dot: string; text: string; border: str
 
 function initials(name: string) { const parts = name.replace(/^@/, "").split(/\s+/).filter(Boolean); return ((parts[0]?.[0] ?? "K") + (parts[1]?.[0] ?? "")).toUpperCase() }
 function formatDate(value?: string | null) { return !value || Number.isNaN(Date.parse(value)) ? "Sem data" : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(value)) }
-function sourceCode(source?: string | null) { return source === "instagram" ? "IG" : source === "google_maps" ? "GM" : source === "linkedin" ? "IN" : "WEB" }
+function sourceCode(source?: string | null) { return source === "instagram" ? "IG" : source === "facebook" ? "FB" : source === "google_maps" ? "GM" : "WEB" }
 
 export function PipelineBoard({ initialEntries }: { initialEntries: PipelineEntry[] }) {
   const [entries, setEntries] = useState(initialEntries)

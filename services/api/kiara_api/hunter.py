@@ -39,13 +39,13 @@ from .hunter_research import (
 )
 from .scraping_adapters import analyze_with_scrapegraph, parse_with_scrapling
 
-ALLOWED_SOURCES = {"web", "google_maps", "instagram", "linkedin"}
-DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "linkedin": "linkedin.com", "google_maps": "google.com"}
+ALLOWED_SOURCES = {"web", "google_maps", "instagram", "facebook"}
+DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "facebook": "facebook.com", "google_maps": "google.com"}
 SOURCE_TIMEOUT_SECONDS = 130
 SOURCE_RETRY_TIMEOUT_SECONDS = 90
 ENRICHMENT_TIMEOUT_SECONDS = 25
 HUNTER_MAX_RESULTS = 100
-SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "linkedin": "LinkedIn"}
+SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "facebook": "Facebook"}
 logger = logging.getLogger(__name__)
 
 
@@ -86,8 +86,20 @@ class InstagramImport(BaseModel):
     profiles: str = Field(min_length=2, max_length=8000)
 
 
+class FacebookImport(BaseModel):
+    market: Literal["b2c", "b2b"] = "b2c"
+    profiles: str = Field(min_length=2, max_length=8000)
+
+
 _INSTAGRAM_HANDLE = re.compile(r"[A-Za-z0-9_.]{1,30}\Z")
 _INSTAGRAM_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "direct", "about"}
+
+_FACEBOOK_HANDLE = re.compile(r"[A-Za-z0-9_.-]{1,60}\Z")
+_FACEBOOK_RESERVED = {
+    "p", "posts", "photos", "videos", "watch", "groups", "events", "share",
+    "sharer", "story.php", "permalink.php", "login", "pages", "help",
+    "marketplace", "about", "policies", "recover", "settings", "profile.php",
+}
 
 
 def parse_instagram_import(value: str) -> list[dict[str, Any]]:
@@ -131,6 +143,50 @@ def parse_instagram_import(value: str) -> list[dict[str, Any]]:
             raise ApiError(422, "instagram_import_too_large", f"Importe até {HUNTER_MAX_RESULTS} perfis por vez.")
     if not results:
         raise ApiError(422, "instagram_import_empty", "Informe pelo menos um @ ou URL de perfil.")
+    return results
+
+
+def parse_facebook_import(value: str) -> list[dict[str, Any]]:
+    """Parse user-selected public Facebook page or profile identities, never posts or session data."""
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for line_number, raw in enumerate(value.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        identity, _, notes = line.partition("|")
+        identity = identity.strip()
+        notes = notes.strip()
+        if identity.startswith("@"):
+            handle = identity[1:]
+        elif identity.lower().startswith(("https://", "http://")):
+            parts = urlsplit(identity)
+            host = (parts.hostname or "").lower().removeprefix("www.")
+            path = parts.path.strip("/")
+            if parts.scheme != "https" or host not in {"facebook.com", "fb.com"} or "/" in path or parts.username or parts.password:
+                raise ApiError(422, "invalid_facebook_profile", f"Linha {line_number}: use um @ ou URL de página/perfil do Facebook.")
+            handle = path
+        else:
+            handle = identity
+        if not _FACEBOOK_HANDLE.fullmatch(handle) or handle.lower() in _FACEBOOK_RESERVED:
+            raise ApiError(422, "invalid_facebook_profile", f"Linha {line_number}: @ inválido ou link que não é página/perfil.")
+        if len(notes) > 300:
+            raise ApiError(422, "facebook_note_too_long", f"Linha {line_number}: observação deve ter até 300 caracteres.")
+        key = handle.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({
+            "source": "facebook", "title": f"@{handle}",
+            "url": f"https://www.facebook.com/{handle}/", "summary": notes,
+            "public_data": {"provider": "user_supplied", "manual_import": True,
+                            "verification_version": 1, "criterion_status": "manual_review",
+                            "profile_handle": handle, "user_notes": notes},
+        })
+        if len(results) > HUNTER_MAX_RESULTS:
+            raise ApiError(422, "facebook_import_too_large", f"Importe até {HUNTER_MAX_RESULTS} perfis por vez.")
+    if not results:
+        raise ApiError(422, "facebook_import_empty", "Informe pelo menos um @ ou URL de página/perfil.")
     return results
 
 
@@ -565,6 +621,8 @@ async def indexed_search(query: str, source: str, limit: int) -> list[dict[str, 
 async def public_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
     if source == "instagram":
         query = f"site:instagram.com/ {query} Instagram perfil bio"
+    elif source == "facebook":
+        query = f"site:facebook.com/ {query} Facebook pagina perfil contato"
     try:
         return await exa_search(query, source, limit)
     except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
@@ -633,6 +691,64 @@ async def inspect_instagram_bios(rows: list[dict[str, Any]]) -> None:
         if bio:
             data["profile_bio"] = bio
             row["summary"] = bio
+
+    await asyncio.gather(*(inspect(row) for row in rows[:30]))
+
+
+class _FacebookAboutParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.about = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "meta":
+            return
+        fields = dict(attrs)
+        if fields.get("property") in {"og:description", "twitter:description"} or fields.get("name") == "description":
+            self.about = self.about or (fields.get("content") or "")
+
+
+def _read_public_facebook_about(url: str) -> str:
+    _assert_public_destination(url)
+    request = UrlRequest(url, headers={"User-Agent": "KiaraResearchBot/1.0", "Accept": "text/html"})
+    with build_opener(_SafeRedirectHandler()).open(request, timeout=8) as response:
+        if response.headers.get_content_type() != "text/html":
+            raise ValueError("unsupported_content")
+        payload = response.read(500_001)
+        if len(payload) > 500_000:
+            raise ValueError("page_too_large")
+    parser = _FacebookAboutParser()
+    parser.feed(payload.decode("utf-8", errors="replace"))
+    return clean_summary(parser.about, 500)
+
+
+async def inspect_facebook_pages(rows: list[dict[str, Any]]) -> None:
+    """Verify public page descriptions where Facebook serves them without login."""
+    slots = asyncio.Semaphore(4)
+
+    async def inspect(row: dict[str, Any]) -> None:
+        url = safe_public_url(row.get("url"))
+        parts = urlsplit(url) if url else None
+        host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
+        path = parts.path.strip("/") if parts else ""
+        segments = path.split("/") if path else []
+        if host not in {"facebook.com", "fb.com"}:
+            return
+        if not segments or (len(segments) == 1 and (not _FACEBOOK_HANDLE.fullmatch(segments[0]) or segments[0].lower() in _FACEBOOK_RESERVED)):
+            return
+        handle = segments[0] if len(segments) == 1 else (segments[1] if segments[0].lower() in {"people", "pages"} and len(segments) > 1 else segments[0])
+        data = row.setdefault("public_data", {})
+        data["profile_handle"] = handle
+        async with slots:
+            try:
+                about = await asyncio.to_thread(_read_public_facebook_about, url)
+            except (OSError, ValueError, TypeError, UnicodeError):
+                about = ""
+        data["page_status"] = "verified_public_page" if about else "indexed_excerpt_only"
+        data["bio_status"] = "verified_public_profile" if about else "indexed_excerpt_only"
+        if about:
+            data["profile_bio"] = about
+            row["summary"] = about
 
     await asyncio.gather(*(inspect(row) for row in rows[:30]))
 
@@ -1124,6 +1240,44 @@ def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> b
     return True
 
 
+def _facebook_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
+    """Keep indexed Facebook candidates; record what the public evidence actually proves."""
+    url = safe_public_url(row.get("url"))
+    parts = urlsplit(url) if url else None
+    if not parts or (parts.hostname or "").lower().removeprefix("www.") not in {"facebook.com", "fb.com"}:
+        return False
+    segments = parts.path.strip("/").split("/")
+    if not segments or segments == [""]:
+        return False
+    first = segments[0].lower()
+    publication = (
+        first in {"posts", "photos", "videos", "watch", "events", "share", "sharer", "story.php", "permalink.php"}
+        or (len(segments) >= 2 and segments[1].lower() in {"posts", "photos", "videos"})
+    )
+    profile = (
+        (len(segments) == 1 and _FACEBOOK_HANDLE.fullmatch(segments[0]) and first not in _FACEBOOK_RESERVED)
+        or (first in {"pages", "people"} and len(segments) >= 2)
+        or (first == "profile.php" and bool(parse_qs(parts.query).get("id")))
+    )
+    if not profile and not publication:
+        return False
+    options = research_options(search)
+    plan = understand_search(options["provider_query"], search.get("location"))
+    semantic_terms = [plan.get("entity") or "", *plan.get("services", []), *plan.get("alternatives", [])]
+    niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(" ".join(semantic_terms) or options["provider_query"]))
+             if word not in {"para", "com", "sem", "quero", "buscar", "encontrar"}]
+    place = [word for word in re.findall(r"[a-z]{4,}", folded(search.get("location") or ""))]
+    indexed = folded(" ".join(str(row.get(key) or "") for key in ("title", "summary")) + " " + (segments[0] if profile else ""))
+    bio = folded(str(row.get("public_data", {}).get("profile_bio") or ""))
+    data = row.setdefault("public_data", {})
+    data["content_kind"] = "publication" if publication else "profile"
+    data["niche_evidence"] = bool(niche and any(word in indexed or word in bio for word in niche))
+    data["location_evidence"] = bool(place and all(word in indexed or word in bio for word in place))
+    data["bio_niche_evidence"] = bool(niche and any(word in bio for word in niche))
+    data["bio_location_evidence"] = bool(place and all(word in bio for word in place))
+    return True
+
+
 async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
@@ -1185,6 +1339,12 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         candidates = [row for row in candidates if row.get("source") != "instagram" or _instagram_profile_matches(row, search)]
         if any(row.get("public_data", {}).get("bio_status") == "indexed_excerpt_only" for row in candidates):
             warnings.append("Alguns perfis do Instagram apareceram no índice público, mas a bio atual não pôde ser confirmada sem login; confira o perfil antes de abordar.")
+    facebook_rows = [row for row in candidates if row.get("source") == "facebook"]
+    if facebook_rows:
+        await inspect_facebook_pages(facebook_rows)
+        candidates = [row for row in candidates if row.get("source") != "facebook" or _facebook_profile_matches(row, search)]
+        if any(row.get("public_data", {}).get("page_status") == "indexed_excerpt_only" for row in candidates):
+            warnings.append("Algumas páginas do Facebook apareceram no índice público, mas as informações atuais não puderam ser confirmadas sem login; confira a página antes de abordar.")
     # A known external website can never pass without_website. Avoid paying
     # to crawl pages which this explicit constraint will discard anyway.
     if options["website_filter"] != "without_website" or options["email_filter"] != "any" or options["website_quality_filter"] != "any":
@@ -1266,6 +1426,23 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
         completed = await repository.finish(context, search["id"], results,
             validation={"checked": len(results), "accepted": len(results), "excluded": 0, "unknown": 0, "source_failures": 0},
             warnings=["Perfis e observações fornecidos pelo usuário. A Kiara não leu sua sessão do Instagram nem confirmou bio, telefone ou mensagens."],
+        )
+        await repository.complete_work(context, search["id"])
+        return completed
+
+    @router.post("/facebook/import", status_code=201)
+    async def import_facebook(payload: FacebookImport, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
+        if context.role not in {"owner", "admin", "operator"}:
+            raise ApiError(403, "insufficient_role", "Seu perfil não pode importar páginas ou perfis.")
+        results = parse_facebook_import(payload.profiles)
+        search = await repository.create(context, SearchCreate(
+            market=payload.market, query="Páginas do Facebook selecionadas pelo usuário",
+            sources=["facebook"], result_limit=len(results),
+        ))
+        await repository.claim_confirmation(context, search["id"])
+        completed = await repository.finish(context, search["id"], results,
+            validation={"checked": len(results), "accepted": len(results), "excluded": 0, "unknown": 0, "source_failures": 0},
+            warnings=["Páginas e observações fornecidas pelo usuário. A Kiara não leu sua sessão do Facebook nem confirmou dados, telefone ou mensagens."],
         )
         await repository.complete_work(context, search["id"])
         return completed

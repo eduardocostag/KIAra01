@@ -10,7 +10,7 @@ import { publicPhone, publicWhatsappUrl, type HunterJob, type HunterResult } fro
 import { HunterActivity } from "./hunter-activity"
 import styles from "./hunter.module.css"
 
-const labels: Record<string, string> = { web: "Web pública", google_maps: "Google Maps", instagram: "Instagram", linkedin: "LinkedIn" }
+const labels: Record<string, string> = { web: "Web pública", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
 const statuses: Record<string, string> = { completed: "Concluída", running: "Em execução", pending_confirmation: "Aguardando confirmação", failed: "Falhou", cancelled: "Cancelada" }
 const failureMessages: Record<string, string> = {
   provider_timeout: "As fontes selecionadas ultrapassaram o tempo máximo de resposta.",
@@ -30,9 +30,15 @@ function resultDisplayName(result: HunterResult) {
       if (segment && /^[A-Za-z0-9._]{1,30}$/.test(segment) && !["p", "reel", "reels"].includes(segment.toLowerCase())) return `@${segment}`
     } catch { /* URL validity is enforced by parseHunterJob. */ }
   }
+  if (result.source === "facebook") {
+    const handle = result.public_data?.profile_handle?.trim().replace(/^@/, "") || result.title.match(/@([A-Za-z0-9._-]{1,50})/)?.[1]
+    if (handle && /^[A-Za-z0-9._-]{1,50}$/.test(handle)) return `@${handle}`
+  }
   return result.title
     .replace(/\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$/i, "")
     .replace(/\s*Instagram\s+photos?\s+and\s+videos?\s*$/i, "")
+    .replace(/\s*[•|·-]\s*Facebook(?:\s+p[aá]gina|\s+perfil)?\s*$/i, "")
+    .replace(/\s*Facebook\s*$/i, "")
     .replace(/\s+[.…]{2,}\s*$/u, "")
     .replace(/\s+/g, " ").trim() || "Resultado sem nome"
 }
@@ -45,7 +51,7 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
   const whatsappNumber = whatsapp ? new URL(whatsapp).hostname === "wa.me" ? new URL(whatsapp).pathname.replace(/\//g, "") : new URL(whatsapp).searchParams.get("phone") : null
   const contact = phone || (whatsappNumber ? `+${whatsappNumber}` : null)
   const synced = Boolean(data?.lead_id && data?.pipeline_entry_id)
-  const publication = result.source === "instagram" && data?.content_kind === "publication"
+  const publication = (result.source === "instagram" || result.source === "facebook") && data?.content_kind === "publication"
   const opportunity = data?.website_status === "not_listed" ? 100 : typeof data?.website_quality_score === "number" ? 100 - data.website_quality_score : null
   const displayName = resultDisplayName(result)
   async function copyPhone() {
@@ -64,13 +70,14 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
         </div>
         {data?.manual_import && <p className="mt-1 text-[11px] text-muted-foreground">@ selecionado pelo usuário · bio e observações não verificadas pela Kiara</p>}
         {result.source === "instagram" && !data?.manual_import && <p className="mt-1 text-xs leading-5 text-muted-foreground">{publication ? "Publicação encontrada na busca pública; autor e contato não confirmados" : <><span className="font-semibold text-foreground">@{data?.profile_handle || "perfil"}</span> · {data?.bio_status === "verified_public_profile" ? "Bio pública confirmada" : "Trecho indexado; bio atual não confirmada"}</>}{data?.profile_bio && <span className="mt-1 block">{data.profile_bio}</span>}</p>}
-        <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{result.source === "instagram" ? data?.location_evidence ? `Região citada no índice: ${location || "não informada"}` : "Localização não confirmada" : data?.address || location || "Localização não informada"}</span></p>
+        {result.source === "facebook" && !data?.manual_import && <p className="mt-1 text-xs leading-5 text-muted-foreground">{publication ? "Publicação encontrada na busca pública; autor e contato não confirmados" : <><span className="font-semibold text-foreground">@{data?.profile_handle || "página"}</span> · {data?.bio_status === "verified_public_profile" ? "Página pública confirmada" : "Trecho indexado; página atual não confirmada"}</>}{data?.profile_bio && <span className="mt-1 block">{data.profile_bio}</span>}</p>}
+        <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{result.source === "instagram" || result.source === "facebook" ? data?.location_evidence ? `Região citada no índice: ${location || "não informada"}` : "Localização não confirmada" : data?.address || location || "Localização não informada"}</span></p>
         {(opportunity !== null || data?.match_reasons?.length) && <div className={styles.intelligenceStrip}>
           {opportunity !== null && <div className="flex items-center gap-2 pr-2"><span className="grid size-9 place-items-center rounded-full bg-primary/10 font-mono text-xs font-semibold text-primary">{opportunity}</span><div><p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Potencial digital</p><p className="text-xs font-medium">{opportunity >= 70 ? "Alta oportunidade" : opportunity >= 40 ? "Pode melhorar" : "Presença estruturada"}</p></div></div>}
           {data?.match_reasons?.slice(0, 3).map(reason => <span key={reason} className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-[10px] text-muted-foreground"><Sparkles className="size-3 text-primary" />{reason}</span>)}
         </div>}
         <div className={styles.contactActions}>
-          {result.source === "instagram" && <Button asChild variant="outline" className="h-10 gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer"><Users className="size-4" />{publication ? "Abrir publicação" : "Abrir perfil"}<ExternalLink className="size-3" /></a></Button>}
+          {(result.source === "instagram" || result.source === "facebook") && <Button asChild variant="outline" className="h-10 gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer"><Users className="size-4" />{publication ? "Abrir publicação" : result.source === "facebook" ? "Abrir página" : "Abrir perfil"}<ExternalLink className="size-3" /></a></Button>}
           {contact ? <div className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-lg border bg-background py-1 pl-3 pr-1"><Phone className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="break-all font-mono text-sm font-medium tracking-tight">{contact}</span><Button variant="ghost" size="icon" className="size-8" onClick={() => void copyPhone()} aria-label={`Copiar telefone de ${result.title}`}>{copyStatus === "Número copiado" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</Button></div> : <span className="flex min-h-10 items-center gap-2 text-xs text-muted-foreground"><Phone className="size-3.5" />Telefone não encontrado na fonte</span>}
           {whatsapp && <Button asChild className="h-10 gap-2"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4" />Abrir WhatsApp<ExternalLink className="size-3" /><span className="sr-only">em nova aba</span></a></Button>}
           {data?.email && <a className="inline-flex min-h-10 items-center gap-2 rounded-lg border bg-background px-3 text-xs font-medium text-foreground hover:border-primary/40" href={`mailto:${data.email}`}><Mail className="size-3.5 text-muted-foreground" />{data.email}</a>}

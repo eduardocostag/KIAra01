@@ -208,6 +208,30 @@ def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
             data["content_kind"] = "profile"
         elif host == "instagram.com" and len(segments) == 2 and segments[0].lower() in {"p", "reel", "tv"}:
             data["content_kind"] = "publication"
+    elif item.get("source") == "facebook":
+        profile_url = safe_public_url(item.get("url"))
+        parts = urlsplit(profile_url) if profile_url else None
+        host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
+        segments = parts.path.strip("/").split("/") if parts else []
+        if host in {"facebook.com", "fb.com"}:
+            first = segments[0].lower() if segments else ""
+            if (
+                first in {"posts", "photos", "videos", "watch", "events", "share", "sharer", "story.php", "permalink.php"}
+                or (len(segments) >= 2 and segments[1].lower() in {"posts", "photos", "videos"})
+            ):
+                data["content_kind"] = "publication"
+            elif len(segments) == 1 and re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", segments[0]):
+                data["profile_handle"] = segments[0]
+                data["content_kind"] = "profile"
+            elif first in {"pages", "people"} and len(segments) >= 2:
+                data["profile_handle"] = segments[1]
+                data["content_kind"] = "profile"
+            elif first == "profile.php":
+                params = dict(parse_qs(parts.query))
+                uid = (params.get("id") or [""])[0]
+                if uid:
+                    data["profile_handle"] = uid
+                    data["content_kind"] = "profile"
     text = " ".join(str(value or "") for value in (data.pop("content", None), item.get("summary")))
     # User notes are not a verified source of public contact information.
     contacts = {"phone": None, "whatsapp_url": None, "email": None} if data.get("manual_import") else extract_contacts(text)
@@ -246,8 +270,26 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
             return False
         return not (len(segments) == 2 and segments[0] in {"p", "reel", "tv"}
                     and re.fullmatch(r"[a-z0-9_-]{5,80}", segments[1]))
-    if item.get("source") == "linkedin":
-        return not re.match(r"^/(?:in|company|school)/[^/]+", path)
+    if item.get("source") == "facebook":
+        if (urlsplit(url).hostname or "").lower().removeprefix("www.") not in {"facebook.com", "fb.com"}:
+            return True
+        segments = path.strip("/").split("/")
+        if not segments or segments == [""]:
+            return True
+        first = segments[0].lower()
+        if first in {"groups", "events", "watch", "share", "sharer", "help", "login", "marketplace", "about", "policies", "recover", "settings"}:
+            return True
+        if len(segments) == 1 and re.fullmatch(r"[a-z0-9_.-]{1,60}", segments[0]) and first not in {
+            "p", "posts", "photos", "videos", "watch", "groups", "events", "share", "sharer", "story.php", "permalink.php", "login", "pages", "help", "marketplace", "about", "policies", "recover", "settings"
+        }:
+            return False
+        if first in {"pages", "people"} and len(segments) >= 2:
+            return False
+        if first == "profile.php" and "id=" in urlsplit(url).query.lower():
+            return False
+        if (len(segments) == 2 and first in {"posts", "photos", "videos", "p"}) or (len(segments) >= 3 and segments[1].lower() in {"posts", "photos", "videos"}):
+            return False
+        return True
     if item.get("source") == "web":
         title = folded(str(item.get("title") or ""))
         return bool(re.search(r"/(?:blog|artigos?|noticias?|news|posts?)(?:/|$)", path)
@@ -292,7 +334,16 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             counts["unknown"] += int(unknown and not rejected)
             continue
         seen.add(data["source_url"])
-        data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] or (item["source"] == "instagram" and (data.get("content_kind") == "publication" or data.get("bio_status") != "verified_public_profile" or not data.get("bio_niche_evidence") or (search.get("location") and not data.get("bio_location_evidence")))) else
+        is_social_publication = (item["source"] in {"instagram", "facebook"} and data.get("content_kind") == "publication")
+        is_social_missing_evidence = (
+            item["source"] in {"instagram", "facebook"}
+            and (
+                data.get("bio_status") not in {"verified_public_profile", "verified_public_page"}
+                or not data.get("bio_niche_evidence")
+                or (search.get("location") and not data.get("bio_location_evidence"))
+            )
+        )
+        data["criterion_status"] = ("not_verified" if options["unsupported_criterion"] or is_social_publication or is_social_missing_evidence else
                                     "verified" if website != "any" or contact != "any" or options["email_filter"] != "any" or options["website_quality_filter"] != "any" else "not_requested")
         reasons = []
         if website == "without_website": reasons.append("Site não informado no perfil inspecionado")

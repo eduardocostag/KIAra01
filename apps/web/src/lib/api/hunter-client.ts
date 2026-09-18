@@ -1,4 +1,4 @@
-export type HunterSource = "web" | "google_maps" | "instagram" | "linkedin"
+export type HunterSource = "web" | "google_maps" | "instagram" | "facebook"
 export type WebsiteFilter = "any" | "without_website" | "with_website"
 export type ContactFilter = "any" | "phone" | "whatsapp"
 export type HunterPublicData = {
@@ -54,7 +54,7 @@ export type HunterJob = {
   sync_summary?: { created: number; existing: number; skipped: number }
 }
 
-const sources = new Set(["web", "google_maps", "instagram", "linkedin"])
+const sources = new Set(["web", "google_maps", "instagram", "facebook"])
 const statuses = new Set(["pending_confirmation", "running", "completed", "failed", "cancelled"])
 
 /** A public telephone number is not evidence that WhatsApp is available. */
