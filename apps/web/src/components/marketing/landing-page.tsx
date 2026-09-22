@@ -3,36 +3,42 @@ import {
   ArrowRight,
   Check,
   ChevronRight,
-  CircleDot,
-  LockKeyhole,
-  MessageCircle,
-  Radar,
+  ContactRound,
+  MapPinned,
+  Search,
   ShieldCheck,
+  Sparkles,
+  Workflow,
 } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
-import { SignalTrail } from "@/components/brand/signal-trail"
 import { Button } from "@/components/ui/button"
 import { SignalPreview } from "./signal-preview"
 
 const productCuts = [
   {
-    icon: MessageCircle,
-    overline: "Inbox",
-    title: "Veja primeiro o que pede atenção.",
-    copy: "Conversas novas, revisões e bloqueios ficam separados por estado — sem depender só de cor.",
+    icon: Search,
+    overline: "Hunter",
+    title: "Pesquise o público certo.",
+    copy: "Defina profissão, nicho e localidade, escolha as fontes e acompanhe os resultados em uma única tela.",
   },
   {
-    icon: Radar,
-    overline: "Contexto",
-    title: "Entenda antes de responder.",
-    copy: "Fatos, inferências e o que ainda falta saber aparecem em camadas claramente identificadas.",
+    icon: ContactRound,
+    overline: "Leads",
+    title: "Revise cada oportunidade.",
+    copy: "Consulte telefone, Instagram, site, endereço e origem sempre que essas informações estiverem disponíveis.",
   },
   {
-    icon: ShieldCheck,
+    icon: Workflow,
     overline: "Pipeline",
-    title: "Transforme conversa em próximo passo.",
-    copy: "Cada oportunidade mantém motivo, responsável e ação recomendada no mesmo fluxo de trabalho.",
+    title: "Avance com organização.",
+    copy: "Classifique etapas, registre atividades e mantenha o histórico comercial de cada lead no seu workspace.",
   },
+]
+
+const steps = [
+  { number: "01", title: "Defina sua busca", copy: "Informe o perfil, a região e as fontes que deseja consultar." },
+  { number: "02", title: "Revise os resultados", copy: "Compare os dados encontrados e abra a ficha de cada lead." },
+  { number: "03", title: "Organize o avanço", copy: "Mova oportunidades no Pipeline e registre o próximo contato." },
 ]
 
 export function LandingPage() {
@@ -40,124 +46,125 @@ export function LandingPage() {
     <div className="marketing-shell min-h-svh overflow-hidden bg-background text-foreground">
       <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
 
-      <header className="sticky top-8 z-40 border-b border-white/8 bg-[#151421]/88 backdrop-blur-xl">
-        <nav aria-label="Navegação principal" className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-6 px-5 sm:px-8">
+      <header className="marketing-header sticky top-0 z-40 border-b border-white/8 bg-[#0d0c16]/78 backdrop-blur-2xl">
+        <nav aria-label="Navegação principal" className="mx-auto flex h-[76px] max-w-[1440px] items-center gap-6 px-5 sm:px-8">
           <Link href="/" className="rounded-xl focus-visible:outline-offset-4" aria-label="Kiara Lead Intelligence, início">
             <KiaraBrand inverse />
           </Link>
-          <div className="ml-auto hidden items-center gap-7 lg:flex">
-            <Link href="#como-funciona" className="text-[13px] font-medium text-white/62 transition-colors hover:text-white">Como funciona</Link>
-            <Link href="#controle" className="text-[13px] font-medium text-white/62 transition-colors hover:text-white">Controle humano</Link>
-            <Link href="#seguranca" className="text-[13px] font-medium text-white/62 transition-colors hover:text-white">Segurança</Link>
+          <div className="ml-auto hidden items-center gap-8 lg:flex">
+            <Link href="#produto" className="marketing-nav-link">Produto</Link>
+            <Link href="#como-funciona" className="marketing-nav-link">Como funciona</Link>
+            <Link href="#recursos" className="marketing-nav-link">Recursos</Link>
           </div>
           <div className="ml-auto flex items-center gap-1.5 lg:ml-4">
             <Button asChild variant="ghost" className="h-11 px-3 text-white hover:bg-white/8 hover:text-white">
               <Link href="/sign-in">Entrar</Link>
             </Button>
-            <Button asChild className="h-11 rounded-[11px] px-4 hover:bg-[var(--primary-hover)]">
-              <Link href="/sign-up">Começar <ArrowRight aria-hidden="true" /></Link>
+            <Button asChild className="h-11 rounded-[11px] px-4 shadow-[0_8px_28px_rgb(111_76_255/.22)] hover:bg-[var(--primary-hover)]">
+              <Link href="/sign-up">Criar conta <ArrowRight aria-hidden="true" /></Link>
             </Button>
           </div>
         </nav>
       </header>
 
       <main id="conteudo">
-        <section className="relative mx-auto grid max-w-[1440px] items-center gap-12 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[0.92fr_1.08fr] lg:gap-14 lg:pb-24 lg:pt-20">
-          <div className="marketing-dot-field pointer-events-none absolute -right-24 top-0 -z-10 size-[720px] opacity-80" aria-hidden="true" />
+        <section className="marketing-hero relative mx-auto grid max-w-[1440px] items-center gap-12 px-5 pb-20 pt-16 sm:px-8 sm:pt-24 lg:min-h-[760px] lg:grid-cols-[0.88fr_1.12fr] lg:gap-14 lg:pb-28 lg:pt-24">
+          <div className="marketing-aurora pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
+          <div className="marketing-dot-field pointer-events-none absolute -left-60 top-10 -z-10 size-[760px] opacity-50" aria-hidden="true" />
           <div className="relative z-10 max-w-[650px]">
-            <p className="eyebrow">Instagram inbound → qualificação → pipeline</p>
-            <h1 className="hero-display mt-6 text-balance text-white">Transforme cada DM em uma próxima ação.</h1>
-            <p className="mt-7 max-w-[590px] text-pretty text-[17px] leading-7 tracking-[-0.012em] text-white/64 sm:text-lg sm:leading-8">
-              A Kiara lê o contexto, mostra o que falta e prepara a resposta. Você revisa antes de qualquer envio.
+            <div className="marketing-kicker"><Sparkles className="size-3.5" aria-hidden="true" /> Inteligência comercial em um só lugar</div>
+            <h1 className="hero-display mt-7 text-balance text-white">Encontre bons leads. Organize cada próximo passo.</h1>
+            <p className="mt-7 max-w-[590px] text-pretty text-[17px] leading-7 tracking-[-0.012em] text-white/62 sm:text-lg sm:leading-8">
+              Pesquise oportunidades por nicho e região, revise os contatos encontrados e conduza seu Pipeline com clareza.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg" className="h-12 rounded-xl px-6 shadow-[0_0_0_5px_oklch(0.735_0.16_273/0.08)] hover:bg-[var(--primary-hover)]">
-                <Link href="/sign-up">Criar workspace <ArrowRight aria-hidden="true" /></Link>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              <Button asChild size="lg" className="h-13 rounded-xl px-7 shadow-[0_0_0_6px_oklch(0.735_0.16_273/0.08),0_18px_48px_rgb(92_56_210/.25)] hover:bg-[var(--primary-hover)]">
+                <Link href="/sign-up">Começar agora <ArrowRight aria-hidden="true" /></Link>
               </Button>
-              <Button asChild size="lg" variant="outline" className="h-12 rounded-xl border-white/14 bg-white/4 px-6 text-white hover:bg-white/9 hover:text-white">
-                <Link href="#como-funciona">Conhecer o fluxo <ChevronRight aria-hidden="true" /></Link>
+              <Button asChild size="lg" variant="outline" className="h-13 rounded-xl border-white/14 bg-white/4 px-7 text-white hover:bg-white/9 hover:text-white">
+                <Link href="#como-funciona">Ver como funciona <ChevronRight aria-hidden="true" /></Link>
               </Button>
             </div>
-            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-[13px] text-white/58" aria-label="Características principais">
-              {["Sem instalação", "Aprovação humana", "Opt-out respeitado"].map((item) => (
+            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-[13px] text-white/54" aria-label="Características principais">
+              {["Fontes selecionáveis", "Dados por workspace", "Histórico organizado"].map((item) => (
                 <li key={item} className="flex items-center gap-2"><Check className="size-3.5 text-signal-cyan" aria-hidden="true" />{item}</li>
               ))}
             </ul>
           </div>
-          <div className="relative z-10 lg:pl-2"><SignalPreview /></div>
+          <div className="relative z-10 lg:pl-3"><SignalPreview /></div>
         </section>
 
-        <section id="seguranca" className="border-y border-white/8 bg-white/[0.018]">
+        <section id="produto" className="border-y border-white/8 bg-white/[0.018]">
           <div className="mx-auto grid max-w-[1440px] divide-y divide-white/8 px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-8">
             {[
-              ["Sem instalação", "Acesso direto pelo navegador"],
-              ["Controle humano", "Aprovação antes de ações externas"],
-              ["Canal responsável", "Integração desenhada para a API oficial"],
-            ].map(([title, copy]) => (
-              <div key={title} className="flex items-center gap-3 py-5 sm:px-6 first:sm:pl-0 last:sm:pr-0">
-                <CircleDot className="size-4 shrink-0 text-signal-cyan" strokeWidth={1.75} aria-hidden="true" />
-                <p><strong className="block text-xs font-semibold text-white">{title}</strong><span className="mt-0.5 block text-[11px] text-white/48">{copy}</span></p>
-              </div>
-            ))}
+              [MapPinned, "Busca direcionada", "Nicho, cidade, região e fontes"],
+              [ContactRound, "Ficha centralizada", "Dados e origem de cada lead"],
+              [Workflow, "Pipeline integrado", "Etapas, atividades e follow-ups"],
+            ].map(([Icon, title, copy]) => {
+              const FeatureIcon = Icon as typeof MapPinned
+              return (
+                <div key={title as string} className="flex items-center gap-4 py-6 sm:px-7 first:sm:pl-0 last:sm:pr-0">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><FeatureIcon className="size-4.5" strokeWidth={1.75} aria-hidden="true" /></span>
+                  <p><strong className="block text-sm font-semibold text-white">{title as string}</strong><span className="mt-1 block text-[12px] text-white/46">{copy as string}</span></p>
+                </div>
+              )
+            })}
           </div>
         </section>
 
         <section id="como-funciona" className="mx-auto max-w-[1440px] px-5 py-20 sm:px-8 sm:py-28">
-          <div className="grid gap-12 lg:grid-cols-[0.7fr_1.3fr] lg:gap-20">
-            <div>
-              <p className="eyebrow">Da mensagem à decisão</p>
-              <h2 className="mt-4 max-w-md text-4xl font-semibold leading-[1.06] tracking-[-0.045em] text-white">Um caminho curto, visível e governado.</h2>
-              <p className="mt-5 max-w-md text-base leading-7 text-white/56">Cada etapa deixa claro o que a Kiara interpretou, o que depende de você e o que de fato aconteceu.</p>
-            </div>
-            <div className="rounded-[20px] border border-white/10 bg-white/[0.025] p-6 sm:p-8"><SignalTrail completedThrough={2} /></div>
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="eyebrow">Da busca ao acompanhamento</p>
+            <h2 className="mt-4 text-balance text-4xl font-semibold leading-[1.05] tracking-[-0.045em] text-white sm:text-5xl">Um fluxo simples para não perder oportunidades.</h2>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-white/54">Tudo começa com uma pesquisa e continua em uma rotina comercial clara, sem espalhar informações em várias ferramentas.</p>
           </div>
-
-          <div className="mt-20 grid gap-4 lg:grid-cols-3">
-            {productCuts.map(({ icon: Icon, overline, title, copy }, index) => (
-              <article key={overline} className="group rounded-[18px] border border-white/10 bg-[var(--surface-1)] p-6 transition-[border-color,transform] duration-200 hover:-translate-y-px hover:border-primary/30">
-                <div className="flex items-center justify-between"><Icon className="size-5 text-primary" strokeWidth={1.75} aria-hidden="true" /><span className="font-mono text-[10px] text-white/32">0{index + 1}</span></div>
-                <p className="mt-9 text-[10px] font-semibold tracking-[0.14em] text-white/42 uppercase">{overline}</p>
-                <h3 className="mt-2 text-lg font-semibold tracking-[-0.022em] text-white">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-white/54">{copy}</p>
-              </article>
+          <ol className="marketing-steps relative mt-14 grid gap-4 lg:grid-cols-3">
+            {steps.map((step, index) => (
+              <li key={step.number} className="marketing-step-card group relative overflow-hidden rounded-[22px] border border-white/10 bg-[var(--surface-1)] p-7">
+                <span className="marketing-step-number">{step.number}</span>
+                <span className="mt-16 grid size-11 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                  {index === 0 ? <Search className="size-5" /> : index === 1 ? <ContactRound className="size-5" /> : <Workflow className="size-5" />}
+                </span>
+                <h3 className="mt-5 text-xl font-semibold tracking-[-0.025em] text-white">{step.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-white/52">{step.copy}</p>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
 
-        <section id="controle" className="border-y border-white/8 bg-white/[0.018]">
-          <div className="mx-auto grid max-w-[1440px] items-center gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-2 lg:gap-20">
-            <div>
-              <p className="eyebrow">Automação com limites claros</p>
-              <h2 className="mt-4 text-4xl font-semibold tracking-[-0.045em] text-white">A velocidade nunca apaga a decisão.</h2>
-              <p className="mt-5 max-w-xl text-base leading-7 text-white/56">A interface separa preparação, aprovação e resultado para que sua equipe saiba exatamente onde cada conversa está.</p>
+        <section id="recursos" className="relative border-y border-white/8 bg-white/[0.018]">
+          <div className="marketing-dot-field pointer-events-none absolute -right-40 top-0 size-[600px] opacity-35" aria-hidden="true" />
+          <div className="mx-auto max-w-[1440px] px-5 py-20 sm:px-8 sm:py-28">
+            <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+              <div><p className="eyebrow">O que você usa na prática</p><h2 className="mt-4 max-w-2xl text-4xl font-semibold tracking-[-0.045em] text-white sm:text-5xl">Cada etapa no lugar certo.</h2></div>
+              <p className="max-w-md text-sm leading-6 text-white/50">Uma interface para pesquisar, revisar e acompanhar — construída ao redor do trabalho comercial real.</p>
             </div>
-            <div className="rounded-[20px] border border-white/10 bg-[var(--surface-1)] p-5 sm:p-7">
-              <div className="grid gap-3 sm:grid-cols-3">
-                {["Preparado", "Aprovado", "Enviado"].map((state, index) => (
-                  <div key={state} className={`rounded-xl border p-4 ${index === 1 ? "border-primary/28 bg-primary/9" : "border-white/8 bg-white/[0.025]"}`}>
-                    <span className="font-mono text-[10px] text-white/38">0{index + 1}</span>
-                    <strong className="mt-3 block text-sm text-white">{state}</strong>
-                    <span className="mt-1 block text-[11px] leading-4 text-white/46">{index === 0 ? "Rascunho interno" : index === 1 ? "Decisão registrada" : "Confirmação do canal"}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-5 flex items-center gap-2 text-xs font-medium text-amber-200"><LockKeyhole className="size-4" aria-hidden="true" />Preparado ≠ Aprovado ≠ Enviado</p>
+            <div className="mt-12 grid gap-4 lg:grid-cols-3">
+              {productCuts.map(({ icon: Icon, overline, title, copy }, index) => (
+                <article key={overline} className="marketing-feature-card group rounded-[22px] border border-white/10 bg-[var(--surface-1)] p-7">
+                  <div className="flex items-center justify-between"><span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="size-5" strokeWidth={1.75} aria-hidden="true" /></span><span className="font-mono text-[10px] text-white/28">0{index + 1}</span></div>
+                  <p className="mt-10 text-[10px] font-semibold tracking-[0.16em] text-primary uppercase">{overline}</p>
+                  <h3 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-white">{title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-white/52">{copy}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>
 
         <section className="mx-auto max-w-[1440px] px-5 py-20 sm:px-8 sm:py-28">
-          <div className="flex flex-col items-start justify-between gap-8 rounded-[24px] border border-primary/22 bg-primary/10 p-7 sm:p-10 lg:flex-row lg:items-center">
-            <div><p className="eyebrow">Kiara no navegador</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">Seu próximo atendimento começa com clareza.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">Crie seu workspace e prepare sua operação B2C para atender pelo Instagram.</p></div>
-            <Button asChild size="lg" className="h-12 shrink-0 rounded-xl px-6 hover:bg-[var(--primary-hover)]"><Link href="/sign-up">Criar workspace <ArrowRight aria-hidden="true" /></Link></Button>
+          <div className="marketing-cta relative overflow-hidden rounded-[28px] border border-primary/22 p-8 sm:p-12 lg:flex lg:items-center lg:justify-between lg:gap-10">
+            <div className="marketing-cta-glow" aria-hidden="true" />
+            <div className="relative"><p className="eyebrow">Sua operação começa aqui</p><h2 className="mt-3 max-w-2xl text-balance text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">Encontre. Organize. Avance.</h2><p className="mt-4 max-w-2xl text-sm leading-6 text-white/54">Crie sua conta, configure o workspace e faça sua primeira pesquisa no Hunter.</p></div>
+            <Button asChild size="lg" className="relative mt-8 h-12 shrink-0 rounded-xl px-7 lg:mt-0"><Link href="/sign-up">Criar minha conta <ArrowRight aria-hidden="true" /></Link></Button>
           </div>
         </section>
       </main>
 
       <footer className="border-t border-white/8">
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-5 py-8 text-xs text-white/42 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-5 px-5 py-8 text-xs text-white/40 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <KiaraBrand inverse />
-          <span>© 2026 Kiara Lead Intelligence · Controle humano por padrão</span>
+          <div className="flex flex-wrap items-center gap-4"><span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5" />Dados organizados por workspace</span><span className="hidden size-1 rounded-full bg-white/20 sm:block" /><span>© 2026 Kiara Lead Intelligence</span></div>
         </div>
       </footer>
     </div>

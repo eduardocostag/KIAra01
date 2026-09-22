@@ -84,12 +84,10 @@ function LeadRow({ result, location, historical }: { result: HunterResult; locat
           {data?.email && <a className="inline-flex min-h-10 items-center gap-2 rounded-lg border bg-background px-3 text-xs font-medium text-foreground hover:border-primary/40" href={`mailto:${data.email}`}><Mail className="size-3.5 text-muted-foreground" />{data.email}</a>}
         </div>
         {copyStatus && <p role="status" className="mt-1 text-xs text-muted-foreground">{copyStatus}</p>}
-        <p className="mt-2 text-[11px] text-muted-foreground">{whatsapp ? "Link de WhatsApp identificado na fonte pública. Nenhuma mensagem enviada." : phone ? "Número público para verificar no WhatsApp · conta ainda não confirmada." : "A Kiara não inventa contatos ausentes."}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashed pt-3 text-xs">
           <span className="inline-flex items-center gap-1.5 text-muted-foreground">{data?.website_status === "not_listed" ? <ShieldCheck className="size-3.5 text-success" /> : <Globe2 className="size-3.5" />}{data?.website_status === "not_listed" ? "Site não informado no Google Maps" : data?.website_status === "present" ? "Site identificado" : "Presença digital não verificada"}</span>
           <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1 text-primary underline-offset-4 hover:underline">{labels[result.source]}<ExternalLink className="size-3" /><span className="sr-only">Abrir fonte em nova aba</span></a>
         </div>
-        {(data?.criterion_status === "not_verified" || historical) && <p className="mt-2 text-xs leading-5 text-warning">{historical ? "Pesquisa anterior à verificação de critérios. Refaça a busca para validar e integrar os leads." : publication ? "Publicação salva como pista de pesquisa; não representa um contato confirmado." : result.source === "instagram" ? "Perfil indexado, mas bio ou região não confirmadas. Confira antes de abordar." : `Objetivo ainda não comprovado${data?.research_objective ? `: ${data.research_objective}` : ". Revise as evidências antes de prospectar."}`}</p>}
       </div>
     </div>
   </article>

@@ -78,7 +78,6 @@ export function HunterActivity({ stage, query, location, sources, foundCount = 0
         <span><strong>{foundCount}</strong> confirmado{foundCount === 1 ? "" : "s"}</span>
         <span>{seconds}s decorridos</span>
       </div>
-      <p className={styles.liveHint}>{foundCount ? "Novos resultados aparecem quando cada fonte confirma os dados." : "Os pontos representam áreas em varredura. Leads só aparecem depois da confirmação dos dados."}</p>
       {seconds >= 60 && <p className={styles.slowSource}>Uma fonte está demorando mais que o habitual. A pesquisa permanece salva e continuará com segurança.</p>}
     </div>
   </div>

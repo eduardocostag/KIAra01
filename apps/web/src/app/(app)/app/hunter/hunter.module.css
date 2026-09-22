@@ -128,7 +128,7 @@
 .sourceProgress i { width: 5px; height: 5px; border-radius: 50%; background: #8ee0bd; box-shadow: 0 0 8px #61daa6; }
 .liveMeta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; border-top: 1px solid rgb(255 255 255 / .06); padding-top: .85rem; color: #858391; font-size: .62rem; font-variant-numeric: tabular-nums; }
 .liveMeta strong { color: #ded0fb; }
-.liveHint, .slowSource { margin-top: .65rem; color: #777582; font-size: .61rem; line-height: 1.5; }
+.slowSource { margin-top: .65rem; color: #777582; font-size: .61rem; line-height: 1.5; }
 .slowSource { color: #c8abff; }
 @keyframes cityDive { 0% { opacity: .15; transform: rotateX(18deg) rotateZ(-4deg) scale(.28) translateY(-24%); filter: blur(3px); } 58% { opacity: 1; transform: rotateX(58deg) rotateZ(-4deg) scale(1.18) translateY(4%); filter: blur(0); } 100% { opacity: 1; transform: rotateX(58deg) rotateZ(-4deg) scale(1.36) translateY(1%); filter: blur(0); } }
 @keyframes mapPulse { 0% { opacity: .7; transform: scale(.18); } 80%, 100% { opacity: 0; transform: scale(1.12); } }

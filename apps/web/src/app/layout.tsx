@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     template: "%s | Kiara",
   },
   description:
-    "Transforme conversas inbound do Instagram em próximas ações claras, com qualificação assistida e aprovação humana.",
+    "Encontre leads por nicho e região, revise contatos e organize cada oportunidade no Pipeline da Kiara.",
   applicationName: "Kiara Lead Intelligence",
   category: "business",
 };
