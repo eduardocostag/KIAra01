@@ -102,7 +102,7 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, onR
   const synced = selected?.results.filter((result) => result.public_data?.lead_id && result.public_data?.pipeline_entry_id).length ?? 0
   const historical = Boolean(selected && !selected.validation)
   const withPhone = selected?.results.filter(result => publicPhone(result.public_data?.phone)).length ?? 0
-  const actionableWarnings = selected?.warnings?.filter((warning) => /não concluiu|falhou|indisponível|sincronização com Leads\/Pipeline/i.test(warning)) ?? []
+  const actionableWarnings = selected?.warnings?.filter((warning) => /não concluiu|falhou|indisponível|sincronização com Leads/i.test(warning)) ?? []
   return <Card className={styles.resultsCard}>
     <CardHeader className={styles.resultsHeader}>
       <div className="flex flex-wrap items-center justify-between gap-3">

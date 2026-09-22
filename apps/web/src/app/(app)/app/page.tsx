@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   const metrics = [
     { label: "Novos leads", value: pipeline.available ? fresh.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/inbox?view=contacts" },
     { label: "Follow-ups", value: pipeline.available ? scheduled.length : "—", icon: Clock3, href: "/app/followups" },
-    { label: "Pipeline", value: pipeline.available ? pipeline.entries.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/pipeline" },
+    { label: "Em acompanhamento", value: pipeline.available ? pipeline.entries.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/inbox?view=pipeline" },
   ]
   const recent = [...pipeline.entries].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5)
 

@@ -1,7 +1,5 @@
-import { PipelineBoard } from "@/components/app-shell/pipeline-board"
-import { getPipelineDTO } from "@/lib/api/pipeline-server"
+import { redirect } from "next/navigation"
 
-export default async function PipelinePage() {
-  const entries = await getPipelineDTO().catch(() => [])
-  return <PipelineBoard initialEntries={entries} />
+export default function PipelinePage() {
+  redirect("/app/inbox?view=pipeline")
 }

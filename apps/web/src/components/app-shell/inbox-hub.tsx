@@ -2,14 +2,15 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowUpRight, AtSign, Globe2, MapPin, MessageCircle, Phone, Search, Sparkles, Users } from "lucide-react"
+import { ArrowUpRight, AtSign, Columns3, Globe2, List, MapPin, MessageCircle, MessagesSquare, Phone, Search, Sparkles, Users } from "lucide-react"
 import { SourceMark } from "@/components/brand/source-mark"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { InboxWorkspace } from "./inbox-workspace"
 import { LeadContactActions } from "./lead-contact-actions"
+import { PipelineBoard } from "./pipeline-board"
 import type { InboxConversationDTO } from "@/lib/api/inbox"
 import { instagramProfileUrl, leadDisplayName, sourceLabels, websiteLabel, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
 import "./inbox-hub.css"
@@ -18,12 +19,18 @@ export function InboxHub({ conversations, entries, conversationError, prospectEr
   conversations: readonly InboxConversationDTO[]; entries: PipelineEntry[]; conversationError: string; prospectError: string; initialView: string
 }) {
   const [query, setQuery] = useState("")
-  const [view, setView] = useState(initialView === "contacts" ? "contacts" : "conversations")
+  const normalizedView = initialView === "pipeline" || initialView === "conversations" ? initialView : "contacts"
+  const [view, setView] = useState(normalizedView)
   const [selectedContactId, setSelectedContactId] = useState(entries[0]?.id ?? "")
   const contacts = entries.filter((entry) => !["won", "lost"].includes(entry.stage))
   const filtered = contacts.filter((entry) => `${leadDisplayName(entry.consumer)} ${entry.consumer.display_name} ${entry.consumer.phone ?? ""}`.toLowerCase().includes(query.toLowerCase()))
   const selectedContact = contacts.find((entry) => entry.id === selectedContactId) ?? filtered[0] ?? contacts[0]
   return <Tabs value={view} onValueChange={setView} className="inbox-premium gap-5">
+    <TabsList aria-label="Visualização dos leads" className="grid h-auto w-full grid-cols-3 rounded-xl border bg-card/70 p-1 sm:w-fit sm:min-w-[430px]">
+      <TabsTrigger value="contacts" className="h-10 gap-2 rounded-lg"><List aria-hidden="true" />Lista <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">{contacts.length}</span></TabsTrigger>
+      <TabsTrigger value="pipeline" className="h-10 gap-2 rounded-lg"><Columns3 aria-hidden="true" />Pipeline</TabsTrigger>
+      <TabsTrigger value="conversations" className="h-10 gap-2 rounded-lg"><MessagesSquare aria-hidden="true" />Conversas <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">{conversations.length}</span></TabsTrigger>
+    </TabsList>
     <div className="kiara-inbox-toolbar">{view === "contacts" ? <div className="kiara-inbox-search"><Search aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-10" placeholder="Buscar um contato" aria-label="Buscar prospectados" /></div> : null}</div>
     <TabsContent value="conversations">
       {conversationError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{conversationError}</div> : <InboxWorkspace initialConversations={conversations} />}
@@ -31,6 +38,9 @@ export function InboxHub({ conversations, entries, conversationError, prospectEr
     <TabsContent value="contacts" className="space-y-4">
       {prospectError && <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div>}
       {!filtered.length && !prospectError ? <div className="rounded-xl border border-dashed p-10 text-center"><Users className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">{query ? "Nenhum contato corresponde à busca" : "Nenhum contato ainda"}</h3><Button asChild className="mt-5"><Link href="/app/hunter">Pesquisar leads</Link></Button></div> : selectedContact ? <div className="kiara-contact-workspace"><aside className="kiara-contact-list" aria-label="Clientes encontrados"><div className="kiara-contact-list-title"><strong>Clientes encontrados</strong><span>{filtered.length}</span></div>{filtered.map((entry) => { const active = entry.id === selectedContact.id; const source = sourceLabels[entry.consumer.source ?? ""] ?? "CRM"; const name = leadDisplayName(entry.consumer); return <button key={entry.id} type="button" className={active ? "is-active" : ""} aria-pressed={active} onClick={() => setSelectedContactId(entry.id)}><span className="kiara-contact-initial">{name.replace(/^@/, "").slice(0,1).toUpperCase()}</span><span><strong>{name}</strong><small>{source} · {entry.consumer.phone || "Sem telefone"}</small></span></button>})}</aside><ContactDossier entry={selectedContact} /></div> : null}
+    </TabsContent>
+    <TabsContent value="pipeline">
+      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <PipelineBoard initialEntries={entries} />}
     </TabsContent>
   </Tabs>
 }

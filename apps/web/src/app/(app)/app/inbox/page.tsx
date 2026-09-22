@@ -10,6 +10,6 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     getInboxDTO().then((data) => ({ conversations: data.conversations, error: "" })).catch(() => ({ conversations: [], error: "Não foi possível carregar as conversas. Use Atualizar para tentar novamente." })),
     getPipelineDTO().then((entries) => ({ entries, error: "" })).catch(() => ({ entries: [], error: "Não foi possível carregar os contatos prospectados. Use Atualizar para tentar novamente." })),
   ])
-  const initialView = params.view ?? (!inbox.conversations.length && pipeline.entries.length ? "contacts" : "conversations")
-  return <div className="space-y-4"><PageHeader compact eyebrow="Relacionamento" title="Leads" description="Contatos prospectados e conversas reais, cada um no seu lugar." actions={<RefreshWorkspace />} /><InboxHub conversations={inbox.conversations} entries={pipeline.entries} conversationError={inbox.error} prospectError={pipeline.error} initialView={initialView} /></div>
+  const initialView = params.view ?? "contacts"
+  return <div className="space-y-4"><PageHeader compact eyebrow="Relacionamento" title="Leads" description="Encontre, organize e acompanhe todos os seus contatos em um só lugar." actions={<RefreshWorkspace />} /><InboxHub conversations={inbox.conversations} entries={pipeline.entries} conversationError={inbox.error} prospectError={pipeline.error} initialView={initialView} /></div>
 }
