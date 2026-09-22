@@ -70,6 +70,33 @@ def test_all_sources_can_finish_with_no_matches_without_becoming_an_api_failure(
     assert outcome["validation"]["source_failures"] == 0
 
 
+def test_every_source_combination_executes_without_contract_or_orchestration_error(monkeypatch):
+    from itertools import combinations
+
+    async def public(_query, source, _limit):
+        domain = "example.org" if source == "web" else f"{source}.com"
+        return [{"source": source, "title": f"Resultado {source}", "url": f"https://{domain}/perfil-{source}", "summary": ""}]
+
+    async def maps(_query, _limit):
+        return [maps_result("Resultado Maps")]
+
+    async def no_inspection(_rows):
+        return None
+
+    monkeypatch.setattr(hunter, "public_search", public)
+    monkeypatch.setattr(hunter, "maps_search", maps)
+    monkeypatch.setattr(hunter, "inspect_instagram_bios", no_inspection)
+    monkeypatch.setattr(hunter, "inspect_facebook_pages", no_inspection)
+    available = ["web", "google_maps", "instagram", "facebook"]
+    for size in range(1, len(available) + 1):
+        for selected in combinations(available, size):
+            request = SearchCreate(market="b2b", query="dentistas", location="Porto Alegre",
+                                   sources=list(selected), result_limit=20)
+            outcome = asyncio.run(execute_research(request.model_dump()))
+            assert outcome["error"] is None, selected
+            assert outcome["validation"]["source_failures"] == 0, selected
+
+
 def maps_result(name, *, loaded=True, website=None, phone="+55 (11) 91234-5678", whatsapp=False, website_button=False):
     return maps_detail_result({"title": name, "url": f"https://www.google.com/maps/place/{name}/data=!1s{name}"},
         {"title": name, "loaded": loaded, "website": website, "website_button": website_button or bool(website),
@@ -405,6 +432,34 @@ def test_public_search_falls_back_to_firecrawl(monkeypatch):
     assert [row["title"] for row in rows] == ["Clínica"]
 
 
+def test_public_search_falls_back_when_exa_returns_no_matches(monkeypatch):
+    async def empty(*args):
+        return []
+    async def firecrawl(*args):
+        return [{"source": "web", "title": "Resultado alternativo", "url": "https://alternative.example", "summary": ""}]
+    monkeypatch.setattr(hunter, "exa_search", empty)
+    monkeypatch.setattr(hunter, "firecrawl_search", firecrawl)
+    rows = asyncio.run(public_search("clinicas RS", "web", 20))
+    assert [row["title"] for row in rows] == ["Resultado alternativo"]
+
+
+def test_maps_supplements_low_browser_recall_with_public_index(monkeypatch):
+    monkeypatch.delenv("OBSCURA_CDP_URL", raising=False)
+    monkeypatch.delenv("BROWSERBASE_API_KEY", raising=False)
+    monkeypatch.delenv("BROWSERBASE_PROJECT_ID", raising=False)
+    async def local(*args):
+        return [{"source": "google_maps", "title": "Local", "url": "https://google.com/maps/place/local", "summary": ""}]
+    async def indexed(*args):
+        return [
+            {"source": "google_maps", "title": "Local duplicado", "url": "https://google.com/maps/place/local", "summary": ""},
+            {"source": "google_maps", "title": "Complemento", "url": "https://google.com/maps/place/complemento", "summary": ""},
+        ]
+    monkeypatch.setattr(hunter, "_read_maps_local", local)
+    monkeypatch.setattr(hunter, "maps_index_search", indexed)
+    rows = asyncio.run(hunter.maps_search("dentistas Porto Alegre", 5))
+    assert [row["title"] for row in rows] == ["Local", "Complemento"]
+
+
 def test_public_search_uses_public_index_when_paid_providers_are_unavailable(monkeypatch):
     async def unavailable(*args):
         raise RuntimeError("not_configured")
@@ -455,7 +510,7 @@ def test_provider_timeout_is_bounded_and_persistable_failed_job(monkeypatch):
     monkeypatch.setattr(hunter, "maps_search", never)
     monkeypatch.setattr(hunter, "SOURCE_TIMEOUT_SECONDS", 0.01)
     outcome = asyncio.run(execute_research(search()))
-    assert outcome["error"] == "provider_error"
+    assert outcome["error"] == "provider_timeout"
     assert outcome["results"] == []
     assert outcome["validation"]["source_failures"] == 2
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronRight, Globe2, Loader2, MapPinned, MessagesSquare, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
+import { Check, CheckCircle2, ChevronRight, ExternalLink, Globe2, Loader2, MapPinned, MessagesSquare, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -99,6 +99,7 @@ export function HunterClient() {
   if (mentionsInstagram) sourceSet.add("instagram")
   if (mentionsFacebook) sourceSet.add("facebook")
   const effectiveSources = [...sourceSet]
+  const socialChecks = effectiveSources.filter((source): source is "instagram" | "facebook" => source === "instagram" || source === "facebook")
   function toggle(source: Source) {
     if (source === "google_maps" && requiresMaps) return
     setSources((all) => all.includes(source) ? all.filter((item) => item !== source) : [...all, source])
@@ -208,6 +209,13 @@ export function HunterClient() {
         <DialogHeader><DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />Confirmar pesquisa</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div><p className="text-lg font-semibold tracking-tight">{query}</p><p className="text-sm text-muted-foreground">{location || "Todas as regiões"} · até {limit} resultados</p></div>
+          <section aria-labelledby="hunter-preflight-title" className="rounded-xl border bg-muted/30 p-4">
+            <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" /><div><h3 id="hunter-preflight-title" className="text-sm font-semibold">Antes de pesquisar</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">A busca pública está pronta e não exige login. Se uma rede bloquear detalhes do perfil, entre nela em outra aba para fazer a verificação manual.</p></div></div>
+            {socialChecks.length > 0 ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{socialChecks.map((source) => {
+              const instagram = source === "instagram"
+              return <div key={source} className="rounded-lg border bg-background p-3"><p className="text-xs font-semibold">{instagram ? "Instagram" : "Facebook"}: busca pública pronta</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">Login só será necessário se a própria rede limitar a visualização durante sua conferência.</p><Button asChild variant="outline" size="sm" className="mt-3 h-8 w-full text-xs"><a href={instagram ? "https://www.instagram.com/accounts/login/" : "https://www.facebook.com/login/"} target="_blank" rel="noopener noreferrer">Abrir {instagram ? "Instagram" : "Facebook"}<ExternalLink className="size-3" /></a></Button></div>
+            })}</div> : <p className="mt-3 rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground">Nenhuma ação adicional é necessária para as fontes selecionadas.</p>}
+          </section>
           <dl className="divide-y rounded-lg border px-4 text-sm">
             <div className="py-3"><dt className="text-xs text-muted-foreground">Presença digital</dt><dd className="mt-1 font-medium">{websiteLabels[effectiveWebsite]}</dd></div>
             <div className="py-3"><dt className="text-xs text-muted-foreground">Contato necessário</dt><dd className="mt-1 font-medium">{contactLabels[contactFilter]}</dd></div>

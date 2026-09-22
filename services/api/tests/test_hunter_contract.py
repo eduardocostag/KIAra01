@@ -33,6 +33,18 @@ def test_hunter_accepts_all_public_sources_together() -> None:
     assert request.sources == ["web", "google_maps", "instagram", "facebook"]
 
 
+def test_hunter_accepts_every_non_empty_source_combination() -> None:
+    from itertools import combinations
+
+    available = ["web", "google_maps", "instagram", "facebook"]
+    accepted = 0
+    for size in range(1, len(available) + 1):
+        for selected in combinations(available, size):
+            assert SearchCreate(market="b2b", query="teste", sources=list(selected)).sources == list(selected)
+            accepted += 1
+    assert accepted == 15
+
+
 def test_hunter_schema_requires_confirmation_and_tenant_rls() -> None:
     migration = (Path(__file__).parents[1] / "migrations" / "0002_hunter.sql").read_text(encoding="utf-8")
     assert "pending_confirmation" in migration
@@ -74,7 +86,8 @@ def test_obscura_is_optional_and_browserbase_remains_fallback() -> None:
     source = (Path(__file__).parents[1] / "kiara_api" / "hunter.py").read_text(encoding="utf-8")
     assert 'os.getenv("OBSCURA_CDP_URL"' in source
     assert 'os.getenv("OBSCURA_AUTH_TOKEN"' in source
-    assert "return await _read_maps_cdp(endpoint, query, limit, headers=headers)" in source
+    assert "rows = await _read_maps_cdp(endpoint, query, limit, headers=headers)" in source
+    assert "return await supplement(rows)" in source
     assert "Browserbase(api_key=key" in source
     assert '"provider": "obscura"' in source
 

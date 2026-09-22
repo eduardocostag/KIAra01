@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import socket
+import psycopg
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Literal
@@ -431,9 +432,21 @@ class HunterRepository:
                 "SELECT * FROM hunter_results WHERE organization_id=%s AND search_id=%s ORDER BY created_at,id", (org, sid)
             )).fetchall()
             summary = {"created": 0, "existing": 0, "skipped": 0}
+            outcome_warnings = list(warnings or [])
             if not error:
-                summary = await sync_hunter_results(connection, org, self._search(row, []), saved)
-            outcome = {"validation": validation or {}, "warnings": warnings or [], "sync_summary": summary}
+                try:
+                    async with connection.transaction():
+                        summary = await sync_hunter_results(connection, org, self._search(row, []), saved)
+                except (psycopg.Error, ValueError, RuntimeError, TypeError, KeyError) as exc:
+                    logger.exception(
+                        "hunter.crm_sync_failed request_id=%s search_id=%s error_class=%s",
+                        context.correlation_id, search_id, type(exc).__name__,
+                    )
+                    outcome_warnings.append(
+                        "A pesquisa foi concluída e os resultados foram preservados, mas a sincronização com Leads/Pipeline falhou. "
+                        "Atualize a página; se os contatos não aparecerem em Leads, contate o administrador com a referência da pesquisa."
+                    )
+            outcome = {"validation": validation or {}, "warnings": outcome_warnings, "sync_summary": summary}
             await connection.execute(
                 "INSERT INTO audit_events (organization_id,actor_user_id,action,resource_type,resource_id,correlation_id,metadata) VALUES (%s,%s,'hunter.search.finished','hunter_search',%s,%s,%s)",
                 (org, _uuid("user", context.user_id), sid, context.correlation_id, json.dumps(outcome)),
@@ -624,20 +637,23 @@ async def public_search(query: str, source: str, limit: int) -> list[dict[str, A
     elif source == "facebook":
         query = f"site:facebook.com/ {query} Facebook pagina perfil contato"
     try:
-        return await exa_search(query, source, limit)
+        rows = await exa_search(query, source, limit)
+        if rows:
+            return rows
     except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
         logger.warning("hunter.exa.unavailable", extra={"source": source, "error_class": type(exc).__name__})
-        try:
-            return await firecrawl_search(query, source, limit)
-        except Exception as fallback_exc:  # noqa: BLE001 - public index is credential-free
-            logger.warning("hunter.firecrawl.unavailable", extra={
-                "source": source, "error_class": type(fallback_exc).__name__,
-            })
-            try:
-                rows = await indexed_search(query, source, limit)
-            except Exception as index_exc:
-                raise RuntimeError("public_index_unavailable") from index_exc
+    try:
+        rows = await firecrawl_search(query, source, limit)
+        if rows:
             return rows
+    except Exception as fallback_exc:  # noqa: BLE001 - public index is credential-free
+        logger.warning("hunter.firecrawl.unavailable", extra={
+            "source": source, "error_class": type(fallback_exc).__name__,
+        })
+    try:
+        return await indexed_search(query, source, limit)
+    except Exception as index_exc:
+        raise RuntimeError("public_index_unavailable") from index_exc
 
 
 class _InstagramBioParser(HTMLParser):
@@ -993,11 +1009,33 @@ async def obscura_enrich_results(results: list[dict[str, Any]]) -> None:
 
 
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
+    async def supplement(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if len(rows) >= limit:
+            return rows[:limit]
+        try:
+            indexed = await maps_index_search(query, limit)
+        except Exception as exc:  # noqa: BLE001 — partial browser results remain useful
+            logger.warning("hunter.maps.index_supplement_unavailable", extra={"error_class": type(exc).__name__})
+            if rows:
+                return rows[:limit]
+            raise
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in [*rows, *indexed]:
+            url = safe_public_url(row.get("url"))
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            merged.append(row)
+            if len(merged) >= limit:
+                break
+        return merged
+
     obscura = _obscura_connection()
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
     if not obscura and (not key or not project):
         try:
-            return await _read_maps_local(query, limit)
+            return await supplement(await _read_maps_local(query, limit))
         except Exception as exc:  # noqa: BLE001 — the public index remains the final fallback
             logger.warning("hunter.maps.local_browser_unavailable", extra={"error_class": type(exc).__name__})
         return await maps_index_search(query, limit)
@@ -1009,7 +1047,9 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     if obscura:
         endpoint, headers = obscura
         try:
-            return await _read_maps_cdp(endpoint, query, limit, headers=headers)
+            rows = await _read_maps_cdp(endpoint, query, limit, headers=headers)
+            if rows:
+                return await supplement(rows)
         except Exception as exc:  # noqa: BLE001 — Browserbase remains the isolated fallback
             logger.warning("hunter.obscura.maps_failed", extra={"error_class": type(exc).__name__})
     if not key or not project:
@@ -1026,7 +1066,7 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         client.close()
         return await maps_index_search(query, limit)
     try:
-        return await _read_maps_cdp(session.connect_url, query, limit)
+        return await supplement(await _read_maps_cdp(session.connect_url, query, limit))
     finally:
         try:
             await asyncio.wait_for(asyncio.to_thread(client.sessions.update, session.id,
@@ -1317,7 +1357,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     warnings: list[str] = []
     failures: list[str] = []
-    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "public_index_unavailable", "browserbase_not_configured", "browser_provider_unavailable"}
+    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "public_index_unavailable", "browserbase_not_configured", "browser_provider_unavailable", "provider_timeout"}
     source_failure_messages = {
         "public_index_unavailable": "{source} não concluiu a consulta porque o índice público está temporariamente indisponível. Tente novamente em alguns minutos; se persistir, peça ao administrador para verificar EXA_API_KEY e FIRECRAWL_API_KEY.",
         "exa_not_configured": "{source} não concluiu a consulta porque não está configurada. Peça ao administrador para configurar EXA_API_KEY.",
