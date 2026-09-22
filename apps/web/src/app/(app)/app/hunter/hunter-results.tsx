@@ -103,7 +103,6 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, act
   const synced = selected?.results.filter((result) => result.public_data?.lead_id && result.public_data?.pipeline_entry_id).length ?? 0
   const historical = Boolean(selected && !selected.validation)
   const withPhone = selected?.results.filter(result => publicPhone(result.public_data?.phone)).length ?? 0
-  const actionableWarnings = selected?.warnings?.filter((warning) => /não concluiu|falhou|indisponível|sincronização com Leads/i.test(warning)) ?? []
   return <Card className={styles.resultsCard}>
     <CardHeader className={styles.resultsHeader}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -126,7 +125,6 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, act
           {selected.validation && <p className="mt-3 text-xs text-muted-foreground">{withPhone} com telefone · {synced} nos contatos</p>}
           {synced > 0 && <Button asChild variant="outline" className="mt-4 h-9 text-xs"><Link href="/app/inbox?view=contacts"><Inbox className="size-3.5" />Ver contatos<ArrowRight className="size-3.5" /></Link></Button>}
         </div>
-        {selected.status === "completed" && actionableWarnings.length > 0 && <div role="alert" className="mx-5 mt-5 rounded-lg border border-warning/25 bg-warning/5 p-4"><p className="text-sm font-semibold text-warning">Parte da pesquisa precisa de atenção</p><ul className="mt-2 space-y-2 text-xs leading-5 text-muted-foreground">{actionableWarnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></div>}
         {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}
         {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa. Tente novamente e, se persistir, contate o administrador."} Código: {selected.error_code || "provider_error"}.</p>{selected.warnings?.length ? <ul className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">{selected.warnings.map((warning, index) => <li key={`${index}-${warning}`} className="rounded-md border border-destructive/15 bg-background/40 px-3 py-2">{warning}</li>)}</ul> : null}</div>}
         {selected.status === "cancelled" && <p className="p-5 text-sm">Esta pesquisa foi cancelada.</p>}
