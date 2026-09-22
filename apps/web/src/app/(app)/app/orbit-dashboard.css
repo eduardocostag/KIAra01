@@ -47,8 +47,10 @@
 .kiara-orbit-callout { position: absolute; z-index: 8; display: inline-flex; max-width: 100px; align-items: center; gap: .3rem; border: 1px solid rgb(153 100 244 / .34); border-radius: .6rem; background: rgb(25 23 43 / .83); padding: .35rem .45rem; color: #d8cbef; font-size: .54rem; line-height: 1.15; box-shadow: 0 0 16px rgb(112 51 220 / .2), inset 0 1px rgb(255 255 255 / .05); backdrop-filter: blur(8px); }
 .kiara-orbit-callout svg { flex: none; color: #bd93ff; }
 .kiara-orbit-callout-top { left: 4%; top: 17%; }
+.kiara-orbit-callout-skill { right: 7%; top: 14%; }
 .kiara-orbit-callout-right { right: 1%; top: 31%; }
 .kiara-orbit-callout-bottom { right: 5%; bottom: 13%; }
+.kiara-orbit-callout-kiara { left: 5%; bottom: 13%; border-color: rgb(190 133 255 / .55); background: rgb(32 22 57 / .9); color: #f0e6ff; box-shadow: 0 0 20px rgb(135 63 239 / .3), inset 0 1px rgb(255 255 255 / .08); }
 .kiara-orbit-dashboard .kiara-dashboard-metrics { grid-column: 3; align-content: center; padding: .5rem 0 .5rem .3rem; }
 .kiara-orbit-dashboard .kiara-dashboard-metric { min-height: 75px; }
 .kiara-orbit-dashboard .kiara-dashboard-table { margin-top: 0; border-radius: 0 0 1rem 1rem; }

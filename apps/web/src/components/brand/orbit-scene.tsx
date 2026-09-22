@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { AudioLines, Globe2, Sparkles } from "lucide-react"
+import { AudioLines, Bot, Globe2, Sparkles, Target } from "lucide-react"
 import { KiaraOrb } from "@/components/brand/kiara-orb"
 
 export function OrbitScene() {
@@ -65,7 +65,9 @@ export function OrbitScene() {
     <span className="kiara-orbit-moon kiara-orbit-moon-five" />
     <span className="kiara-orbit-moon kiara-orbit-moon-six" />
     <span className="kiara-orbit-callout kiara-orbit-callout-top"><Sparkles className="size-3" />Buscas organizadas</span>
+    <span className="kiara-orbit-callout kiara-orbit-callout-skill"><Target className="size-3" />Leads priorizados</span>
     <span className="kiara-orbit-callout kiara-orbit-callout-right"><AudioLines className="size-3" />Próxima ação clara</span>
     <span className="kiara-orbit-callout kiara-orbit-callout-bottom"><Globe2 className="size-3" />Fontes públicas</span>
+    <span className="kiara-orbit-callout kiara-orbit-callout-kiara"><Bot className="size-3" />Kiara</span>
   </div>
 }
