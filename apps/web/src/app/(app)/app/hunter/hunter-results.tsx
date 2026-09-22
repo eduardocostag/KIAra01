@@ -13,12 +13,13 @@ import styles from "./hunter.module.css"
 const labels: Record<string, string> = { web: "Web pública", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
 const statuses: Record<string, string> = { completed: "Concluída", running: "Em execução", pending_confirmation: "Aguardando confirmação", failed: "Falhou", cancelled: "Cancelada" }
 const failureMessages: Record<string, string> = {
-  provider_timeout: "As fontes selecionadas ultrapassaram o tempo máximo de resposta.",
-  provider_error: "Todas as fontes selecionadas falharam durante a consulta.",
-  exa_not_configured: "A fonte de busca Web não está configurada no backend.",
-  firecrawl_not_configured: "O enriquecimento Firecrawl não está configurado no backend.",
-  browserbase_not_configured: "O navegador usado para consultar o Google Maps não está configurado.",
-  browser_provider_unavailable: "O navegador de pesquisa do Google Maps estava indisponível.",
+  provider_timeout: "As fontes ultrapassaram o tempo de resposta. Aguarde alguns minutos, use Atualizar resultados e, se persistir, contate o administrador.",
+  provider_error: "As fontes selecionadas falharam. Veja abaixo qual fonte falhou e a ação necessária.",
+  exa_not_configured: "A busca Web não está configurada. Peça ao administrador para configurar EXA_API_KEY.",
+  firecrawl_not_configured: "A busca alternativa não está configurada. Peça ao administrador para configurar FIRECRAWL_API_KEY.",
+  public_index_unavailable: "Os provedores de busca pública estão indisponíveis. Tente novamente e, se persistir, peça ao administrador para revisar Exa e Firecrawl.",
+  browserbase_not_configured: "O Google Maps não está configurado. Peça ao administrador para configurar Browserbase ou Obscura.",
+  browser_provider_unavailable: "O navegador do Google Maps está indisponível. Tente novamente e, se persistir, peça ao administrador para revisar Browserbase ou Obscura.",
 }
 
 function resultDisplayName(result: HunterResult) {
@@ -124,7 +125,7 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, onR
           {synced > 0 && <Button asChild variant="outline" className="mt-4 h-9 text-xs"><Link href="/app/inbox?view=contacts"><Inbox className="size-3.5" />Ver contatos<ArrowRight className="size-3.5" /></Link></Button>}
         </div>
         {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}
-        {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa."} Código: {selected.error_code || "provider_error"}. Revise as integrações ou escolha outras fontes.</p></div>}
+        {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa. Tente novamente e, se persistir, contate o administrador."} Código: {selected.error_code || "provider_error"}.</p>{selected.warnings?.length ? <ul className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">{selected.warnings.map((warning, index) => <li key={`${index}-${warning}`} className="rounded-md border border-destructive/15 bg-background/40 px-3 py-2">{warning}</li>)}</ul> : null}</div>}
         {selected.status === "cancelled" && <p className="p-5 text-sm">Esta pesquisa foi cancelada.</p>}
         {selected.status === "pending_confirmation" && <p className="p-5 text-sm text-muted-foreground">A pesquisa foi registrada, mas a execução ainda não foi confirmada. Prepare e confirme uma nova busca.</p>}
         {selected.status === "completed" && !selected.results.length && <div className="flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center"><ListFilter className="size-7 text-muted-foreground" /><h3 className="mt-4 font-semibold">Nenhum resultado encontrado</h3><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Nenhum contato atendeu aos filtros com evidência suficiente nas fontes consultadas. Revise a região ou os critérios; dados não confirmados não são apresentados como correspondências.</p><Button variant="outline" className="mt-5 h-10" onClick={() => onBroaden(selected)}>Ajustar pesquisa</Button></div>}

@@ -22,6 +22,17 @@ def test_hunter_requires_supported_sources_and_bounded_limit() -> None:
     assert SearchCreate(market="b2b", query="clinicas", sources=["web"], result_limit=100).result_limit == 100
 
 
+def test_hunter_accepts_all_public_sources_together() -> None:
+    request = SearchCreate(
+        market="b2b",
+        query="clínicas odontológicas",
+        location="Porto Alegre - RS",
+        sources=["web", "google_maps", "instagram", "facebook"],
+        result_limit=30,
+    )
+    assert request.sources == ["web", "google_maps", "instagram", "facebook"]
+
+
 def test_hunter_schema_requires_confirmation_and_tenant_rls() -> None:
     migration = (Path(__file__).parents[1] / "migrations" / "0002_hunter.sql").read_text(encoding="utf-8")
     assert "pending_confirmation" in migration

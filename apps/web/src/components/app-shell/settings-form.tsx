@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, type ReactNode } from "react"
-import { Building2, CheckCircle2, Database, LoaderCircle, MessageSquareText, Plus, Save, ShieldCheck, Trash2, UserRound } from "lucide-react"
+import { useClerk, useUser } from "@clerk/nextjs"
+import { Building2, CheckCircle2, Database, KeyRound, LoaderCircle, LogOut, Mail, MessageSquareText, Plus, Save, ShieldCheck, Trash2, UserRound } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,8 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { salesRequest, type SalesProfile, templateLabels } from "@/lib/api/sales"
 
-type Section = "operation" | "templates" | "data"
+type Section = "account" | "operation" | "templates" | "data"
 const sections = {
+  account: { label: "Minha conta", description: "Perfil, senha e sessão", icon: UserRound },
   operation: { label: "Identidade", description: "Quem fala e o que oferece", icon: Building2 },
   templates: { label: "Mensagens", description: "Textos para cada situação", icon: MessageSquareText },
   data: { label: "Dados", description: "Reiniciar leads e Pipeline", icon: Database },
@@ -36,7 +38,20 @@ function customTemplateLabel(key: string) {
   return key.replace(/^custom_/, "").replace(/_/g, " ").replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())
 }
 
+function authErrorMessage(error: unknown) {
+  if (error && typeof error === "object" && "errors" in error && Array.isArray(error.errors)) {
+    const first = error.errors[0]
+    if (first && typeof first === "object") {
+      const message = "longMessage" in first ? first.longMessage : "message" in first ? first.message : null
+      if (typeof message === "string" && message.trim()) return message
+    }
+  }
+  return error instanceof Error ? error.message : "Não foi possível concluir a operação."
+}
+
 export function SettingsForm() {
+  const { isLoaded: userLoaded, user } = useUser()
+  const { signOut } = useClerk()
   const [profile, setProfile] = useState<SalesProfile | null>(null)
   const [section, setSection] = useState<Section>("operation")
   const [busy, setBusy] = useState(false)
@@ -47,7 +62,16 @@ export function SettingsForm() {
   const [resetOpen, setResetOpen] = useState(false)
   const [resetConfirmation, setResetConfirmation] = useState("")
   const [resetBusy, setResetBusy] = useState(false)
+  const [accountFirstName, setAccountFirstName] = useState<string | null>(null)
+  const [accountLastName, setAccountLastName] = useState<string | null>(null)
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [accountBusy, setAccountBusy] = useState<"profile" | "password" | "logout" | null>(null)
+  const [accountMessage, setAccountMessage] = useState<{ ok: boolean; text: string } | null>(null)
   useEffect(() => { void salesRequest<SalesProfile>("/api/sales/profile").then(setProfile).catch((error) => setMessage({ ok: false, text: error instanceof Error ? error.message : "Falha ao carregar." })) }, [])
+  const resolvedFirstName = accountFirstName ?? user?.firstName ?? ""
+  const resolvedLastName = accountLastName ?? user?.lastName ?? ""
 
   async function save() {
     if (!profile) return
@@ -107,16 +131,74 @@ export function SettingsForm() {
     }
   }
 
+  async function saveAccountProfile() {
+    if (!user) return
+    setAccountBusy("profile"); setAccountMessage(null)
+    try {
+      await user.update({ firstName: resolvedFirstName.trim(), lastName: resolvedLastName.trim() })
+      setAccountMessage({ ok: true, text: "Nome atualizado com segurança." })
+    } catch (error) {
+      setAccountMessage({ ok: false, text: authErrorMessage(error) })
+    } finally {
+      setAccountBusy(null)
+    }
+  }
+
+  async function changePassword() {
+    if (!user) return
+    if (newPassword.length < 8) { setAccountMessage({ ok: false, text: "A nova senha deve ter pelo menos 8 caracteres." }); return }
+    if (newPassword !== confirmPassword) { setAccountMessage({ ok: false, text: "A confirmação não corresponde à nova senha." }); return }
+    setAccountBusy("password"); setAccountMessage(null)
+    try {
+      await user.updatePassword({ currentPassword: user.passwordEnabled ? currentPassword : undefined, newPassword, signOutOfOtherSessions: true })
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("")
+      setAccountMessage({ ok: true, text: "Senha atualizada. As outras sessões foram encerradas." })
+    } catch (error) {
+      setAccountMessage({ ok: false, text: authErrorMessage(error) })
+    } finally {
+      setAccountBusy(null)
+    }
+  }
+
+  async function logout() {
+    setAccountBusy("logout"); setAccountMessage(null)
+    try {
+      await signOut({ redirectUrl: "/sign-in" })
+    } catch (error) {
+      setAccountBusy(null)
+      setAccountMessage({ ok: false, text: authErrorMessage(error) })
+    }
+  }
+
   if (!profile) return <Card className="overflow-hidden"><CardContent className="flex min-h-64 items-center justify-center text-sm text-muted-foreground"><LoaderCircle className="size-5 animate-spin" /><span className="ml-3">Carregando configurações…</span></CardContent></Card>
 
   return <div className="space-y-5">
     {message ? <Alert variant={message.ok ? "default" : "destructive"} className={message.ok ? "border-emerald-500/20 bg-emerald-500/5" : undefined}>{message.ok ? <CheckCircle2 /> : <ShieldCheck />}<AlertTitle>{message.title || (message.ok ? "Configurações atualizadas" : "Não foi possível salvar")}</AlertTitle><AlertDescription>{message.text}</AlertDescription></Alert> : null}
-    <Tabs value={section} onValueChange={(value) => { setSection(value as Section); setMessage(null) }} orientation="vertical" className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
+    <Tabs value={section} onValueChange={(value) => { const next = value as Section; if (next === "account" && user) { setAccountFirstName(user.firstName ?? ""); setAccountLastName(user.lastName ?? ""); setAccountMessage(null) } setSection(next); setMessage(null) }} orientation="vertical" className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-7"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5"><CardTitle className="text-sm">Áreas de configuração</CardTitle><CardDescription className="text-xs leading-5">Escolha uma seção para editar.</CardDescription></CardHeader><CardContent className="p-2">
         <TabsList className="grid h-auto w-full gap-1 bg-transparent p-0">{(Object.entries(sections) as [Section, typeof sections[Section]][]).map(([value, item]) => { const Icon = item.icon; return <TabsTrigger key={value} value={value} className="h-auto w-full justify-start gap-3 rounded-xl px-3 py-3.5 text-left data-active:bg-primary/12 data-active:text-foreground"><span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-primary"><Icon className="size-4" /></span><span className="min-w-0"><strong className="block text-sm font-semibold">{item.label}</strong><small className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">{item.description}</small></span></TabsTrigger> })}</TabsList>
       </CardContent></Card></aside>
 
       <div className="min-w-0 space-y-4">
+        <TabsContent value="account"><div className="space-y-4">
+          {accountMessage ? <Alert variant={accountMessage.ok ? "default" : "destructive"} className={accountMessage.ok ? "border-emerald-500/20 bg-emerald-500/5" : undefined}>{accountMessage.ok ? <CheckCircle2 /> : <ShieldCheck />}<AlertTitle>{accountMessage.ok ? "Conta atualizada" : "Não foi possível atualizar a conta"}</AlertTitle><AlertDescription>{accountMessage.text}</AlertDescription></Alert> : null}
+          <Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Perfil do usuário</CardTitle><CardDescription>Dados pessoais vinculados à sua conta de acesso.</CardDescription></CardHeader><CardContent className="grid gap-5 p-5 sm:p-6 md:grid-cols-2">
+            <Field id="account-first-name" label="Nome" help="Como você será identificado na Kiara."><Input id="account-first-name" value={resolvedFirstName} onChange={(event) => setAccountFirstName(event.target.value)} disabled={!userLoaded || !user || accountBusy !== null} maxLength={100} autoComplete="given-name" /></Field>
+            <Field id="account-last-name" label="Sobrenome" help="Complemento do seu nome de usuário."><Input id="account-last-name" value={resolvedLastName} onChange={(event) => setAccountLastName(event.target.value)} disabled={!userLoaded || !user || accountBusy !== null} maxLength={100} autoComplete="family-name" /></Field>
+            <Field id="account-email" label="E-mail" help="Endereço usado para entrar na sua conta." wide><div className="relative"><Mail className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" /><Input id="account-email" value={user?.primaryEmailAddress?.emailAddress ?? ""} readOnly className="pl-10 text-muted-foreground" /></div></Field>
+            <div className="flex justify-end md:col-span-2"><Button type="button" onClick={() => void saveAccountProfile()} disabled={!userLoaded || !user || accountBusy !== null || !resolvedFirstName.trim()}>{accountBusy === "profile" ? <LoaderCircle className="animate-spin" /> : <Save />}Salvar perfil</Button></div>
+          </CardContent></Card>
+
+          <Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Senha</CardTitle><CardDescription>{user?.passwordEnabled ? "Atualize sua senha e encerre as demais sessões abertas." : "Defina uma senha para também entrar com e-mail e senha."}</CardDescription></CardHeader><CardContent className="grid gap-5 p-5 sm:p-6 md:grid-cols-2">
+            {user?.passwordEnabled ? <Field id="current-password" label="Senha atual" help="Necessária para confirmar sua identidade." wide><Input id="current-password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} disabled={accountBusy !== null} autoComplete="current-password" /></Field> : null}
+            <Field id="new-password" label="Nova senha" help="Use pelo menos 8 caracteres."><Input id="new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} disabled={accountBusy !== null} autoComplete="new-password" minLength={8} /></Field>
+            <Field id="confirm-password" label="Confirmar senha" help="Digite novamente a nova senha."><Input id="confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={accountBusy !== null} autoComplete="new-password" minLength={8} /></Field>
+            <div className="flex justify-end md:col-span-2"><Button type="button" variant="outline" onClick={() => void changePassword()} disabled={!user || accountBusy !== null || !newPassword || !confirmPassword || (Boolean(user.passwordEnabled) && !currentPassword)}>{accountBusy === "password" ? <LoaderCircle className="animate-spin" /> : <KeyRound />}Alterar senha</Button></div>
+          </CardContent></Card>
+
+          <Card className="gap-0 overflow-hidden py-0"><CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"><div><h3 className="font-semibold">Encerrar sessão</h3><p className="mt-1 text-sm text-muted-foreground">Saia com segurança desta conta neste dispositivo.</p></div><Button type="button" variant="outline" className="shrink-0" disabled={accountBusy !== null} onClick={() => void logout()}>{accountBusy === "logout" ? <LoaderCircle className="animate-spin" /> : <LogOut />}Fazer logoff</Button></CardContent></Card>
+        </div></TabsContent>
+
         <TabsContent value="operation"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Dados da sua operação</CardTitle><CardDescription>A Kiara usa estas informações para preparar mensagens coerentes com seu negócio.</CardDescription></CardHeader><CardContent className="grid gap-6 p-5 sm:p-6 md:grid-cols-2">
           <Field id="business-name" label="Nome do negócio" help="Como sua empresa deve ser apresentada."><Input id="business-name" value={profile.business_name} onChange={(e) => setProfile({ ...profile, business_name: e.target.value })} maxLength={160} placeholder="Ex.: Agência Aurora" /></Field>
           <Field id="sender-name" label="Nome do remetente" help="Pessoa que assina as mensagens."><Input id="sender-name" value={profile.sender_name} onChange={(e) => setProfile({ ...profile, sender_name: e.target.value })} maxLength={160} placeholder="Ex.: Eduardo" /></Field>
@@ -131,7 +213,7 @@ export function SettingsForm() {
 
         <TabsContent value="data"><Card className="gap-0 overflow-hidden border-destructive/25 py-0"><CardHeader className="border-b border-destructive/15 p-5 sm:p-6"><CardTitle>Reiniciar dados comerciais</CardTitle><CardDescription>Comece do zero sem apagar sua identidade, mensagens ou integrações.</CardDescription></CardHeader><CardContent className="p-5 sm:p-6"><div className="flex flex-col gap-5 rounded-xl border border-destructive/20 bg-destructive/[.04] p-5 sm:flex-row sm:items-center sm:justify-between"><div className="max-w-2xl"><h3 className="font-semibold">Zerar Leads e Pipeline</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Remove todos os leads, etapas do Pipeline, atividades, conversas e pesquisas deste workspace. Esta ação não pode ser desfeita.</p></div><Button type="button" variant="destructive" className="shrink-0" onClick={() => { setResetConfirmation(""); setResetOpen(true) }}><Trash2 />Zerar dados</Button></div></CardContent></Card></TabsContent>
 
-        {section !== "data" ? <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-2xl border bg-background/92 p-3 shadow-xl backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3 px-1"><UserRound className="size-4 text-primary" /><p className="text-xs text-muted-foreground">As alterações valem para todo o workspace.</p></div><Button onClick={save} disabled={busy} size="lg" className="min-w-48">{busy ? <LoaderCircle className="animate-spin" /> : <Save />}Salvar alterações</Button></div> : null}
+        {section === "operation" || section === "templates" ? <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-2xl border bg-background/92 p-3 shadow-xl backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3 px-1"><UserRound className="size-4 text-primary" /><p className="text-xs text-muted-foreground">As alterações valem para todo o workspace.</p></div><Button onClick={save} disabled={busy} size="lg" className="min-w-48">{busy ? <LoaderCircle className="animate-spin" /> : <Save />}Salvar alterações</Button></div> : null}
       </div>
     </Tabs>
     <Dialog open={newMessageOpen} onOpenChange={setNewMessageOpen}>

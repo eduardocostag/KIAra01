@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from kiara_api.main import create_app
+from kiara_api.hunter import SearchCreate
 
 
 def test_unexpected_errors_return_json_with_a_traceable_request_id():
@@ -118,3 +119,30 @@ def test_known_database_constraints_return_actionable_messages():
         },
     }
     assert "secret row detail" not in response.text
+
+
+def test_request_validation_errors_identify_field_and_action() -> None:
+    app = create_app()
+
+    @app.post("/test/validated")
+    async def validated(payload: SearchCreate):
+        return payload
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/test/validated",
+            json={"market": "b2b", "query": "dentistas", "location": "x" * 161,
+                  "sources": ["web", "google_maps", "instagram", "facebook"]},
+            headers={"X-Correlation-ID": "validation-test"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"] == {
+        "code": "hunter_location_invalid",
+        "message": "A cidade ou região deve ter no máximo 160 caracteres.",
+        "request_id": "validation-test",
+        "details": {
+            "field": "location", "reason": "string_too_long",
+            "action": "Resuma a localização, por exemplo: Porto Alegre - RS.", "retryable": False,
+        },
+    }

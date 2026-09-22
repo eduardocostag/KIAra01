@@ -637,8 +637,6 @@ async def public_search(query: str, source: str, limit: int) -> list[dict[str, A
                 rows = await indexed_search(query, source, limit)
             except Exception as index_exc:
                 raise RuntimeError("public_index_unavailable") from index_exc
-            if not rows:
-                raise RuntimeError("public_index_empty")
             return rows
 
 
@@ -1319,12 +1317,22 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     warnings: list[str] = []
     failures: list[str] = []
-    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "public_index_unavailable", "public_index_empty", "browserbase_not_configured", "browser_provider_unavailable"}
+    allowed_errors = {"exa_not_configured", "firecrawl_not_configured", "public_index_unavailable", "browserbase_not_configured", "browser_provider_unavailable"}
+    source_failure_messages = {
+        "public_index_unavailable": "{source} não concluiu a consulta porque o índice público está temporariamente indisponível. Tente novamente em alguns minutos; se persistir, peça ao administrador para verificar EXA_API_KEY e FIRECRAWL_API_KEY.",
+        "exa_not_configured": "{source} não concluiu a consulta porque não está configurada. Peça ao administrador para configurar EXA_API_KEY.",
+        "firecrawl_not_configured": "{source} não concluiu a consulta porque não está configurada. Peça ao administrador para configurar FIRECRAWL_API_KEY.",
+        "browserbase_not_configured": "Google Maps não está configurado. Peça ao administrador para configurar o navegador de pesquisa.",
+        "browser_provider_unavailable": "Google Maps está temporariamente indisponível. Tente novamente; se persistir, peça ao administrador para revisar Browserbase ou Obscura.",
+    }
     for source, task in tasks.items():
         if task.cancelled() or task.exception() is not None:
             code = str(task.exception()) if not task.cancelled() else "provider_timeout"
             failures.append(code if code in allowed_errors else "provider_error")
-            warnings.append(f"{SOURCE_LABELS[source]} não concluiu a consulta. Os resultados das outras fontes foram preservados.")
+            warnings.append(source_failure_messages.get(
+                code,
+                "{source} não concluiu a consulta por uma falha inesperada. Tente novamente; se persistir, contate o administrador.",
+            ).format(source=SOURCE_LABELS[source]) + " Os resultados das outras fontes foram preservados.")
         else:
             batch = task.result()
             if isinstance(batch, list) and all(isinstance(item, dict) for item in batch):

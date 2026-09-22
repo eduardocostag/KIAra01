@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import psycopg
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -146,6 +147,71 @@ def create_app(
                     "details": exc.details,
                 }
             },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        correlation_id = getattr(request.state, "correlation_id", str(uuid4()))
+        errors = exc.errors()
+        first = errors[0] if errors else {}
+        location = [str(part) for part in first.get("loc", ()) if part not in {"body", "query", "path", "header"}]
+        field = (location[0] if location else "requisição").replace("-", "_")
+        error_type = str(first.get("type") or "validation_error")
+        guidance = {
+            "query": (
+                "hunter_query_invalid",
+                "A descrição da pesquisa deve ter entre 2 e 300 caracteres.",
+                "Ajuste o texto em ‘Descreva o cliente’ e tente novamente.",
+            ),
+            "location": (
+                "hunter_location_invalid",
+                "A cidade ou região deve ter no máximo 160 caracteres.",
+                "Resuma a localização, por exemplo: Porto Alegre - RS.",
+            ),
+            "sources": (
+                "hunter_sources_invalid",
+                "Selecione de 1 a 4 fontes válidas: Web, Google Maps, Instagram e Facebook.",
+                "Revise as fontes marcadas. Se todas já estiverem selecionadas, atualize a página; se persistir, contate o administrador com a referência abaixo.",
+            ),
+            "result_limit": (
+                "hunter_result_limit_invalid",
+                "O limite deve ser um número entre 1 e 100.",
+                "Informe um limite entre 1 e 100 e tente novamente.",
+            ),
+            "market": (
+                "hunter_market_invalid",
+                "O tipo de público enviado pela interface não é válido.",
+                "Atualize a página. Se persistir, contate o administrador com a referência abaixo.",
+            ),
+            "idempotency_key": (
+                "idempotency_key_invalid",
+                "A confirmação da pesquisa chegou sem um identificador válido.",
+                "Tente confirmar novamente. Se persistir, contate o administrador com a referência abaixo.",
+            ),
+        }
+        code, message, action = guidance.get(
+            field,
+            (
+                "request_validation_failed",
+                f"O campo ‘{field}’ não foi aceito pela API.",
+                "Revise o valor informado e tente novamente. Se persistir, contate o administrador com a referência abaixo.",
+            ),
+        )
+        logger.warning(
+            "api.request_validation_failed request_id=%s method=%s path=%s field=%s validation_type=%s",
+            correlation_id, request.method, request.url.path, field, error_type,
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "code": code,
+                    "message": message,
+                    "request_id": correlation_id,
+                    "details": {"field": field, "reason": error_type, "action": action, "retryable": False},
+                }
+            },
+            headers={"X-Correlation-ID": correlation_id},
         )
 
     @app.exception_handler(psycopg.Error)

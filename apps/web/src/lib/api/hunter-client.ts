@@ -128,11 +128,25 @@ export function parseHunterHistory(value: unknown): HunterJob[] {
 }
 
 function apiErrorMessage(value: unknown, status: number): string {
-  const error = (value as { error?: { message?: unknown; code?: unknown; request_id?: unknown } } | null)?.error
-  const message = typeof error?.message === "string" && error.message.trim() ? error.message.trim() : `Não foi possível concluir a consulta (HTTP ${status}).`
+  const payload = value as { error?: { message?: unknown; code?: unknown; request_id?: unknown; details?: { action?: unknown; field?: unknown } }; detail?: unknown } | null
+  const error = payload?.error
+  const legacyDetail = Array.isArray(payload?.detail) ? payload.detail[0] as { loc?: unknown[]; msg?: unknown } : null
+  const legacyField = Array.isArray(legacyDetail?.loc) ? legacyDetail.loc.filter((part) => part !== "body").join(".") : ""
+  const legacyMessage = typeof legacyDetail?.msg === "string" ? legacyDetail.msg : ""
+  const fallbacks: Record<number, string> = {
+    401: "Sua sessão expirou. Entre novamente na Kiara e repita a pesquisa.",
+    403: "Seu perfil não tem permissão para pesquisar. Peça ao administrador do workspace para liberar o acesso.",
+    422: legacyField
+      ? `A API rejeitou o campo ‘${legacyField}’ (${legacyMessage || "valor inválido"}). Corrija esse campo; se persistir, contate o administrador.`
+      : "A API rejeitou os dados da pesquisa. Revise descrição, localização, limite e fontes; se persistir, contate o administrador.",
+    429: "O provedor limitou temporariamente as consultas. Aguarde alguns minutos e tente novamente; se persistir, contate o administrador para revisar os limites da integração.",
+    503: "Uma dependência da pesquisa está indisponível. Tente novamente; se persistir, contate o administrador para revisar as integrações.",
+  }
+  const message = typeof error?.message === "string" && error.message.trim() ? error.message.trim() : fallbacks[status] ?? `Não foi possível concluir a consulta (HTTP ${status}). Contate o administrador.`
+  const action = typeof error?.details?.action === "string" && error.details.action.trim() ? ` O que fazer: ${error.details.action.trim()}` : ""
   const code = typeof error?.code === "string" && error.code.trim() ? error.code.trim() : `http_${status}`
   const requestId = typeof error?.request_id === "string" && error.request_id.trim() ? error.request_id.trim() : ""
-  return `${message} Código: ${code}.${requestId ? ` Referência: ${requestId}.` : ""}`
+  return `${message}${action} Código: ${code}.${requestId ? ` Referência: ${requestId}.` : ""}`
 }
 
 export async function requestHunter(path: string, init: RequestInit = {}, timeoutMs = 20_000): Promise<unknown> {

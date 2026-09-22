@@ -49,6 +49,27 @@ def test_result_limit_contract_accepts_database_maximum_and_rejects_above_it():
         SearchCreate(market="b2b", query="dentistas", sources=["web"], result_limit=101)
 
 
+def test_all_sources_can_finish_with_no_matches_without_becoming_an_api_failure(monkeypatch):
+    async def no_public_matches(*_args, **_kwargs):
+        return []
+
+    async def no_maps_matches(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("kiara_api.hunter.public_search", no_public_matches)
+    monkeypatch.setattr("kiara_api.hunter.maps_search", no_maps_matches)
+    request = SearchCreate(
+        market="b2b", query="nicho sem correspondências", location="Curitiba - PR",
+        sources=["web", "google_maps", "instagram", "facebook"], result_limit=20,
+    )
+
+    outcome = asyncio.run(execute_research(request.model_dump()))
+
+    assert outcome["error"] is None
+    assert outcome["results"] == []
+    assert outcome["validation"]["source_failures"] == 0
+
+
 def maps_result(name, *, loaded=True, website=None, phone="+55 (11) 91234-5678", whatsapp=False, website_button=False):
     return maps_detail_result({"title": name, "url": f"https://www.google.com/maps/place/{name}/data=!1s{name}"},
         {"title": name, "loaded": loaded, "website": website, "website_button": website_button or bool(website),
