@@ -232,6 +232,10 @@ def create_app(
                 "hunter_sources_invalid",
                 "Selecione entre 1 e 4 fontes de pesquisa.",
             ),
+            "hunter_results_source_check": (
+                "hunter_result_source_invalid",
+                "Uma fonte retornou um identificador incompatível. Os demais resultados foram preservados; contate o administrador com a referência.",
+            ),
             "integration_credentials_provider_check": (
                 "integration_provider_invalid",
                 "A integração informada não é suportada.",

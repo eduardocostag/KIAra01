@@ -416,12 +416,28 @@ class HunterRepository:
                      *, validation: dict[str, int] | None = None, warnings: list[str] | None = None) -> dict[str, Any]:
         org, sid = _uuid("organization", context.organization_id), _uuid("hunter_search", search_id)
         async with self.database._transaction(context.organization_id) as connection:
+            outcome_warnings = list(warnings or [])
+            rejected_results = 0
             for result in results:
-                await connection.execute(
-                    """INSERT INTO hunter_results (organization_id,search_id,source,title,url,summary,public_data)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id,search_id,url) DO NOTHING""",
-                    (org, sid, result["source"], result["title"][:500], result["url"][:3000],
-                     result.get("summary"), json.dumps(result.get("public_data", {}))),
+                try:
+                    async with connection.transaction():
+                        await connection.execute(
+                            """INSERT INTO hunter_results (organization_id,search_id,source,title,url,summary,public_data)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id,search_id,url) DO NOTHING""",
+                            (org, sid, result["source"], result["title"][:500], result["url"][:3000],
+                             result.get("summary"), json.dumps(result.get("public_data", {}))),
+                        )
+                except (psycopg.errors.CheckViolation, psycopg.DataError) as exc:
+                    rejected_results += 1
+                    logger.exception(
+                        "hunter.result_rejected request_id=%s search_id=%s source=%s error_class=%s constraint=%s",
+                        context.correlation_id, search_id, result.get("source"), type(exc).__name__,
+                        getattr(getattr(exc, "diag", None), "constraint_name", None),
+                    )
+            if rejected_results:
+                outcome_warnings.append(
+                    f"{rejected_results} resultado(s) incompatível(is) foram isolados sem interromper a pesquisa. "
+                    "Os demais resultados foram preservados; contate o administrador com a referência da pesquisa."
                 )
             row = await (await connection.execute(
                 "UPDATE hunter_searches SET status=%s,error_code=%s,updated_at=now() WHERE organization_id=%s AND id=%s RETURNING *",
@@ -432,7 +448,6 @@ class HunterRepository:
                 "SELECT * FROM hunter_results WHERE organization_id=%s AND search_id=%s ORDER BY created_at,id", (org, sid)
             )).fetchall()
             summary = {"created": 0, "existing": 0, "skipped": 0}
-            outcome_warnings = list(warnings or [])
             if not error:
                 try:
                     async with connection.transaction():

@@ -82,3 +82,12 @@ def test_provider_message_deduplication_allows_missing_external_ids() -> None:
     assert "UNIQUE NULLS NOT DISTINCT" not in messages
     assert "ON messages (organization_id, provider_message_id)" in SQL
     assert "WHERE provider_message_id IS NOT NULL" in SQL
+
+
+def test_hunter_result_sources_repair_includes_every_supported_social_source() -> None:
+    repair = (Path(__file__).parents[1] / "migrations" / "0013_repair_hunter_result_sources.sql").read_text(encoding="utf-8")
+    assert repair.lstrip().startswith("BEGIN;")
+    assert repair.rstrip().endswith("COMMIT;")
+    assert "DROP CONSTRAINT IF EXISTS hunter_results_source_check" in repair
+    assert "'web', 'google_maps', 'instagram', 'facebook', 'linkedin'" in repair
+    assert "VALIDATE CONSTRAINT hunter_results_source_check" in repair
