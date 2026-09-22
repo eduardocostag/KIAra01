@@ -16,12 +16,20 @@ const scanPoints = [
   [18, 30], [29, 63], [39, 42], [48, 72], [57, 27], [67, 55], [77, 35], [84, 68],
 ] as const
 
-export function HunterActivity({ stage, query, location, sources, foundCount = 0 }: {
+const pinPositions = [[20, 30], [72, 25], [31, 67], [64, 61], [82, 73]] as const
+
+function shortLocation(value: string) {
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean)
+  return parts.slice(0, 2).join(", ") || value
+}
+
+export function HunterActivity({ stage, query, location, sources, foundCount = 0, discoveries = [] }: {
   stage: string
   query?: string
   location?: string | null
   sources?: HunterSource[]
   foundCount?: number
+  discoveries?: string[]
 }) {
   const [seconds, setSeconds] = useState(0)
   useEffect(() => {
@@ -33,22 +41,29 @@ export function HunterActivity({ stage, query, location, sources, foundCount = 0
   const activeSources: HunterSource[] = sources?.length ? sources : ["web", "google_maps"]
   const place = location?.trim() || "Região selecionada"
   const progressLabel = /registrando/i.test(stage) ? "Preparando a busca" : /fila|aguardando|retomando/i.test(stage) ? "Organizando a investigação" : "Mapeando oportunidades"
+  const confirmedPlaces = [...new Set(discoveries.map((item) => item.trim()).filter(Boolean))].slice(0, pinPositions.length)
 
   return <div className={styles.liveSearch}>
     <p className="sr-only" role="status" aria-live="polite">{stage}. {foundCount} resultado{foundCount === 1 ? "" : "s"} confirmado{foundCount === 1 ? "" : "s"}.</p>
     <div className={styles.liveMap} aria-hidden="true">
-      <div className={styles.mapGrid} />
-      <svg className={styles.mapRoutes} viewBox="0 0 600 330" preserveAspectRatio="none">
-        <path d="M-30 245 C95 180 115 75 260 112 S430 290 650 145" />
-        <path d="M35 40 C150 125 245 50 330 165 S475 245 610 205" />
-        <path d="M165 -20 C205 88 170 205 275 355" />
-        <path d="M455 -20 C390 95 505 185 420 355" />
-      </svg>
+      <div className={styles.mapJourney}><span>Brasil</span><i /> <strong>{place}</strong></div>
+      <div className={styles.cityPlane}>
+        <div className={styles.mapGrid} />
+        <svg className={styles.mapRoutes} viewBox="0 0 600 330" preserveAspectRatio="none">
+          <path d="M-30 245 C95 180 115 75 260 112 S430 290 650 145" />
+          <path d="M35 40 C150 125 245 50 330 165 S475 245 610 205" />
+          <path d="M165 -20 C205 88 170 205 275 355" />
+          <path d="M455 -20 C390 95 505 185 420 355" />
+          <path d="M-20 105 C130 195 240 260 630 35" />
+        </svg>
+        <div className={styles.cityBlocks}>{Array.from({ length: 14 }, (_, index) => <span key={index} />)}</div>
+      </div>
       <div className={styles.mapFocus}><span /><span /><span /></div>
       <div className={styles.mapOrb}><i /><i /></div>
       <div className={styles.scanBeam} />
       {scanPoints.map(([left, top], index) => <span key={`${left}-${top}`} className={styles.scanPoint} style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${index * .38}s` }} />)}
-      <div className={styles.locationBadge}><MapPin />{place}</div>
+      {confirmedPlaces.map((address, index) => { const [left, top] = pinPositions[index]; return <span key={address} className={styles.discoveryPin} style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${index * .16}s` }} title={address}><i><MapPin /></i><b>{shortLocation(address)}</b></span> })}
+      <div className={styles.locationBadge}><MapPin />{confirmedPlaces.length ? `${confirmedPlaces.length} localidades confirmadas` : place}</div>
       <div className={styles.mapScale}>KIARA · BUSCA TERRITORIAL</div>
     </div>
 

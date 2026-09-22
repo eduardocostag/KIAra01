@@ -90,9 +90,16 @@
 
 .liveSearch { display: grid; min-height: 560px; overflow: hidden; background: #0d1019; }
 .liveMap { position: relative; isolation: isolate; min-height: 330px; overflow: hidden; border-bottom: 1px solid color-mix(in oklab, var(--primary) 20%, var(--border)); background: radial-gradient(circle at 50% 53%, rgb(112 56 219 / .3), transparent 27%), linear-gradient(155deg, #111725, #090b13 72%); perspective: 750px; }
-.mapGrid { position: absolute; inset: -18%; background-image: linear-gradient(rgb(174 139 255 / .1) 1px, transparent 1px), linear-gradient(90deg, rgb(174 139 255 / .1) 1px, transparent 1px); background-size: 44px 44px; transform: rotateX(54deg) scale(1.45); transform-origin: center 65%; animation: mapZoom 6.5s cubic-bezier(.22,.7,.25,1) infinite alternate; }
+.mapJourney { position: absolute; z-index: 9; left: 1rem; top: 1rem; display: flex; align-items: center; gap: .45rem; border: 1px solid rgb(176 132 255 / .25); border-radius: 999px; background: rgb(12 13 23 / .78); padding: .42rem .7rem; color: #91899f; font-size: .59rem; backdrop-filter: blur(12px); }
+.mapJourney i { width: 18px; height: 1px; background: linear-gradient(90deg, #62517d, #b17dff); }
+.mapJourney strong { max-width: 190px; overflow: hidden; color: #e4d7ff; text-overflow: ellipsis; white-space: nowrap; }
+.cityPlane { position: absolute; inset: -19%; z-index: 1; transform-style: preserve-3d; transform-origin: 50% 58%; animation: cityDive 5.8s cubic-bezier(.16,.8,.2,1) both; }
+.mapGrid { position: absolute; inset: 0; background-color: #0c1220; background-image: linear-gradient(rgb(174 139 255 / .13) 1px, transparent 1px), linear-gradient(90deg, rgb(174 139 255 / .13) 1px, transparent 1px); background-size: 44px 44px; box-shadow: inset 0 0 100px #050710; }
 .mapRoutes { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; fill: none; stroke: rgb(174 139 255 / .22); stroke-width: 2; filter: drop-shadow(0 0 5px rgb(142 87 255 / .25)); }
 .mapRoutes path:nth-child(2), .mapRoutes path:nth-child(4) { stroke: rgb(75 177 255 / .15); stroke-dasharray: 7 10; }
+.cityBlocks { position: absolute; inset: 0; z-index: 2; transform-style: preserve-3d; }
+.cityBlocks span { position: absolute; width: 54px; height: 34px; border: 1px solid rgb(178 139 255 / .13); border-radius: 4px; background: linear-gradient(145deg, rgb(99 69 150 / .18), rgb(15 21 34 / .76)); box-shadow: inset 0 0 18px rgb(130 83 225 / .09), 0 10px 16px rgb(0 0 0 / .22); transform: translateZ(16px); }
+.cityBlocks span:nth-child(1) { left: 8%; top: 14%; width: 76px; } .cityBlocks span:nth-child(2) { left: 25%; top: 9%; height: 52px; } .cityBlocks span:nth-child(3) { left: 43%; top: 16%; width: 82px; } .cityBlocks span:nth-child(4) { left: 70%; top: 10%; height: 48px; } .cityBlocks span:nth-child(5) { left: 84%; top: 29%; width: 42px; } .cityBlocks span:nth-child(6) { left: 11%; top: 43%; height: 54px; } .cityBlocks span:nth-child(7) { left: 30%; top: 38%; width: 68px; } .cityBlocks span:nth-child(8) { left: 58%; top: 40%; height: 48px; } .cityBlocks span:nth-child(9) { left: 73%; top: 52%; width: 74px; } .cityBlocks span:nth-child(10) { left: 18%; top: 70%; width: 82px; } .cityBlocks span:nth-child(11) { left: 42%; top: 68%; height: 55px; } .cityBlocks span:nth-child(12) { left: 61%; top: 76%; width: 86px; } .cityBlocks span:nth-child(13) { left: 85%; top: 72%; height: 52px; } .cityBlocks span:nth-child(14) { left: 3%; top: 86%; width: 95px; }
 .mapFocus { position: absolute; z-index: 2; left: 50%; top: 54%; width: 190px; height: 190px; transform: translate(-50%,-50%); }
 .mapFocus span { position: absolute; inset: 0; border: 1px solid rgb(179 137 255 / .38); border-radius: 50%; animation: mapPulse 3s ease-out infinite; }
 .mapFocus span:nth-child(2) { animation-delay: 1s; }
@@ -102,9 +109,13 @@
 .scanBeam { position: absolute; z-index: 3; left: 50%; top: 54%; width: 170px; height: 170px; overflow: hidden; border-radius: 50%; transform: translate(-50%,-50%); }
 .scanBeam::before { position: absolute; inset: -15%; background: conic-gradient(from 0deg, transparent 0 72%, rgb(178 129 255 / .36) 94%, transparent); content: ""; animation: beamSpin 3.4s linear infinite; }
 .scanPoint { position: absolute; z-index: 4; width: 7px; height: 7px; border: 1px solid #dfcbff; border-radius: 50%; background: #9a62ff; box-shadow: 0 0 0 4px rgb(155 98 255 / .12), 0 0 15px #9b62ff; opacity: .2; animation: pointSignal 2.4s ease-in-out infinite; }
-.locationBadge { position: absolute; z-index: 7; left: 1rem; top: 1rem; display: inline-flex; max-width: calc(100% - 2rem); align-items: center; gap: .45rem; overflow: hidden; border: 1px solid rgb(176 132 255 / .25); border-radius: 999px; background: rgb(12 13 23 / .72); padding: .48rem .75rem; color: #e4d8ff; font-size: .7rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; backdrop-filter: blur(12px); }
+.discoveryPin { position: absolute; z-index: 8; display: flex; max-width: 180px; align-items: center; gap: .35rem; opacity: 0; transform: translate(-50%,-100%) scale(.55); animation: pinReveal .65s cubic-bezier(.2,.9,.25,1.35) forwards; }
+.discoveryPin > i { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border: 1px solid #d7bdff; border-radius: 50% 50% 50% 4px; background: #8b46f0; box-shadow: 0 0 0 5px rgb(142 73 241 / .13), 0 0 22px rgb(147 85 245 / .8); transform: rotate(-45deg); }
+.discoveryPin svg { width: 12px; height: 12px; color: white; transform: rotate(45deg); }
+.discoveryPin b { overflow: hidden; border: 1px solid rgb(184 141 255 / .28); border-radius: .48rem; background: rgb(8 10 18 / .88); padding: .32rem .45rem; color: #efe8fb; font-size: .54rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; backdrop-filter: blur(8px); }
+.locationBadge { position: absolute; z-index: 7; left: 1rem; bottom: .8rem; display: inline-flex; max-width: calc(100% - 2rem); align-items: center; gap: .45rem; overflow: hidden; border: 1px solid rgb(176 132 255 / .25); border-radius: 999px; background: rgb(12 13 23 / .72); padding: .48rem .75rem; color: #e4d8ff; font-size: .65rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; backdrop-filter: blur(12px); }
 .locationBadge svg { width: .9rem; height: .9rem; flex: none; color: #bd91ff; }
-.mapScale { position: absolute; z-index: 4; right: 1rem; bottom: .8rem; color: rgb(207 194 231 / .48); font-size: .52rem; font-weight: 700; letter-spacing: .18em; }
+.mapScale { position: absolute; z-index: 4; right: 1rem; bottom: 1rem; color: rgb(207 194 231 / .48); font-size: .52rem; font-weight: 700; letter-spacing: .18em; }
 .liveSearchCopy { padding: 1.3rem 1.4rem 1.5rem; }
 .liveEyebrow { display: flex; align-items: center; gap: .45rem; color: #b991ff; font-size: .62rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
 .liveEyebrow svg { width: .9rem; height: .9rem; animation: beamSpin 4s linear infinite; }
@@ -119,11 +130,12 @@
 .liveMeta strong { color: #ded0fb; }
 .liveHint, .slowSource { margin-top: .65rem; color: #777582; font-size: .61rem; line-height: 1.5; }
 .slowSource { color: #c8abff; }
-@keyframes mapZoom { from { transform: rotateX(54deg) scale(1.2) translateY(2%); } to { transform: rotateX(54deg) scale(1.7) translateY(-3%); } }
+@keyframes cityDive { 0% { opacity: .15; transform: rotateX(18deg) rotateZ(-4deg) scale(.28) translateY(-24%); filter: blur(3px); } 58% { opacity: 1; transform: rotateX(58deg) rotateZ(-4deg) scale(1.18) translateY(4%); filter: blur(0); } 100% { opacity: 1; transform: rotateX(58deg) rotateZ(-4deg) scale(1.36) translateY(1%); filter: blur(0); } }
 @keyframes mapPulse { 0% { opacity: .7; transform: scale(.18); } 80%, 100% { opacity: 0; transform: scale(1.12); } }
 @keyframes orbSurvey { 0%, 100% { transform: translate(-50%,-50%) translateY(0) scale(1); } 50% { transform: translate(-50%,-50%) translateY(-5px) scale(1.035); } }
 @keyframes beamSpin { to { transform: rotate(360deg); } }
 @keyframes pointSignal { 0%, 100% { opacity: .18; transform: scale(.7); } 45% { opacity: 1; transform: scale(1.35); } }
+@keyframes pinReveal { to { opacity: 1; transform: translate(-50%,-100%) scale(1); } }
 @keyframes activityBlink { 0%, 43%, 49%, 100% { transform: scaleY(1); } 46% { transform: scaleY(.08); } }
 @keyframes sourceGlow { 0%, 100% { border-color: rgb(167 124 249 / .14); } 50% { border-color: rgb(167 124 249 / .42); box-shadow: 0 0 18px rgb(111 65 205 / .12); } }
 @media (min-width: 640px) { .leadAvatar { display: grid; } .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -131,4 +143,4 @@
 @media (min-width: 860px) { .hero { grid-template-columns: minmax(0, 1fr) 280px; } .orbStage { display: grid; } }
 @media (min-width: 1200px) { .workspace { grid-template-columns: minmax(330px, 390px) minmax(0, 1fr); align-items: stretch; gap: 1.15rem; } .workspace > header { grid-column: 1 / -1; } .searchPanel { grid-column: 1; height: 100%; position: sticky; top: 1.75rem; } .resultsPanel, .resultsCard, .discoveryIntro { height: 100%; } .resultsPanel { grid-column: 2; } }
 @media (max-width: 560px) { .discoveryIntro { min-height: 450px; padding-inline: 1rem; } .discoveryScene { height: 230px; transform: scale(.85); } .discoveryBenefits { gap: .4rem; } .liveMap { min-height: 285px; } .mapOrb { width: 72px; height: 72px; } .mapFocus { width: 155px; height: 155px; } .scanBeam { width: 140px; height: 140px; } }
-@media (prefers-reduced-motion: reduce) { .mapGrid, .mapFocus span, .mapOrb, .mapOrb i, .scanBeam::before, .scanPoint, .liveEyebrow svg, .sourceProgress > span { animation: none; } .scanPoint { opacity: .75; } }
+@media (prefers-reduced-motion: reduce) { .cityPlane, .mapFocus span, .mapOrb, .mapOrb i, .scanBeam::before, .scanPoint, .discoveryPin, .liveEyebrow svg, .sourceProgress > span { animation: none; } .cityPlane { opacity: 1; transform: rotateX(58deg) rotateZ(-4deg) scale(1.36); } .scanPoint, .discoveryPin { opacity: .85; } .discoveryPin { transform: translate(-50%,-100%); } }

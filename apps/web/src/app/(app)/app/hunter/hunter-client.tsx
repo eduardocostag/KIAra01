@@ -52,7 +52,13 @@ export function HunterClient() {
         `/api/hunter/searches/${encodeURIComponent(id)}/process`, { method: "POST" }, 210_000,
       ))
       setJobs((items) => [current, ...items.filter((item) => item.id !== current.id)])
-      if (current.status !== "running") return current
+      if (current.status !== "running") {
+        if (current.status === "completed" && current.results.length) {
+          setStage(`${current.results.length} oportunidade${current.results.length === 1 ? " confirmada" : "s confirmadas"} na região`)
+          await new Promise((resolve) => setTimeout(resolve, 2_400))
+        }
+        return current
+      }
       setStage("Pesquisa preservada na fila; aguardando a próxima tentativa…")
       await new Promise((resolve) => setTimeout(resolve, 15_000))
     }
