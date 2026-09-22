@@ -201,7 +201,7 @@ export function HunterClient() {
     </Card>
 
     <div ref={resultsPanel} tabIndex={-1} aria-label="Acompanhamento e resultados da pesquisa" className={cn(styles.resultsPanel, "min-w-0 scroll-mt-20 outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
-      <HunterResults jobs={jobs} selected={latest} busy={busy || clearing} loading={loading} stage={stage} error={error} onRefresh={() => void load()} onClear={() => setClearReview(true)} onSelect={setSelectedId} onBroaden={broaden} />
+      <HunterResults jobs={jobs} selected={latest} busy={busy || clearing} loading={loading} stage={stage} error={error} activeQuery={query} activeLocation={location} activeSources={effectiveSources} onRefresh={() => void load()} onClear={() => setClearReview(true)} onSelect={setSelectedId} onBroaden={broaden} />
     </div>
 
     <Dialog open={review} onOpenChange={setReview}>
