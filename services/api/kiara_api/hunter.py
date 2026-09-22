@@ -9,12 +9,15 @@ import os
 import re
 import socket
 import psycopg
+import threading
+import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Literal
 from urllib.parse import parse_qs, quote, unquote, urlencode, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request as UrlRequest
+from urllib.error import HTTPError
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -48,6 +51,7 @@ ENRICHMENT_TIMEOUT_SECONDS = 25
 HUNTER_MAX_RESULTS = 100
 SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "facebook": "Facebook"}
 logger = logging.getLogger(__name__)
+_PROVIDER_HTTP_SLOTS = threading.BoundedSemaphore(2)
 
 
 class SearchCreate(BaseModel):
@@ -515,9 +519,27 @@ class HunterRepository:
 
 
 def _post_json(url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
-    request = UrlRequest(url, data=json.dumps(body).encode(), headers=headers, method="POST")
-    with build_opener().open(request, timeout=45) as response:
-        return json.loads(response.read())
+    last_error: Exception | None = None
+    for attempt in range(3):
+        request = UrlRequest(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+        try:
+            with _PROVIDER_HTTP_SLOTS, build_opener().open(request, timeout=45) as response:
+                return json.loads(response.read())
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code not in {408, 425, 429, 500, 502, 503, 504} or attempt == 2:
+                raise
+            retry_after = exc.headers.get("Retry-After", "") if exc.headers else ""
+            delay = min(5.0, float(retry_after)) if retry_after.isdigit() else float(2 ** attempt)
+            logger.warning("hunter.provider.retry", extra={"status_code": exc.code, "attempt": attempt + 1})
+            time.sleep(delay)
+        except (OSError, json.JSONDecodeError) as exc:
+            last_error = exc
+            if attempt == 2:
+                raise
+            logger.warning("hunter.provider.retry", extra={"error_class": type(exc).__name__, "attempt": attempt + 1})
+            time.sleep(float(2 ** attempt))
+    raise RuntimeError("provider_retry_exhausted") from last_error
 
 
 async def exa_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
@@ -624,13 +646,11 @@ class _PublicIndexParser(HTMLParser):
             })
 
 
-def _read_public_index(query: str, source: str, limit: int) -> list[dict[str, Any]]:
-    scoped = query
-    domain = DOMAIN_BY_SOURCE.get(source)
-    if domain and f"site:{domain}" not in scoped:
-        scoped = f"site:{domain} {scoped}"
-    endpoint = "https://search.brave.com/search?" + urlencode({"q": scoped, "source": "web"})
-    request = UrlRequest(endpoint, headers={"User-Agent": "Mozilla/5.0"})
+def _read_public_index_endpoint(endpoint: str, source: str, limit: int) -> list[dict[str, Any]]:
+    request = UrlRequest(endpoint, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+    })
     with build_opener().open(request, timeout=20) as response:
         if response.headers.get_content_type() != "text/html":
             raise RuntimeError("public_index_invalid_response")
@@ -640,6 +660,31 @@ def _read_public_index(query: str, source: str, limit: int) -> list[dict[str, An
     parser = _PublicIndexParser(source, min(limit, HUNTER_MAX_RESULTS))
     parser.feed(body.decode("utf-8", errors="replace"))
     return parser.rows
+
+
+def _read_public_index(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    scoped = query
+    domain = DOMAIN_BY_SOURCE.get(source)
+    if domain and f"site:{domain}" not in scoped:
+        scoped = f"site:{domain} {scoped}"
+    endpoints = [
+        "https://search.brave.com/search?" + urlencode({"q": scoped, "source": "web"}),
+        "https://html.duckduckgo.com/html/?" + urlencode({"q": scoped}),
+    ]
+    last_error: Exception | None = None
+    for endpoint in endpoints:
+        try:
+            rows = _read_public_index_endpoint(endpoint, source, limit)
+            if rows:
+                return rows
+        except (OSError, RuntimeError) as exc:
+            last_error = exc
+            logger.warning("hunter.public_index.endpoint_unavailable", extra={
+                "host": urlsplit(endpoint).hostname, "error_class": type(exc).__name__,
+            })
+    if last_error:
+        raise RuntimeError("public_index_unavailable") from last_error
+    return []
 
 
 async def indexed_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:

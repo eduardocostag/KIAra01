@@ -474,6 +474,42 @@ def test_public_search_uses_public_index_when_paid_providers_are_unavailable(mon
     assert [row["title"] for row in rows] == ["Clinica publica"]
 
 
+def test_public_index_uses_independent_second_endpoint(monkeypatch):
+    calls = []
+    def endpoint(url, source, limit):
+        calls.append(url)
+        if "brave.com" in url:
+            raise OSError("rate limited")
+        return [{"source": source, "title": "Fallback", "url": "https://example.org", "summary": ""}]
+    monkeypatch.setattr(hunter, "_read_public_index_endpoint", endpoint)
+    rows = hunter._read_public_index("dentistas Porto Alegre", "web", 10)
+    assert [row["title"] for row in rows] == ["Fallback"]
+    assert len(calls) == 2
+    assert "duckduckgo.com" in calls[1]
+
+
+def test_provider_http_retries_rate_limit_without_exposing_response(monkeypatch):
+    attempts = 0
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self):
+            return b'{"results": []}'
+    class Opener:
+        def open(self, *_args, **_kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise hunter.HTTPError("https://provider.example", 429, "limited", {}, None)
+            return Response()
+    monkeypatch.setattr(hunter, "build_opener", lambda: Opener())
+    monkeypatch.setattr(hunter.time, "sleep", lambda _seconds: None)
+    assert hunter._post_json("https://provider.example", {}, {}) == {"results": []}
+    assert attempts == 3
+
+
 def test_public_index_parser_extracts_original_destination_and_rejects_bad_links():
     parser = hunter._PublicIndexParser("instagram", 5)
     parser.feed(
