@@ -42,7 +42,8 @@ class InMemoryPipelineRepository:
             )
             if item is None:
                 return "missing", None
-            if item["version"] != expected_version:
+            notes_only = set(changes) == {"notes"}
+            if item["version"] != expected_version and not notes_only:
                 return "conflict", None
             entry_changes = dict(changes)
             if "notes" in entry_changes:

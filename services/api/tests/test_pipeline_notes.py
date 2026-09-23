@@ -65,3 +65,26 @@ async def test_notes_can_be_cleared_without_changing_other_consumer_fields() -> 
 def test_notes_have_a_server_side_length_limit() -> None:
     with pytest.raises(ValidationError):
         PipelineUpdate(notes="x" * 5001)
+
+
+@pytest.mark.asyncio
+async def test_notes_merge_over_the_latest_pipeline_version_without_conflict() -> None:
+    entries = [{
+        "id": "entry-a",
+        "organization_id": "org-a",
+        "consumer": {"id": "consumer-a", "display_name": "Cliente A", "instagram_username": None},
+        "stage": "contacted",
+        "next_action": "Retornar amanhã",
+        "version": 8,
+        "updated_at": "2026-09-23T12:00:00Z",
+    }]
+    repository = InMemoryPipelineRepository(entries)
+
+    outcome, saved = await repository.update_entry("org-a", "entry-a", "stale-note-save-01", 3, {"notes": "Cliente pediu proposta."})
+
+    assert outcome == "updated"
+    assert saved is not None
+    assert saved["consumer"]["notes"] == "Cliente pediu proposta."
+    assert saved["stage"] == "contacted"
+    assert saved["next_action"] == "Retornar amanhã"
+    assert saved["version"] == 9

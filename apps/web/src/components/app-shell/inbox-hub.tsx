@@ -79,12 +79,15 @@ function NotesEditor({ entry, onSaved, onRefresh }: { entry: PipelineEntry; onSa
     try {
       let saved: PipelineEntry
       try { saved = await persist(entry) } catch (error) {
-        if (!(error instanceof PipelineRequestError) || error.code !== "version_conflict") throw error
+        if (!(error instanceof PipelineRequestError) || (error.status !== 412 && error.code !== "version_conflict")) throw error
         const latest = parsePipeline(await requestPipeline("/api/pipeline"))
         onRefresh(latest)
         const freshEntry = latest.find((item) => item.id === entry.id)
         if (!freshEntry) throw new Error("Este cliente não está mais disponível. Atualize a lista.")
-        saved = await persist(freshEntry)
+        try { saved = await persist(freshEntry) } catch (retryError) {
+          if (retryError instanceof PipelineRequestError && retryError.status === 412) throw new Error("A Kiara atualizou os dados do cliente. Salve a anotação novamente.")
+          throw retryError
+        }
       }
       onSaved(saved); setNotes(saved.consumer.notes ?? ""); setStatus("saved"); setMessage("Anotação salva neste cliente.")
     } catch (error) {

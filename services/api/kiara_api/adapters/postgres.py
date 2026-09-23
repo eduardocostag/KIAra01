@@ -254,7 +254,8 @@ class PostgresRepository:
             )).fetchone()
             if current is None:
                 return "missing", None
-            if current["version"] != expected_version:
+            notes_only = set(changes) == {"notes"}
+            if current["version"] != expected_version and not notes_only:
                 return "conflict", None
             if "notes" in changes:
                 consumer_row = await (await connection.execute(
