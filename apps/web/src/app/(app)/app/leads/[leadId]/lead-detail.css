@@ -45,10 +45,8 @@
 .kiara-lead-action-list strong { color: #eeeaf8; font-size: .79rem; }
 .kiara-lead-action-list small { margin-top: .12rem; color: #9f9bac; font-size: .69rem; }
 .kiara-lead-action-list > a > svg { color: #9991b1; }
-.kiara-lead-context, .kiara-lead-activities { margin-top: .8rem; scroll-margin-top: 6rem; }
+.kiara-lead-context { margin-top: .8rem; scroll-margin-top: 6rem; }
 .kiara-lead-context p { margin-top: .8rem; color: #b7b4c5; font-size: .82rem; line-height: 1.6; }
-.kiara-lead-activities { margin-top: 1rem; }
-.kiara-lead-activities > section { border: 0; padding-top: .8rem; }
 @media (max-width: 700px) {
   .kiara-lead-main-grid { grid-template-columns: 1fr; }
   .kiara-lead-topline { align-items: flex-start; }

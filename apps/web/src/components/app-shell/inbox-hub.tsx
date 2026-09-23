@@ -11,19 +11,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { LeadContactActions } from "./lead-contact-actions"
 import { PipelineBoard } from "./pipeline-board"
-import { instagramProfileUrl, leadDisplayName, parsePipeline, parsePipelineEntry, PipelineRequestError, requestPipeline, sourceLabels, websiteLabel, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
+import { instagramProfileUrl, leadDisplayName, parsePipelineEntry, requestPipeline, sourceLabels, websiteLabel, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
 import "./inbox-hub.css"
 
-export function InboxHub({ entries: initialEntries, prospectError, initialView }: { entries: PipelineEntry[]; prospectError: string; initialView: string }) {
+export function InboxHub({ entries: initialEntries, prospectError, initialView, initialContactId }: { entries: PipelineEntry[]; prospectError: string; initialView: string; initialContactId: string }) {
   const [entries, setEntries] = useState(initialEntries)
   const [query, setQuery] = useState("")
   const normalizedView = initialView === "pipeline" || initialView === "notes" || initialView === "conversations" ? (initialView === "conversations" ? "notes" : initialView) : "contacts"
+  const requestedContact = initialEntries.find((entry) => entry.id === initialContactId || entry.consumer.id === initialContactId)
   const [view, setView] = useState(normalizedView)
-  const [selectedContactId, setSelectedContactId] = useState(entries[0]?.id ?? "")
+  const [selectedContactId, setSelectedContactId] = useState(requestedContact?.id ?? entries[0]?.id ?? "")
+  const [draftNoteId, setDraftNoteId] = useState(normalizedView === "notes" ? requestedContact?.id ?? "" : "")
   const contacts = entries.filter((entry) => !["won", "lost"].includes(entry.stage))
   const filtered = contacts.filter((entry) => `${leadDisplayName(entry.consumer)} ${entry.consumer.display_name} ${entry.consumer.phone ?? ""}`.toLowerCase().includes(query.toLowerCase()))
   const selectedContact = contacts.find((entry) => entry.id === selectedContactId) ?? filtered[0] ?? contacts[0]
-  const annotatedCount = contacts.filter((entry) => entry.consumer.notes?.trim()).length
+  const annotatedContacts = contacts.filter((entry) => entry.consumer.notes?.trim())
+  const noteContact = contacts.find((entry) => entry.id === draftNoteId) ?? annotatedContacts.find((entry) => entry.id === selectedContactId) ?? annotatedContacts[0]
+  const annotatedCount = annotatedContacts.length
 
   return <Tabs value={view} onValueChange={setView} className="inbox-premium gap-5">
     <TabsList aria-label="Visualização dos leads" className="grid h-auto w-full grid-cols-3 rounded-xl border bg-card/70 p-1 sm:w-fit sm:min-w-[430px]">
@@ -33,11 +37,11 @@ export function InboxHub({ entries: initialEntries, prospectError, initialView }
     </TabsList>
     <div className="kiara-inbox-toolbar">{view === "contacts" ? <div className="kiara-inbox-search"><Search aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-10" placeholder="Buscar um contato" aria-label="Buscar prospectados" /></div> : null}</div>
     <TabsContent value="notes">
-      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <NotesWorkspace entries={contacts} selectedEntry={selectedContact} onSelect={setSelectedContactId} onSaved={(saved) => setEntries((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} onRefresh={setEntries} />}
+      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <NotesWorkspace entries={annotatedContacts} selectedEntry={noteContact} onSelect={(id) => { setDraftNoteId(""); setSelectedContactId(id) }} onSaved={(saved) => { setDraftNoteId(""); setSelectedContactId(saved.id); setEntries((current) => current.map((entry) => entry.id === saved.id ? saved : entry)) }} />}
     </TabsContent>
     <TabsContent value="contacts" className="space-y-4">
       {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : null}
-      {!filtered.length && !prospectError ? <div className="rounded-xl border border-dashed p-10 text-center"><Users className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">{query ? "Nenhum contato corresponde à busca" : "Nenhum contato ainda"}</h3><Button asChild className="mt-5"><Link href="/app/hunter">Pesquisar leads</Link></Button></div> : selectedContact ? <div className="kiara-contact-workspace"><ContactList entries={filtered} selectedId={selectedContact.id} onSelect={setSelectedContactId} /><ContactDossier entry={selectedContact} onOpenNotes={() => setView("notes")} /></div> : null}
+      {!filtered.length && !prospectError ? <div className="rounded-xl border border-dashed p-10 text-center"><Users className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">{query ? "Nenhum contato corresponde à busca" : "Nenhum contato ainda"}</h3><Button asChild className="mt-5"><Link href="/app/hunter">Pesquisar leads</Link></Button></div> : selectedContact ? <div className="kiara-contact-workspace"><ContactList entries={filtered} selectedId={selectedContact.id} onSelect={setSelectedContactId} /><ContactDossier entry={selectedContact} onOpenNotes={() => { setDraftNoteId(selectedContact.id); setView("notes") }} /></div> : null}
     </TabsContent>
     <TabsContent value="pipeline">
       {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <PipelineBoard initialEntries={entries} />}
@@ -57,12 +61,12 @@ function ContactList({ entries, selectedId, onSelect }: { entries: PipelineEntry
   </aside>
 }
 
-function NotesWorkspace({ entries, selectedEntry, onSelect, onSaved, onRefresh }: { entries: PipelineEntry[]; selectedEntry: PipelineEntry | undefined; onSelect: (id: string) => void; onSaved: (entry: PipelineEntry) => void; onRefresh: (entries: PipelineEntry[]) => void }) {
-  if (!selectedEntry) return <div className="rounded-xl border border-dashed p-10 text-center"><NotebookPen className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">Nenhum cliente para anotar</h3><p className="mt-2 text-sm text-muted-foreground">Os clientes encontrados aparecerão aqui.</p></div>
-  return <div className="kiara-contact-workspace kiara-notes-workspace"><ContactList entries={entries} selectedId={selectedEntry.id} onSelect={onSelect} /><NotesEditor key={selectedEntry.id} entry={selectedEntry} onSaved={onSaved} onRefresh={onRefresh} /></div>
+function NotesWorkspace({ entries, selectedEntry, onSelect, onSaved }: { entries: PipelineEntry[]; selectedEntry: PipelineEntry | undefined; onSelect: (id: string) => void; onSaved: (entry: PipelineEntry) => void }) {
+  if (!selectedEntry) return <div className="rounded-xl border border-dashed p-10 text-center"><NotebookPen className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">Nenhuma anotação salva</h3><p className="mt-2 text-sm text-muted-foreground">Use a ação “Anotações” na ficha de um cliente para registrar a primeira.</p></div>
+  return <div className="kiara-contact-workspace kiara-notes-workspace"><ContactList entries={entries} selectedId={selectedEntry.id} onSelect={onSelect} /><NotesEditor key={selectedEntry.id} entry={selectedEntry} onSaved={onSaved} /></div>
 }
 
-function NotesEditor({ entry, onSaved, onRefresh }: { entry: PipelineEntry; onSaved: (entry: PipelineEntry) => void; onRefresh: (entries: PipelineEntry[]) => void }) {
+function NotesEditor({ entry, onSaved }: { entry: PipelineEntry; onSaved: (entry: PipelineEntry) => void }) {
   const [notes, setNotes] = useState(entry.consumer.notes ?? "")
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle")
@@ -70,25 +74,14 @@ function NotesEditor({ entry, onSaved, onRefresh }: { entry: PipelineEntry; onSa
   const changed = notes.trim() !== (entry.consumer.notes ?? "").trim()
 
   async function persist(target: PipelineEntry) {
-    return parsePipelineEntry(await requestPipeline(`/api/pipeline/${encodeURIComponent(target.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": `"${target.version}"`, "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ notes: notes.trim() || null }) }))
+    return parsePipelineEntry(await requestPipeline(`/api/pipeline/${encodeURIComponent(target.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ notes: notes.trim() || null }) }))
   }
 
   async function save() {
     if (!changed || saving) return
     setSaving(true); setStatus("idle"); setMessage("")
     try {
-      let saved: PipelineEntry
-      try { saved = await persist(entry) } catch (error) {
-        if (!(error instanceof PipelineRequestError) || (error.status !== 412 && error.code !== "version_conflict")) throw error
-        const latest = parsePipeline(await requestPipeline("/api/pipeline"))
-        onRefresh(latest)
-        const freshEntry = latest.find((item) => item.id === entry.id)
-        if (!freshEntry) throw new Error("Este cliente não está mais disponível. Atualize a lista.")
-        try { saved = await persist(freshEntry) } catch (retryError) {
-          if (retryError instanceof PipelineRequestError && retryError.status === 412) throw new Error("A Kiara atualizou os dados do cliente. Salve a anotação novamente.")
-          throw retryError
-        }
-      }
+      const saved = await persist(entry)
       onSaved(saved); setNotes(saved.consumer.notes ?? ""); setStatus("saved"); setMessage("Anotação salva neste cliente.")
     } catch (error) {
       setStatus("error"); setMessage(error instanceof Error ? error.message : "Não foi possível salvar a anotação.")

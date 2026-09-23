@@ -44,11 +44,6 @@ def create_pipeline_router(repository: PipelineRepository) -> APIRouter:
         if_match: Annotated[str | None, Header(alias="If-Match")] = None,
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     ) -> JSONResponse:
-        if if_match is None:
-            raise ApiError(428, "precondition_required", "Cabeçalho If-Match obrigatório.")
-        match = _ETAG.fullmatch(if_match)
-        if match is None:
-            raise ApiError(400, "invalid_if_match", "Cabeçalho If-Match inválido.")
         if idempotency_key is None:
             raise ApiError(400, "idempotency_key_required", "Idempotency-Key obrigatório.")
         if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
@@ -56,8 +51,14 @@ def create_pipeline_router(repository: PipelineRepository) -> APIRouter:
         changes = update.model_dump(exclude_unset=True)
         if not changes:
             raise ApiError(422, "empty_update", "Informe ao menos uma alteração.")
+        notes_only = set(changes) == {"notes"}
+        if not notes_only and if_match is None:
+            raise ApiError(428, "precondition_required", "Cabeçalho If-Match obrigatório.")
+        match = _ETAG.fullmatch(if_match or "")
+        if not notes_only and match is None:
+            raise ApiError(400, "invalid_if_match", "Cabeçalho If-Match inválido.")
         entry = await service.update_entry(
-            context, entry_id, idempotency_key, int(match.group(1)), changes
+            context, entry_id, idempotency_key, 0 if notes_only else int(match.group(1)), changes
         )
         response = JSONResponse(content=entry)
         response.headers["ETag"] = f'"{entry["version"]}"'
