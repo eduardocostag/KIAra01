@@ -8,18 +8,18 @@ import logging
 import os
 import re
 import socket
-import psycopg
 import threading
 import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Literal
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request as UrlRequest
-from urllib.error import HTTPError
 from uuid import UUID
 
+import psycopg
 from fastapi import APIRouter, Depends, Header, Request
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, field_validator
@@ -41,7 +41,11 @@ from .hunter_research import (
     safe_public_url,
     website_opportunity,
 )
-from .scraping_adapters import analyze_with_scrapegraph, fetch_public_with_scrapling, parse_with_scrapling
+from .scraping_adapters import (
+    analyze_with_scrapegraph,
+    fetch_public_with_scrapling,
+    parse_with_scrapling,
+)
 
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "facebook"}
 DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "facebook": "facebook.com", "google_maps": "google.com"}
@@ -449,10 +453,11 @@ class HunterRepository:
                         )
                 except (psycopg.errors.CheckViolation, psycopg.DataError) as exc:
                     rejected_results += 1
+                    constraint_name = getattr(getattr(exc, "diag", None), "constraint_name", None)
                     logger.exception(
                         "hunter.result_rejected request_id=%s search_id=%s source=%s error_class=%s constraint=%s",
                         context.correlation_id, search_id, result.get("source"), type(exc).__name__,
-                        getattr(getattr(exc, "diag", None), "constraint_name", None),
+                        constraint_name,
                     )
             if rejected_results:
                 outcome_warnings.append(
@@ -1216,7 +1221,7 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
             return rows[:limit]
         try:
             indexed = await maps_index_search(query, limit)
-        except Exception as exc:  # noqa: BLE001 — partial browser results remain useful
+        except Exception as exc:
             logger.warning("hunter.maps.index_supplement_unavailable", extra={"error_class": type(exc).__name__})
             if rows:
                 return rows[:limit]
@@ -1233,6 +1238,13 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
                 break
         return merged
 
+    async def local_or_index() -> list[dict[str, Any]]:
+        try:
+            return await supplement(await _read_maps_local(query, limit))
+        except Exception as exc:  # noqa: BLE001 — public index remains the final no-browser fallback
+            logger.warning("hunter.maps.local_browser_unavailable", extra={"error_class": type(exc).__name__})
+            return await maps_index_search(query, limit)
+
     try:
         places = await google_places_search(query, limit)
         if places:
@@ -1243,11 +1255,7 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     obscura = _obscura_connection()
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
     if not obscura and (not key or not project):
-        try:
-            return await supplement(await _read_maps_local(query, limit))
-        except Exception as exc:  # noqa: BLE001 — the public index remains the final fallback
-            logger.warning("hunter.maps.local_browser_unavailable", extra={"error_class": type(exc).__name__})
-        return await maps_index_search(query, limit)
+        return await local_or_index()
     try:
         import playwright.async_api  # noqa: F401 — check optional dependency before creating a paid session
     except ImportError as exc:
@@ -1265,7 +1273,7 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         return await maps_index_search(query, limit)
     if _browserbase_circuit_open():
         logger.warning("hunter.maps.browserbase_circuit_open")
-        return await maps_index_search(query, limit)
+        return await local_or_index()
     try:
         from browserbase import Browserbase
     except ImportError as exc:
@@ -1279,9 +1287,13 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
             "error_class": type(exc).__name__, "provider_status": getattr(exc, "status_code", None),
         })
         client.close()
-        return await maps_index_search(query, limit)
+        return await local_or_index()
     try:
-        return await supplement(await _read_maps_cdp(session.connect_url, query, limit))
+        try:
+            return await supplement(await _read_maps_cdp(session.connect_url, query, limit))
+        except Exception as exc:  # noqa: BLE001 — a local browser can recover a broken remote session
+            logger.warning("hunter.maps.browserbase_session_failed", extra={"error_class": type(exc).__name__})
+            return await local_or_index()
     finally:
         try:
             await asyncio.wait_for(asyncio.to_thread(client.sessions.update, session.id,

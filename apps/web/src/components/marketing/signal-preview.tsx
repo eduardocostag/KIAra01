@@ -9,7 +9,7 @@ const leads = [
 
 export function SignalPreview() {
   return (
-    <div className="reference-hero-scene" aria-label="Prévia ilustrativa da Kiara encontrando e organizando leads">
+    <div className="reference-hero-scene" role="group" aria-label="Prévia ilustrativa da Kiara encontrando e organizando leads">
       <div className="reference-main-orb"><span className="reference-main-ring ring-a" /><span className="reference-main-ring ring-b" /><KiaraOrb size="lg" active /></div>
 
       <div className="reference-skill skill-a"><Building2 /><span>Identifica empresas<strong>com alto potencial</strong></span></div>

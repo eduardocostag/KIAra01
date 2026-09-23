@@ -49,11 +49,12 @@ def create_conversation_router(commands: ConversationCommands) -> APIRouter:
         context: Annotated[RequestContext, Depends(authenticated_context)],
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
         if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+        kiara_version: Annotated[str | None, Header(alias="X-Kiara-Version")] = None,
     ) -> dict[str, object]:
         draft = await commands.approve_draft(
             context=context,
             draft_id=draft_id,
-            if_match=if_match,
+            if_match=kiara_version or if_match,
             idempotency_key=idempotency_key,
         )
         response.headers["ETag"] = f'"{draft["version"]}"'

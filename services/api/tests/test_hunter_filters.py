@@ -441,6 +441,28 @@ def test_browserbase_billing_failure_opens_temporary_circuit():
         hunter._BROWSERBASE_DISABLED_UNTIL = previous
 
 
+def test_browserbase_open_circuit_uses_local_maps_before_public_index(monkeypatch):
+    monkeypatch.setenv("BROWSERBASE_API_KEY", "test-key")
+    monkeypatch.setenv("BROWSERBASE_PROJECT_ID", "test-project")
+    monkeypatch.setattr(hunter, "_browserbase_circuit_open", lambda: True)
+    calls = []
+
+    async def local(query, limit):
+        calls.append(("local", query, limit))
+        return [{"source": "google_maps", "title": "Pet Shop Belém", "url": "https://google.com/maps/place/pet-shop", "summary": "", "public_data": {"detail_inspected": True}}]
+
+    async def indexed(query, limit):
+        calls.append(("index", query, limit))
+        return []
+
+    monkeypatch.setattr(hunter, "_read_maps_local", local)
+    monkeypatch.setattr(hunter, "maps_index_search", indexed)
+    rows = asyncio.run(hunter.maps_search("pet shops Belém PA", 30))
+
+    assert rows[0]["public_data"]["detail_inspected"] is True
+    assert calls[0] == ("local", "pet shops Belém PA", 30)
+
+
 def test_cross_source_identity_deduplication_is_conservative():
     duplicated = [
         {"source": "web", "title": "Clínica Aurora", "url": "https://aurora.example", "summary": "Telefone: +55 51 99999-0000"},

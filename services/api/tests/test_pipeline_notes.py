@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from kiara_api.adapters.pipeline_memory import InMemoryPipelineRepository
 from kiara_api.http.routes.pipeline import PipelineUpdate
+from pydantic import ValidationError
 
 
 @pytest.mark.asyncio

@@ -10,23 +10,46 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
-from kiara_api.hunter import _instagram_profile_matches, execute_research, inspect_instagram_bios, maps_search, public_search
+from kiara_api.hunter import (
+    _instagram_profile_matches,
+    execute_research,
+    inspect_instagram_bios,
+    maps_search,
+    public_search,
+)
 from kiara_api.hunter_research import is_editorial_or_post, safe_public_url
 
-
 SCENARIOS = [
+    # Web: capitais, cidades do interior, estados e limites extremos.
+    ("advogados trabalhistas", "Belo Horizonte MG", "web", 1),
     ("clinicas", "Porto Alegre", "web", 50),
     ("dentistas", "Rio Grande do Sul", "web", 100),
     ("psiquiatras", "São Paulo", "web", 50),
     ("educador fisico", "Curitiba", "web", 50),
     ("agencias", "Rio Grande do Sul", "web", 50),
+    ("contadores", "Recife PE", "web", 30),
+    ("arquitetos", "Goiânia GO", "web", 30),
+    ("clínicas veterinárias", "Manaus AM", "web", 30),
+    # Instagram: profissões e segmentos correlatos em regiões distintas.
     ("dentistas", "Porto Alegre", "instagram", 50),
     ("psiquiatras", "São Paulo", "instagram", 50),
     ("educador fisico", "Curitiba", "instagram", 50),
     ("agencias", "Rio Grande do Sul", "instagram", 50),
     ("clinicas", "Paraná", "instagram", 100),
+    ("fisioterapeutas", "Florianópolis SC", "instagram", 30),
+    ("nutricionistas", "Salvador BA", "instagram", 30),
+    # Facebook: páginas públicas de negócios e profissionais.
+    ("dentistas", "Porto Alegre RS", "facebook", 50),
+    ("imobiliárias", "São Paulo SP", "facebook", 50),
+    ("restaurantes", "Fortaleza CE", "facebook", 30),
+    ("escolas de idiomas", "Brasília DF", "facebook", 30),
+    ("oficinas mecânicas", "Campinas SP", "facebook", 100),
+    # Maps: descoberta local e detalhes empresariais.
     ("clinicas", "Porto Alegre", "google_maps", 30),
     ("dentistas", "Rio Grande do Sul", "google_maps", 30),
+    ("academias", "Rio de Janeiro RJ", "google_maps", 50),
+    ("contabilidades", "Caxias do Sul RS", "google_maps", 30),
+    ("pet shops", "Belém PA", "google_maps", 30),
 ]
 
 
@@ -55,7 +78,7 @@ async def run_case(niche: str, location: str, source: str, limit: int) -> dict[s
 
 
 async def main() -> None:
-    if "--flow" in sys.argv or "--flow-instagram" in sys.argv:
+    if "--flow" in sys.argv or "--flow-instagram" in sys.argv or "--flow-all" in sys.argv:
         flow_cases = [
             ("dentistas", "Porto Alegre", "instagram", 30),
             ("clinicas", "Porto Alegre", "google_maps", 30),
@@ -63,20 +86,25 @@ async def main() -> None:
         ]
         if "--flow-instagram" in sys.argv:
             flow_cases = flow_cases[:1]
+        elif "--flow-all" in sys.argv:
+            flow_cases = [("dentistas", "Porto Alegre RS", "all", 80)]
         for niche, location, source, limit in flow_cases:
-            search = {"query": niche, "location": location, "sources": [source],
+            sources = ["web", "google_maps", "instagram", "facebook"] if source == "all" else [source]
+            search = {"query": niche, "location": location, "sources": sources,
                       "result_limit": limit, "market": "b2b", "research_mode": "broad"}
             try:
                 outcome = await execute_research(search)
                 report = {"niche": niche, "location": location, "source": source,
                           "requested": limit, "accepted": len(outcome["results"]),
                           "validation": outcome["validation"], "error": outcome["error"]}
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — each live scenario must report and continue
                 report = {"niche": niche, "location": location, "source": source,
                           "error_class": type(exc).__name__, "error": str(exc)[:80]}
             print(json.dumps(report, ensure_ascii=False), flush=True)
         return
-    scenarios = [case for case in SCENARIOS if case[2] == "instagram"] if "--instagram" in sys.argv else SCENARIOS
+    selected_source = next((source for source in ("web", "instagram", "facebook", "google_maps")
+                            if f"--{source}" in sys.argv), None)
+    scenarios = [case for case in SCENARIOS if case[2] == selected_source] if selected_source else SCENARIOS
     for scenario in scenarios:
         try:
             result = await run_case(*scenario)

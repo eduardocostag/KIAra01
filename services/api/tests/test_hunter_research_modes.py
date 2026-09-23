@@ -1,6 +1,5 @@
-import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError

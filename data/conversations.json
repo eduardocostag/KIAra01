@@ -3,7 +3,7 @@
     {
       "id": "conversation-1787771212289594",
       "title": "teste do usuário",
-      "updated_at": "2026-09-16T18:48:46.089987+00:00",
+      "updated_at": "2026-09-23T19:55:14.881040+00:00",
       "messages": [
         {
           "author": "Você",
@@ -379,6 +379,66 @@
           "author": "Você",
           "text": "busque empresas",
           "created_at": "2026-09-16T18:48:46.089987+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-09-23T18:02:44.664880+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-09-23T18:02:44.679613+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-09-23T18:02:45.378896+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-09-23T18:15:14.228584+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-09-23T18:15:14.239586+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-09-23T18:15:14.721623+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-09-23T18:24:05.217978+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-09-23T18:24:05.230034+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-09-23T18:24:06.038198+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-09-23T19:55:14.346338+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-09-23T19:55:14.359913+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-09-23T19:55:14.881040+00:00"
         }
       ]
     },

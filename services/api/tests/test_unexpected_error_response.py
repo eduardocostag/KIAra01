@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from kiara_api.main import create_app
 from kiara_api.hunter import SearchCreate
+from kiara_api.main import create_app
 
 
 def test_unexpected_errors_return_json_with_a_traceable_request_id():

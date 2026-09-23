@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, Clock3, Radar, Search } from "lucide-react"
+import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, Radar, Search } from "lucide-react"
 import { OrbitScene } from "@/components/brand/orbit-scene"
 import { SourceMark } from "@/components/brand/source-mark"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
@@ -25,12 +25,10 @@ export default async function DashboardPage() {
     getInboxDTO().then((data) => ({ conversations: data.conversations, available: true })).catch(() => ({ conversations: [], available: false })),
   ])
   const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
-  const scheduled = pipeline.entries.filter((entry) => entry.next_action_at && !["won", "lost"].includes(entry.stage))
   const now = new Date().getTime()
   const nextHref = fresh.length ? "/app/inbox?view=contacts" : "/app/hunter"
   const metrics = [
     { label: "Novos leads", value: pipeline.available ? fresh.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/inbox?view=contacts" },
-    { label: "Follow-ups", value: pipeline.available ? scheduled.length : "—", icon: Clock3, href: "/app/followups" },
     { label: "Em acompanhamento", value: pipeline.available ? pipeline.entries.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/inbox?view=pipeline" },
   ]
   const recent = [...pipeline.entries].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5)

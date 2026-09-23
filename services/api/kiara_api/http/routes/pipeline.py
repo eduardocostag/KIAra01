@@ -42,21 +42,23 @@ def create_pipeline_router(repository: PipelineRepository) -> APIRouter:
         update: PipelineUpdate,
         context: Annotated[RequestContext, Depends(authenticated_context)],
         if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+        kiara_version: Annotated[str | None, Header(alias="X-Kiara-Version")] = None,
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     ) -> JSONResponse:
-        if idempotency_key is None:
-            raise ApiError(400, "idempotency_key_required", "Idempotency-Key obrigatório.")
-        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
-            raise ApiError(400, "invalid_idempotency_key", "Idempotency-Key inválido.")
         changes = update.model_dump(exclude_unset=True)
         if not changes:
             raise ApiError(422, "empty_update", "Informe ao menos uma alteração.")
         notes_only = set(changes) == {"notes"}
-        if not notes_only and if_match is None:
-            raise ApiError(428, "precondition_required", "Cabeçalho If-Match obrigatório.")
-        match = _ETAG.fullmatch(if_match or "")
+        version_header = kiara_version or if_match
+        if not notes_only and version_header is None:
+            raise ApiError(428, "precondition_required", "Cabeçalho X-Kiara-Version obrigatório.")
+        match = _ETAG.fullmatch(version_header or "")
         if not notes_only and match is None:
-            raise ApiError(400, "invalid_if_match", "Cabeçalho If-Match inválido.")
+            raise ApiError(400, "invalid_if_match", "Cabeçalho X-Kiara-Version inválido.")
+        if idempotency_key is None:
+            raise ApiError(400, "idempotency_key_required", "Idempotency-Key obrigatório.")
+        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            raise ApiError(400, "invalid_idempotency_key", "Idempotency-Key inválido.")
         entry = await service.update_entry(
             context, entry_id, idempotency_key, 0 if notes_only else int(match.group(1)), changes
         )

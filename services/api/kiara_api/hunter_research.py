@@ -287,9 +287,8 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
             return False
         if first == "profile.php" and "id=" in urlsplit(url).query.lower():
             return False
-        if (len(segments) == 2 and first in {"posts", "photos", "videos", "p"}) or (len(segments) >= 3 and segments[1].lower() in {"posts", "photos", "videos"}):
-            return False
-        return True
+        return not ((len(segments) == 2 and first in {"posts", "photos", "videos", "p"})
+                    or (len(segments) >= 3 and segments[1].lower() in {"posts", "photos", "videos"}))
     if item.get("source") == "web":
         title = folded(str(item.get("title") or ""))
         return bool(re.search(r"/(?:blog|artigos?|noticias?|news|posts?)(?:/|$)", path)

@@ -6,7 +6,6 @@ import re
 from typing import Any
 from urllib.parse import urljoin
 
-
 MAX_PUBLIC_PAGE_BYTES = 2_000_000
 
 

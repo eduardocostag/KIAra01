@@ -8,7 +8,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   return kiaraApi(`/v1/pipeline/${encodeURIComponent(id)}`, {
     method: "PATCH", body: JSON.stringify(body), headers: {
-      "If-Match": request.headers.get("if-match") ?? "",
+      "X-Kiara-Version": request.headers.get("x-kiara-version") ?? request.headers.get("if-match") ?? "",
       "Idempotency-Key": request.headers.get("idempotency-key") ?? "",
     },
   })

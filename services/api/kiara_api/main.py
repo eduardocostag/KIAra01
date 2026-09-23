@@ -131,6 +131,7 @@ def create_app(
             "Content-Type",
             "Idempotency-Key",
             "If-Match",
+            "X-Kiara-Version",
             "X-Correlation-ID",
         ],
     )

@@ -9,7 +9,7 @@ const leads = [
 
 export function ProductPreview() {
   return (
-    <div className="product-window" aria-label="Prévia ilustrativa da área de Leads da Kiara">
+    <div className="product-window" role="group" aria-label="Prévia ilustrativa da área de Leads da Kiara">
       <div className="product-window-bar">
         <div className="flex items-center gap-2"><span className="product-window-dot" /><strong>Leads</strong></div>
         <div className="product-window-search"><Search className="size-3" />Buscar lead...</div>

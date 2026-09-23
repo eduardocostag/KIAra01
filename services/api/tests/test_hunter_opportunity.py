@@ -1,4 +1,8 @@
-from services.api.kiara_api.hunter_research import filter_results, research_options, website_opportunity
+from services.api.kiara_api.hunter_research import (
+    filter_results,
+    research_options,
+    website_opportunity,
+)
 
 
 def test_free_text_understands_missing_email_and_weak_site() -> None:

@@ -46,7 +46,7 @@ def client(*, organization_id: str = "org_demo", role: str = "operator") -> Test
 
 
 AUTH = {"Authorization": "Bearer test-token"}
-COMMAND = {**AUTH, "If-Match": '"1"', "Idempotency-Key": "pipeline-command-0001"}
+COMMAND = {**AUTH, "X-Kiara-Version": '"1"', "Idempotency-Key": "pipeline-command-0001"}
 
 
 def test_pipeline_is_tenant_scoped_and_requires_operator() -> None:
@@ -136,3 +136,18 @@ def test_pipeline_update_rejects_missing_or_reused_idempotency_key() -> None:
     assert first.status_code == 200
     assert reused.status_code == 409
     assert reused.json()["error"]["code"] == "idempotency_conflict"
+
+
+def test_pipeline_notes_save_without_etag_and_preserve_pipeline_fields() -> None:
+    with client() as api:
+        saved = api.patch(
+            "/v1/pipeline/pipeline_demo_01",
+            headers={**AUTH, "Idempotency-Key": "pipeline-note-save-001"},
+            json={"notes": "Cliente prefere contato pela manhã."},
+        )
+
+    assert saved.status_code == 200
+    payload = saved.json()
+    assert payload["consumer"]["notes"] == "Cliente prefere contato pela manhã."
+    assert payload["stage"] == "qualified"
+    assert payload["next_action"] == "Responder pelo Instagram"

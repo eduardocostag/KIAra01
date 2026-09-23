@@ -55,7 +55,7 @@ export function PipelineBoard({ initialEntries }: { initialEntries: PipelineEntr
     if (!selected) return
     setSaving(true); setError(""); setNotice("")
     try {
-      const save = (entry: PipelineEntry) => requestPipeline(`/api/pipeline/${encodeURIComponent(entry.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": `"${entry.version}"`, "Idempotency-Key": `pipeline-${entry.id}-${Date.now()}` }, body: JSON.stringify(changes) })
+      const save = (entry: PipelineEntry) => requestPipeline(`/api/pipeline/${encodeURIComponent(entry.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "X-Kiara-Version": `"${entry.version}"`, "Idempotency-Key": `pipeline-${entry.id}-${Date.now()}` }, body: JSON.stringify(changes) })
       let saved: unknown
       try {
         saved = await save(selected)

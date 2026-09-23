@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -157,7 +158,7 @@ def test_scrapling_fetcher_is_bounded_and_uses_safe_redirects(monkeypatch: pytes
     class Page:
         status = 200
         body = b'<html><body><h1>Clinica</h1><a href="/contato">Contato</a></body></html>'
-        headers = {"Content-Type": "text/html; charset=utf-8"}
+        headers: ClassVar[dict[str, str]] = {"Content-Type": "text/html; charset=utf-8"}
         encoding = "utf-8"
         url = "https://clinic.example/home"
 
