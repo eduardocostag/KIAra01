@@ -13,9 +13,10 @@ const features = [
 ]
 
 const questions = [
-  ["Que tipo de lead posso pesquisar?", "Você define profissão ou nicho, localidade, presença digital, contato necessário e as fontes da pesquisa."],
-  ["Os dados de clientes ficam separados?", "Sim. Leads, pesquisas, histórico e configurações são organizados por workspace."],
-  ["A Kiara envia mensagens automaticamente?", "Não. A Kiara prepara o contexto e abre o canal disponível; o envio continua sob seu controle."],
+  ["Como a Kiara encontra novos leads?", "Você define o perfil, a localidade e as fontes. A Kiara pesquisa, reúne os dados disponíveis e organiza os resultados para revisão."],
+  ["Quais informações aparecem em cada lead?", "Origem, telefone, WhatsApp, Instagram, site e endereço aparecem quando estiverem disponíveis nas fontes consultadas."],
+  ["O que acontece depois da pesquisa?", "Você revisa os resultados, adiciona as oportunidades ao Pipeline e acompanha etapas, atividades e próximos contatos."],
+  ["Preciso conectar Instagram ou Google?", "Não para começar. Você pode usar as fontes públicas disponíveis. Quando um recurso depender de conta ou API, a Kiara informa antes da pesquisa qual conexão é necessária."],
 ]
 
 const segments = [
