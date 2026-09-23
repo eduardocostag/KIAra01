@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { ArrowRight, Check, ContactRound, Globe2, History, Search, ShieldCheck, Workflow } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,15 @@ const questions = [
   ["A Kiara envia mensagens automaticamente?", "Não. A Kiara prepara o contexto e abre o canal disponível; o envio continua sob seu controle."],
 ]
 
+const segments = [
+  ["Saúde", "Clínicas e consultórios"],
+  ["Tecnologia", "Startups e empresas de TI"],
+  ["Indústria", "Fabricantes e fornecedores"],
+  ["Serviços", "Agências e consultorias"],
+  ["Educação", "Escolas e cursos"],
+  ["Varejo", "Lojas e e-commerces"],
+]
+
 export function LandingPage() {
   return (
     <div className="marketing-shell min-h-svh overflow-hidden bg-background text-foreground">
@@ -32,7 +42,7 @@ export function LandingPage() {
         <nav aria-label="Navegação principal" className="mx-auto flex h-[70px] max-w-[1320px] items-center gap-6 px-5 sm:px-8">
           <Link href="/" className="rounded-xl focus-visible:outline-offset-4" aria-label="Kiara Lead Intelligence, início"><KiaraBrand inverse /></Link>
           <div className="ml-auto hidden items-center gap-7 md:flex">
-            <Link href="#produto" className="marketing-nav-link">Produto</Link><Link href="#recursos" className="marketing-nav-link">Recursos</Link><Link href="#duvidas" className="marketing-nav-link">Dúvidas</Link>
+            <Link href="#produto" className="marketing-nav-link">Produto</Link><Link href="#segmentos" className="marketing-nav-link">Soluções</Link><Link href="#recursos" className="marketing-nav-link">Recursos</Link><Link href="#duvidas" className="marketing-nav-link">Dúvidas</Link>
           </div>
           <div className="ml-auto flex items-center gap-1.5 md:ml-3">
             <Button asChild variant="ghost" className="h-10 px-3 text-white/72 hover:bg-white/8 hover:text-white"><Link href="/sign-in">Entrar</Link></Button>
@@ -42,8 +52,10 @@ export function LandingPage() {
       </header>
 
       <main id="conteudo">
-        <section className="marketing-reference-hero relative mx-auto grid max-w-[1320px] items-center gap-12 px-5 pb-16 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[.82fr_1.18fr] lg:pb-20">
-          <div className="marketing-aurora pointer-events-none absolute inset-0 -z-10" aria-hidden="true" /><div className="marketing-dot-field pointer-events-none absolute -right-48 top-0 -z-10 size-[680px] opacity-45" aria-hidden="true" />
+        <section className="marketing-reference-hero relative mx-auto grid max-w-[1440px] items-center gap-12 overflow-hidden px-5 pb-16 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[.82fr_1.18fr] lg:pb-20">
+          <Image src="/images/kiara-hero-ai.png" alt="" fill priority sizes="100vw" className="marketing-hero-art" />
+          <div className="marketing-hero-shade" aria-hidden="true" />
+          <div className="marketing-dot-field pointer-events-none absolute -right-48 top-0 z-[1] size-[680px] opacity-30" aria-hidden="true" />
           <div className="relative z-10 max-w-[535px]">
             <p className="eyebrow">Prospecção organizada, do início ao avanço</p><h1 className="hero-display mt-5 text-balance text-white">Encontre leads e avance com clareza.</h1>
             <p className="mt-6 max-w-[500px] text-pretty text-base leading-7 text-white/58">Pesquise oportunidades, revise os dados encontrados e conduza cada lead pelo Pipeline.</p>
@@ -60,7 +72,14 @@ export function LandingPage() {
           <div className="mt-12"><ProductPreview /></div>
         </section>
 
-        <section id="recursos" className="border-y border-white/8 bg-white/[.016]"><div className="mx-auto max-w-[1320px] px-5 py-20 sm:px-8 sm:py-24">
+        <section id="segmentos" className="reference-segments border-y border-white/8 bg-white/[.016]">
+          <div className="mx-auto max-w-[1320px] px-5 py-20 sm:px-8 sm:py-24">
+            <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><p className="eyebrow">Soluções por segmento</p><h2 className="mt-4 max-w-md text-4xl font-semibold leading-[1.04] tracking-[-.045em] text-white">Prospecção para diferentes mercados.</h2></div><p className="max-w-md text-sm leading-6 text-white/46">Use filtros e fontes adequados ao público que sua empresa precisa encontrar.</p></div>
+            <div className="segment-card-track mt-10">{segments.map(([title, copy], index) => <article className="segment-card" key={title}><div className={`segment-photo segment-${index}`}><Image src="/images/kiara-segments.png" alt={`Profissional do segmento de ${title}`} fill sizes="100vw" /></div><div className="segment-card-copy"><h3>{title}</h3><p>{copy}</p><Link href="/sign-up">Encontrar leads <ArrowRight /></Link></div></article>)}</div>
+          </div>
+        </section>
+
+        <section id="recursos"><div className="mx-auto max-w-[1320px] px-5 py-20 sm:px-8 sm:py-24">
           <div className="max-w-xl"><p className="eyebrow">O essencial, bem resolvido</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.045em] text-white">Três etapas. Um único fluxo.</h2></div>
           <div className="mt-10 grid gap-4 lg:grid-cols-3">{features.map(({ icon: Icon, eyebrow, title, copy }, index) => <article className="reference-feature-card" key={eyebrow}><div className="reference-feature-visual"><span className={`reference-orbit orbit-${index + 1}`} /><Icon /></div><p className="eyebrow mt-6">{eyebrow}</p><h3 className="mt-2 text-xl font-semibold tracking-[-.025em] text-white">{title}</h3><p className="mt-3 text-sm leading-6 text-white/48">{copy}</p></article>)}</div>
         </div></section>
