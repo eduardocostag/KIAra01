@@ -404,6 +404,40 @@ def test_maps_without_browser_credentials_uses_free_index_before_playwright(monk
     assert rows[0]["title"] == "Perfil público"
 
 
+def test_google_places_is_primary_maps_provider_when_configured(monkeypatch):
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-key")
+
+    def post(_url, headers, body):
+        assert headers["X-Goog-Api-Key"] == "test-key"
+        assert body["textQuery"] == "dentistas Porto Alegre"
+        return {"places": [{
+            "id": "place-1", "displayName": {"text": "Clínica Aurora"},
+            "formattedAddress": "Porto Alegre, RS", "internationalPhoneNumber": "+55 51 99999-0000",
+            "websiteUri": "https://aurora.example", "googleMapsUri": "https://maps.google.com/?cid=1",
+            "rating": 4.8, "userRatingCount": 92,
+        }]}
+
+    async def no_supplement(_query, _limit):
+        return []
+
+    monkeypatch.setattr(hunter, "_post_json", post)
+    monkeypatch.setattr(hunter, "maps_index_search", no_supplement)
+    rows = asyncio.run(hunter.maps_search("dentistas Porto Alegre", 1))
+    assert rows[0]["public_data"]["provider"] == "google_places"
+    assert rows[0]["public_data"]["place_id"] == "place-1"
+    assert rows[0]["public_data"]["website_status"] == "present"
+
+
+def test_cross_source_identity_deduplication_is_conservative():
+    duplicated = [
+        {"source": "web", "title": "Clínica Aurora", "url": "https://aurora.example", "summary": "Telefone: +55 51 99999-0000"},
+        {"source": "google_maps", "title": "Clínica Aurora", "url": "https://google.com/maps/place/aurora", "summary": "", "public_data": {"phone": "+5551999990000", "detail_inspected": True}},
+        {"source": "google_maps", "title": "Clínica Boreal", "url": "https://google.com/maps/place/boreal", "summary": "", "public_data": {"phone": "+5551999990000", "detail_inspected": True}},
+    ]
+    kept, _ = filter_results(duplicated, search("clínicas"))
+    assert [row["title"] for row in kept] == ["Clínica Aurora", "Clínica Boreal"]
+
+
 def test_large_complex_search_preserves_matching_leads_after_filters(monkeypatch):
     candidates = [maps_result(f"psicologo-{i}", website=None if i % 2 else "https://site.example")
                   for i in range(100)]

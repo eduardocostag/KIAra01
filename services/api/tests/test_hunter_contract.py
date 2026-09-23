@@ -118,6 +118,26 @@ async def test_native_enrichment_requires_no_external_credentials(monkeypatch: p
 
 
 @pytest.mark.asyncio
+async def test_native_enrichment_inspects_relevant_internal_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = {
+        "https://aurora.example": ("Clínica Aurora", ["https://aurora.example/contato", "https://aurora.example/blog"], "scrapling_http"),
+        "https://aurora.example/contato": ("Contato: +55 11 99999-0000 equipe@aurora.example", [], "scrapling_http"),
+    }
+    calls: list[str] = []
+
+    def fetch(url: str):
+        calls.append(url)
+        return pages[url]
+
+    monkeypatch.setattr("kiara_api.hunter._fetch_public_page", fetch)
+    results = [{"source": "web", "url": "https://aurora.example", "title": "Aurora", "public_data": {}}]
+    await native_enrich_results(results)
+    assert calls == ["https://aurora.example", "https://aurora.example/contato"]
+    assert results[0]["public_data"]["pages_inspected"] == 2
+    assert results[0]["public_data"]["email"] == "equipe@aurora.example"
+
+
+@pytest.mark.asyncio
 async def test_native_enrichment_never_fetches_meta_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(_url: str):
         raise AssertionError("Meta pages must not enter generic Scrapling enrichment")

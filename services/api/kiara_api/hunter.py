@@ -716,6 +716,37 @@ async def public_search(query: str, source: str, limit: int) -> list[dict[str, A
         raise RuntimeError("public_index_unavailable") from index_exc
 
 
+async def multi_public_search(queries: list[str], source: str, limit: int) -> list[dict[str, Any]]:
+    """Search a few auditable variants and merge them without duplicate URLs."""
+    unique_queries = list(dict.fromkeys(query.strip() for query in queries if query.strip()))[:3]
+    batches = await asyncio.gather(
+        *(public_search(query, source, limit) for query in unique_queries), return_exceptions=True,
+    )
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    errors: list[BaseException] = []
+    for batch in batches:
+        if isinstance(batch, BaseException):
+            errors.append(batch)
+            continue
+        for row in batch:
+            url = safe_public_url(row.get("url"))
+            if url:
+                parts = urlsplit(url)
+                identity = f"{parts.scheme.lower()}://{(parts.hostname or '').lower()}{parts.path.rstrip('/').lower()}"
+            else:
+                identity = f"invalid:{row.get('url')}:{row.get('title')}"
+            if identity in seen:
+                continue
+            seen.add(identity)
+            merged.append(row)
+            if len(merged) >= limit:
+                return merged
+    if not merged and errors:
+        raise RuntimeError(str(errors[0])) from errors[0]
+    return merged
+
+
 class _InstagramBioParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -964,16 +995,41 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
     async def enrich(item: dict[str, Any]) -> None:
         async with slots:
             try:
-                content, links, provider = await asyncio.to_thread(_fetch_public_page, item["public_data"]["enrichment_url"])
+                target = item["public_data"]["enrichment_url"]
+                content, links, provider = await asyncio.to_thread(_fetch_public_page, target)
                 if not content.strip():
                     return
-                contacts = extract_contacts(content, links)
-                quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
+                target_host = (urlsplit(target).hostname or "").lower().removeprefix("www.")
+                relevant = re.compile(r"/(?:contato|contact|fale-conosco|sobre|about|equipe|team|unidades?|locations?|servicos?|services?)(?:/|$)", re.I)
+                internal_pages: list[str] = []
+                for link in links:
+                    safe = safe_public_url(link)
+                    parts = urlsplit(safe) if safe else None
+                    host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
+                    if safe and host == target_host and relevant.search(parts.path) and safe.rstrip("/") != target.rstrip("/"):
+                        if safe not in internal_pages:
+                            internal_pages.append(safe)
+                    if len(internal_pages) >= 3:
+                        break
+                page_count = 1
+                combined_content = content[:40000]
+                combined_links = list(links[:500])
+                for page_url in internal_pages:
+                    try:
+                        child_content, child_links, _ = await asyncio.to_thread(_fetch_public_page, page_url)
+                    except (OSError, ValueError, TypeError, AttributeError, UnicodeError):
+                        continue
+                    page_count += 1
+                    combined_content = (combined_content + "\n" + child_content[:30000])[:100000]
+                    combined_links.extend(child_links[:300])
+                contacts = extract_contacts(combined_content, combined_links)
+                quality, signals = website_opportunity(target, combined_content, combined_links)
                 item["public_data"].update({
                     "enrichment": "completed", "provider": provider, **contacts,
                     "website_quality_score": quality, "website_quality_signals": signals,
+                    "pages_inspected": page_count,
                 })
-                item["summary"] = clean_summary(content)
+                item["summary"] = clean_summary(combined_content)
             except (OSError, ValueError, TypeError, AttributeError, UnicodeError):
                 item["public_data"].setdefault("enrichment", "unavailable")
 
@@ -1079,6 +1135,62 @@ async def obscura_enrich_results(results: list[dict[str, Any]]) -> None:
             await browser.close()
 
 
+async def google_places_search(query: str, limit: int) -> list[dict[str, Any]]:
+    """Use Places Text Search when the server administrator configured it."""
+    key = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("google_places_not_configured")
+    field_mask = (
+        "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,"
+        "places.internationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.primaryType,"
+        "places.types,places.rating,places.userRatingCount,places.businessStatus,nextPageToken"
+    )
+    rows: list[dict[str, Any]] = []
+    page_token: str | None = None
+    while len(rows) < min(limit, HUNTER_MAX_RESULTS):
+        body: dict[str, Any] = {
+            "textQuery": query, "languageCode": "pt-BR", "regionCode": "BR",
+            "pageSize": min(20, limit - len(rows)),
+        }
+        if page_token:
+            body["pageToken"] = page_token
+        response = await asyncio.to_thread(
+            _post_json, "https://places.googleapis.com/v1/places:searchText",
+            {"Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": field_mask}, body,
+        )
+        for place in response.get("places") or []:
+            place_id = str(place.get("id") or "").strip()
+            display = place.get("displayName") or {}
+            title = display.get("text") if isinstance(display, dict) else display
+            if not place_id or not title:
+                continue
+            maps_url = safe_public_url(place.get("googleMapsUri"))
+            website = safe_public_url(place.get("websiteUri"))
+            phone = place.get("internationalPhoneNumber") or place.get("nationalPhoneNumber")
+            rating, reviews = place.get("rating"), place.get("userRatingCount")
+            summary = [place.get("primaryType") or "Perfil empresarial no Google Maps"]
+            if rating is not None:
+                summary.append(f"Nota {rating}" + (f" ({reviews} avaliações)" if reviews is not None else ""))
+            rows.append({
+                "source": "google_maps", "title": str(title),
+                "url": maps_url or f"https://www.google.com/maps/place/?q=place_id:{quote(place_id, safe='')}",
+                "summary": " · ".join(summary),
+                "public_data": {
+                    "provider": "google_places", "place_id": place_id, "detail_inspected": True,
+                    "address": place.get("formattedAddress"), "phone": phone, "website_url": website,
+                    "website_status": "present" if website else "not_listed",
+                    "business_status": place.get("businessStatus"), "rating": rating,
+                    "user_rating_count": reviews, "types": place.get("types") or [],
+                },
+            })
+            if len(rows) >= limit:
+                break
+        page_token = response.get("nextPageToken")
+        if not page_token or len(rows) >= limit:
+            break
+    return rows[:limit]
+
+
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     async def supplement(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(rows) >= limit:
@@ -1101,6 +1213,13 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
             if len(merged) >= limit:
                 break
         return merged
+
+    try:
+        places = await google_places_search(query, limit)
+        if places:
+            return await supplement(places)
+    except Exception as exc:  # noqa: BLE001 - browser/index providers remain independent fallbacks
+        logger.info("hunter.google_places.unavailable", extra={"error_class": type(exc).__name__})
 
     obscura = _obscura_connection()
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
@@ -1321,6 +1440,15 @@ def expanded_research_query(search: dict[str, Any]) -> str:
     return f"{base}. Critério de interesse: {objective}" if objective else base
 
 
+def research_query_variants(search: dict[str, Any]) -> list[str]:
+    """Cover semantic, concise, and contact-oriented provider phrasing."""
+    options = research_options(search)
+    primary = expanded_research_query(search)
+    concise = " ".join(filter(None, [options["provider_query"], search.get("location")]))
+    contact = f"{concise} contato telefone site"
+    return list(dict.fromkeys(value.strip() for value in (primary, concise, contact) if value.strip()))
+
+
 def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
     """Keep indexed Instagram candidates; record what the public evidence actually proves."""
     url = safe_public_url(row.get("url"))
@@ -1391,7 +1519,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
     query = research_query(search)
-    expanded_query = expanded_research_query(search)
+    expanded_queries = research_query_variants(search)
     logger.info("hunter.research.started", extra={
         "sources": search["sources"], "result_limit": search["result_limit"],
         "has_location": bool(search.get("location")), "research_mode": search.get("research_mode", "broad"),
@@ -1400,7 +1528,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     # Filter after recall: never spend the user's result allowance on rejects.
     per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
     def source_task(source: str) -> asyncio.Task[list[dict[str, Any]]]:
-        operation = maps_search(query, per_source) if source == "google_maps" else public_search(expanded_query, source, per_source)
+        operation = maps_search(query, per_source) if source == "google_maps" else multi_public_search(expanded_queries, source, per_source)
         return asyncio.create_task(operation)
 
     def valid_task(task: asyncio.Task[Any]) -> bool:
@@ -1417,7 +1545,8 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     retry_sources = [source for source, task in tasks.items() if not valid_task(task)]
     if retry_sources:
         retries = {source: source_task(source) for source in retry_sources}
-        _, retry_pending = await asyncio.wait(retries.values(), timeout=SOURCE_RETRY_TIMEOUT_SECONDS)
+        retry_timeout = min(SOURCE_RETRY_TIMEOUT_SECONDS, SOURCE_TIMEOUT_SECONDS)
+        _, retry_pending = await asyncio.wait(retries.values(), timeout=retry_timeout)
         for task in retry_pending:
             task.cancel()
         await asyncio.gather(*retry_pending, return_exceptions=True)

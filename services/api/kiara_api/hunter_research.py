@@ -305,7 +305,21 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
     for raw in items:
         item = normalize_result(raw)
         data = item["public_data"]
-        if not data["source_url"] or data["source_url"] in seen or is_editorial_or_post(item):
+        source_parts = urlsplit(data["source_url"]) if data["source_url"] else None
+        normalized_source = (
+            f"{source_parts.scheme.lower()}://{(source_parts.hostname or '').lower()}"
+            f"{source_parts.path.rstrip('/').lower()}" if source_parts else ""
+        )
+        identities = {f"url:{normalized_source}"} if normalized_source else set()
+        if data.get("place_id"):
+            identities.add(f"place:{str(data['place_id']).lower()}")
+        if data.get("phone"):
+            identities.add(f"phone:{re.sub(r'\D', '', str(data['phone']))}:{folded(item['title'])}")
+        website_url = safe_public_url(data.get("website_url"))
+        if website_url and data.get("address"):
+            website_host = (urlsplit(website_url).hostname or "").lower().removeprefix("www.")
+            identities.add(f"business:{website_host}:{folded(str(data['address']))}:{folded(item['title'])}")
+        if not data["source_url"] or identities & seen or is_editorial_or_post(item):
             counts["excluded"] += 1
             continue
         website = options["website_filter"]
@@ -333,7 +347,7 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             counts["excluded"] += 1
             counts["unknown"] += int(unknown and not rejected)
             continue
-        seen.add(data["source_url"])
+        seen.update(identities)
         is_social_publication = (item["source"] in {"instagram", "facebook"} and data.get("content_kind") == "publication")
         is_social_missing_evidence = (
             item["source"] in {"instagram", "facebook"}
