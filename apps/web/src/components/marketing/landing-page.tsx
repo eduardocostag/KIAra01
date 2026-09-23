@@ -1,17 +1,10 @@
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, Check, ContactRound, Globe2, History, Search, ShieldCheck, Workflow } from "lucide-react"
+import { ArrowRight, Check, ContactRound, Globe2, Workflow } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { Button } from "@/components/ui/button"
 import { ProductPreview } from "./product-preview"
 import { SignalPreview } from "./signal-preview"
-
-const capabilities = [
-  { icon: Search, label: "4 fontes", detail: "na pesquisa" },
-  { icon: Workflow, label: "6 etapas", detail: "no Pipeline" },
-  { icon: ContactRound, label: "Ficha única", detail: "por lead" },
-  { icon: History, label: "Histórico", detail: "de atividades" },
-]
 
 const features = [
   { icon: Globe2, eyebrow: "Hunter", title: "Busque por perfil e região.", copy: "Escolha as fontes, defina os critérios e acompanhe os resultados da pesquisa." },
@@ -38,6 +31,7 @@ export function LandingPage() {
   return (
     <div className="marketing-shell min-h-svh overflow-hidden bg-background text-foreground">
       <a href="#conteudo" className="skip-link">Pular para o conteúdo</a>
+      <div className="marketing-backdrop-effects" aria-hidden="true"><i className="backdrop-orbit orbit-a" /><i className="backdrop-orbit orbit-b" /><i className="backdrop-glow glow-a" /><i className="backdrop-glow glow-b" /></div>
       <header className="marketing-header sticky top-0 z-40 border-b border-white/8 bg-[#0d0c16]/78 backdrop-blur-2xl">
         <nav aria-label="Navegação principal" className="mx-auto flex h-[70px] max-w-[1320px] items-center gap-6 px-5 sm:px-8">
           <Link href="/" className="rounded-xl focus-visible:outline-offset-4" aria-label="Kiara Lead Intelligence, início"><KiaraBrand inverse /></Link>
@@ -65,34 +59,30 @@ export function LandingPage() {
           <div className="relative z-10"><SignalPreview /></div>
         </section>
 
-        <section className="marketing-proof-strip border-y border-white/8 bg-white/[.018]"><div className="mx-auto grid max-w-[1320px] grid-cols-2 md:grid-cols-4">{capabilities.map(({ icon: Icon, label, detail }) => <div key={label} className="marketing-proof-item"><Icon /><p><strong>{label}</strong><span>{detail}</span></p></div>)}</div></section>
-
-        <section id="produto" className="mx-auto max-w-[1320px] px-5 py-20 sm:px-8 sm:py-28">
-          <div className="grid items-end gap-6 lg:grid-cols-[.75fr_1.25fr]"><div><p className="eyebrow">Uma visão completa</p><h2 className="mt-4 max-w-lg text-balance text-4xl font-semibold leading-[1.05] tracking-[-.045em] text-white sm:text-5xl">Da pesquisa ao relacionamento.</h2></div><p className="max-w-lg text-sm leading-6 text-white/50 lg:justify-self-end">A Kiara reúne descoberta, revisão e acompanhamento sem duplicar informações entre telas.</p></div>
-          <div className="mt-12"><ProductPreview /></div>
+        <section id="produto" className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
+          <div><p className="eyebrow">Uma visão completa</p><h2 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-[1.05] tracking-[-.045em] text-white sm:text-5xl">Da pesquisa ao relacionamento.</h2></div>
+          <div className="mt-9"><ProductPreview /></div>
         </section>
 
         <section id="segmentos" className="reference-segments border-y border-white/8 bg-white/[.016]">
-          <div className="mx-auto max-w-[1320px] px-5 py-20 sm:px-8 sm:py-24">
+          <div className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
             <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><p className="eyebrow">Soluções por segmento</p><h2 className="mt-4 max-w-md text-4xl font-semibold leading-[1.04] tracking-[-.045em] text-white">Prospecção para diferentes mercados.</h2></div><p className="max-w-md text-sm leading-6 text-white/46">Use filtros e fontes adequados ao público que sua empresa precisa encontrar.</p></div>
             <div className="segment-card-track mt-10">{segments.map(([title, copy], index) => <article className="segment-card" key={title}><div className={`segment-photo segment-${index}`}><Image src="/images/kiara-segments.png" alt={`Profissional do segmento de ${title}`} fill sizes="100vw" /></div><div className="segment-card-copy"><h3>{title}</h3><p>{copy}</p><Link href="/sign-up">Encontrar leads <ArrowRight /></Link></div></article>)}</div>
           </div>
         </section>
 
-        <section id="recursos"><div className="mx-auto max-w-[1320px] px-5 py-20 sm:px-8 sm:py-24">
+        <section id="recursos"><div className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
           <div className="max-w-xl"><p className="eyebrow">O essencial, bem resolvido</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.045em] text-white">Três etapas. Um único fluxo.</h2></div>
           <div className="mt-10 grid gap-4 lg:grid-cols-3">{features.map(({ icon: Icon, eyebrow, title, copy }, index) => <article className="reference-feature-card" key={eyebrow}><div className="reference-feature-visual"><span className={`reference-orbit orbit-${index + 1}`} /><Icon /></div><p className="eyebrow mt-6">{eyebrow}</p><h3 className="mt-2 text-xl font-semibold tracking-[-.025em] text-white">{title}</h3><p className="mt-3 text-sm leading-6 text-white/48">{copy}</p></article>)}</div>
         </div></section>
 
-        <section id="duvidas" className="mx-auto grid max-w-[1320px] gap-12 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[.72fr_1.28fr]">
+        <section id="duvidas" className="mx-auto grid max-w-[1320px] gap-10 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[.72fr_1.28fr]">
           <div><p className="eyebrow">Dúvidas frequentes</p><h2 className="mt-4 max-w-sm text-4xl font-semibold tracking-[-.045em] text-white">Direto ao ponto.</h2><p className="mt-4 max-w-sm text-sm leading-6 text-white/46">O que você precisa saber antes de começar.</p></div>
           <div className="reference-faq">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}</div>
         </section>
 
-        <section className="px-5 pb-20 sm:px-8 sm:pb-24"><div className="reference-final-cta mx-auto max-w-[1320px]"><div className="reference-cta-orb" aria-hidden="true" /><div className="relative"><p className="eyebrow">Comece com uma pesquisa</p><h2 className="mt-3 max-w-xl text-balance text-3xl font-semibold tracking-[-.04em] text-white sm:text-5xl">Transforme buscas em oportunidades organizadas.</h2></div><Button asChild size="lg" className="relative h-12 shrink-0 rounded-xl px-6"><Link href="/sign-up">Criar minha conta <ArrowRight /></Link></Button></div></section>
+        <section className="px-5 pb-14 sm:px-8 sm:pb-16"><div className="reference-final-cta mx-auto max-w-[1320px]"><div className="reference-cta-orb" aria-hidden="true" /><div className="relative"><p className="eyebrow">Comece com uma pesquisa</p><h2 className="mt-3 max-w-xl text-balance text-3xl font-semibold tracking-[-.04em] text-white sm:text-5xl">Transforme buscas em oportunidades organizadas.</h2></div><Button asChild size="lg" className="relative h-12 shrink-0 rounded-xl px-6"><Link href="/sign-up">Criar minha conta <ArrowRight /></Link></Button></div></section>
       </main>
-
-      <footer className="border-t border-white/8"><div className="mx-auto flex max-w-[1320px] flex-col gap-5 px-5 py-8 text-xs text-white/34 sm:flex-row sm:items-center sm:justify-between sm:px-8"><KiaraBrand inverse /><div className="flex flex-wrap items-center gap-4"><span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5" />Dados por workspace</span><span>© 2026 Kiara Lead Intelligence</span></div></div></footer>
     </div>
   )
 }
