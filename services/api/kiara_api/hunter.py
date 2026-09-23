@@ -41,7 +41,7 @@ from .hunter_research import (
     safe_public_url,
     website_opportunity,
 )
-from .scraping_adapters import analyze_with_scrapegraph, parse_with_scrapling
+from .scraping_adapters import analyze_with_scrapegraph, fetch_public_with_scrapling, parse_with_scrapling
 
 ALLOWED_SOURCES = {"web", "google_maps", "instagram", "facebook"}
 DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "facebook": "facebook.com", "google_maps": "google.com"}
@@ -913,8 +913,16 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _fetch_public_page(url: str) -> tuple[str, list[str]]:
+def _fetch_public_page(url: str) -> tuple[str, list[str], str]:
     _assert_public_destination(url)
+    try:
+        text, links, final_url = fetch_public_with_scrapling(url)
+        _assert_public_destination(final_url)
+        return text, links, "scrapling_http"
+    except (ImportError, ModuleNotFoundError, OSError, ValueError, TypeError, AttributeError, UnicodeError) as exc:
+        logger.info("hunter.scrapling.fetch_fallback", extra={
+            "url_host": urlsplit(url).hostname, "error_class": type(exc).__name__,
+        })
     request = UrlRequest(url, headers={
         "User-Agent": "KiaraResearchBot/1.0 (+public-contact-research)",
         "Accept": "text/html,application/xhtml+xml;q=0.9",
@@ -930,11 +938,12 @@ def _fetch_public_page(url: str) -> tuple[str, list[str]]:
         page_url = response.geturl()
     html = payload.decode(charset, errors="replace")
     try:
-        return parse_with_scrapling(html, page_url)
+        text, links = parse_with_scrapling(html, page_url)
+        return text, links, "kiara_native"
     except (ImportError, ValueError, TypeError):
         parser = _PublicHtmlParser(page_url)
         parser.feed(html)
-        return " ".join(parser.text)[:40000], parser.links[:500]
+        return " ".join(parser.text)[:40000], parser.links[:500], "python_html_parser"
 
 
 async def native_enrich_results(results: list[dict[str, Any]]) -> None:
@@ -945,7 +954,9 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
         if data.get("enrichment") == "completed":
             continue
         target = safe_public_url(data.get("website_url")) or (safe_public_url(item.get("url")) if item.get("source") == "web" else None)
-        if target and len(candidates) < 12:
+        host = (urlsplit(target).hostname or "").lower().removeprefix("www.") if target else ""
+        is_meta = host in {"instagram.com", "facebook.com", "fb.com"} or host.endswith((".instagram.com", ".facebook.com"))
+        if target and not is_meta and len(candidates) < 12:
             data["enrichment_url"] = target
             candidates.append(item)
     slots = asyncio.Semaphore(4)
@@ -953,13 +964,13 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
     async def enrich(item: dict[str, Any]) -> None:
         async with slots:
             try:
-                content, links = await asyncio.to_thread(_fetch_public_page, item["public_data"]["enrichment_url"])
+                content, links, provider = await asyncio.to_thread(_fetch_public_page, item["public_data"]["enrichment_url"])
                 if not content.strip():
                     return
                 contacts = extract_contacts(content, links)
                 quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
                 item["public_data"].update({
-                    "enrichment": "completed", "provider": "kiara_native", **contacts,
+                    "enrichment": "completed", "provider": provider, **contacts,
                     "website_quality_score": quality, "website_quality_signals": signals,
                 })
                 item["summary"] = clean_summary(content)

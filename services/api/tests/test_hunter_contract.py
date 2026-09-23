@@ -12,6 +12,7 @@ from kiara_api.hunter import (
     native_enrich_results,
     semantic_enrich_results,
 )
+from kiara_api.scraping_adapters import fetch_public_with_scrapling
 
 
 def test_hunter_requires_supported_sources_and_bounded_limit() -> None:
@@ -108,12 +109,59 @@ def test_native_fetch_rejects_private_destinations() -> None:
 async def test_native_enrichment_requires_no_external_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "kiara_api.hunter._fetch_public_page",
-        lambda _url: ("Telefone: +55 11 99999-0000 contato@aurora.com.br", ["https://wa.me/5511999990000"]),
+        lambda _url: ("Telefone: +55 11 99999-0000 contato@aurora.com.br", ["https://wa.me/5511999990000"], "scrapling_http"),
     )
     results = [{"source": "web", "url": "https://aurora.example", "title": "Aurora", "public_data": {}}]
     await native_enrich_results(results)
-    assert results[0]["public_data"]["provider"] == "kiara_native"
+    assert results[0]["public_data"]["provider"] == "scrapling_http"
     assert results[0]["public_data"]["whatsapp_url"] == "https://wa.me/5511999990000"
+
+
+@pytest.mark.asyncio
+async def test_native_enrichment_never_fetches_meta_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(_url: str):
+        raise AssertionError("Meta pages must not enter generic Scrapling enrichment")
+
+    monkeypatch.setattr("kiara_api.hunter._fetch_public_page", forbidden)
+    results = [
+        {"source": "instagram", "url": "https://instagram.com/public.profile", "title": "Instagram", "public_data": {"website_url": "https://instagram.com/public.profile"}},
+        {"source": "facebook", "url": "https://facebook.com/public.page", "title": "Facebook", "public_data": {"website_url": "https://facebook.com/public.page"}},
+    ]
+    await native_enrich_results(results)
+    assert all("enrichment_url" not in row["public_data"] for row in results)
+
+
+def test_scrapling_fetcher_is_bounded_and_uses_safe_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    class Page:
+        status = 200
+        body = b'<html><body><h1>Clinica</h1><a href="/contato">Contato</a></body></html>'
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+        encoding = "utf-8"
+        url = "https://clinic.example/home"
+
+    class Fetcher:
+        @staticmethod
+        def get(url, **options):
+            captured.update({"url": url, **options})
+            return Page()
+
+    import types
+    fetchers = types.ModuleType("scrapling.fetchers")
+    fetchers.Fetcher = Fetcher
+    monkeypatch.setitem(sys.modules, "scrapling.fetchers", fetchers)
+    monkeypatch.setattr(
+        "kiara_api.scraping_adapters.parse_with_scrapling",
+        lambda _html, _base_url: ("Clinica Contato", ["https://clinic.example/contato"]),
+    )
+    text, links, final_url = fetch_public_with_scrapling("https://clinic.example")
+    assert text == "Clinica Contato"
+    assert links == ["https://clinic.example/contato"]
+    assert final_url == "https://clinic.example/home"
+    assert captured["follow_redirects"] == "safe"
+    assert captured["max_redirects"] == 5
+    assert captured["retries"] == 1
 
 
 @pytest.mark.asyncio
