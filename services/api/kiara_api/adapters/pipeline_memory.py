@@ -44,7 +44,11 @@ class InMemoryPipelineRepository:
                 return "missing", None
             if item["version"] != expected_version:
                 return "conflict", None
-            item.update(changes)
+            entry_changes = dict(changes)
+            if "notes" in entry_changes:
+                notes = entry_changes.pop("notes")
+                item["consumer"]["notes"] = notes.strip() if isinstance(notes, str) else None
+            item.update(entry_changes)
             item["version"] += 1
             item["updated_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             public = self._public(item)

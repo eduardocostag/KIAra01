@@ -29,6 +29,7 @@ export type PipelineEntry = {
     address?: string | null
     research_query?: string | null
     search_id?: string | null
+    notes?: string | null
   }
 }
 
@@ -99,7 +100,7 @@ export function parsePipelineEntry(value: unknown): PipelineEntry {
     (item.consumer.instagram_username != null && typeof item.consumer.instagram_username !== "string")) {
     throw new Error("A API retornou dados incompletos do Pipeline. Tente atualizar.")
   }
-  for (const field of ["phone", "whatsapp_url", "source_url", "source", "website_status", "website_url", "address", "research_query", "search_id"] as const) {
+  for (const field of ["phone", "whatsapp_url", "source_url", "source", "website_status", "website_url", "address", "research_query", "search_id", "notes"] as const) {
     if (item.consumer[field] != null && typeof item.consumer[field] !== "string") throw new Error("Contato inválido no Pipeline.")
   }
   return { ...item, consumer: { ...item.consumer,

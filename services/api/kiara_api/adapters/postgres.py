@@ -250,20 +250,36 @@ class PostgresRepository:
             if replay is not None:
                 return "updated", replay
             current = await (await connection.execute(
-                "SELECT version FROM pipeline_entries WHERE organization_id=%s AND id=%s FOR UPDATE", (organization_uuid, entry_uuid)
+                "SELECT version,consumer_id FROM pipeline_entries WHERE organization_id=%s AND id=%s FOR UPDATE", (organization_uuid, entry_uuid)
             )).fetchone()
             if current is None:
                 return "missing", None
             if current["version"] != expected_version:
                 return "conflict", None
+            if "notes" in changes:
+                consumer_row = await (await connection.execute(
+                    "SELECT attributes FROM consumers WHERE organization_id=%s AND id=%s FOR UPDATE",
+                    (organization_uuid, current["consumer_id"]),
+                )).fetchone()
+                attributes = dict((consumer_row or {}).get("attributes") or {})
+                notes = changes["notes"]
+                if isinstance(notes, str) and notes.strip():
+                    attributes["notes"] = notes.strip()
+                else:
+                    attributes.pop("notes", None)
+                await connection.execute(
+                    "UPDATE consumers SET attributes=%s,updated_at=now() WHERE organization_id=%s AND id=%s",
+                    (json.dumps(attributes), organization_uuid, current["consumer_id"]),
+                )
             assignments, values = [], []
             for column in ("stage", "next_action"):
                 if column in changes:
                     assignments.append(f"{column}=%s")
                     values.append(changes[column])
+            assignments.extend(["version=version+1", "updated_at=now()"])
             values.extend([organization_uuid, entry_uuid])
             row = await (await connection.execute(
-                f"UPDATE pipeline_entries SET {', '.join(assignments)}, version=version+1, updated_at=now() WHERE organization_id=%s AND id=%s RETURNING id,stage,next_action,version,updated_at,consumer_id",
+                f"UPDATE pipeline_entries SET {', '.join(assignments)} WHERE organization_id=%s AND id=%s RETURNING id,stage,next_action,version,updated_at,consumer_id",
                 values,
             )).fetchone()
             consumer = await (await connection.execute(
@@ -308,9 +324,12 @@ class PostgresRepository:
 
     def _pipeline(self, row: dict[str, Any]) -> dict[str, Any]:
         hunter = (row.get("attributes") or {}).get("hunter") or {}
+        notes = (row.get("attributes") or {}).get("notes")
         consumer = {"id": str(row["consumer_id"]),
                     "display_name": row["display_name"] or "Contato sem nome",
                     "instagram_username": row["instagram_username"] or None}
+        if isinstance(notes, str):
+            consumer["notes"] = notes
         for key in ("phone", "whatsapp_url", "source_url", "source", "website_status",
                     "website_url", "research_query", "search_id", "location", "address",
                     "website_evidence", "criterion_status"):

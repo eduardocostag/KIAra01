@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...application.pipeline import PipelineService
 from ...ports.pipeline import PipelineRepository
@@ -22,6 +22,7 @@ class PipelineUpdate(BaseModel):
 
     stage: Literal["new", "qualified", "contacted", "opportunity", "won", "lost"] | None = None
     next_action: str | None = None
+    notes: str | None = Field(default=None, max_length=5000)
 
 
 def create_pipeline_router(repository: PipelineRepository) -> APIRouter:

@@ -57,6 +57,21 @@
 .kiara-contact-quick-actions small { margin-top: .1rem; color: #8e8b9c; font-size: .61rem; }
 .kiara-contact-description { margin-top: .7rem; }
 .kiara-contact-description p { margin-top: .65rem; color: #aaa7b4; font-size: .72rem; line-height: 1.6; }
+.kiara-notes-editor { min-width: 0; overflow-y: auto; padding: clamp(1rem, 3vw, 2rem); background: radial-gradient(circle at 75% 5%, rgb(126 75 238 / .13), transparent 32%), #0f121b; }
+.kiara-notes-editor > header { display: flex; align-items: center; gap: .85rem; border-bottom: 1px solid var(--border); padding-bottom: 1.15rem; }
+.kiara-notes-editor > header > span { display: grid; width: 2.75rem; height: 2.75rem; flex: none; place-items: center; border: 1px solid rgb(168 126 255 / .25); border-radius: .8rem; background: #2d1e58; color: #cbb2ff; }
+.kiara-notes-editor > header svg { width: 1.15rem; height: 1.15rem; }
+.kiara-notes-editor > header p { color: #9693a2; font-size: .68rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.kiara-notes-editor > header h2 { margin-top: .15rem; color: #f0edf6; font-size: 1.05rem; font-weight: 750; }
+.kiara-notes-field { margin-top: 1.35rem; }
+.kiara-notes-field > label { display: block; margin-bottom: .55rem; color: #d8d3e2; font-size: .78rem; font-weight: 650; }
+.kiara-notes-field textarea { min-height: 280px; resize: vertical; border-color: rgb(157 119 237 / .2); background: rgb(19 21 31 / .82); padding: 1rem; color: #e9e5ef; line-height: 1.65; }
+.kiara-notes-field textarea:focus-visible { border-color: rgb(171 132 255 / .7); }
+.kiara-notes-field > div { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .75rem; }
+.kiara-notes-field > div > span { color: #777583; font-size: .67rem; font-variant-numeric: tabular-nums; }
+.kiara-notes-field > p { margin-top: .7rem; font-size: .72rem; }
+.kiara-notes-field > p.is-saved { color: #72d8ad; }
+.kiara-notes-field > p.is-error { color: var(--destructive); }
 @media (max-width: 850px) { .kiara-contact-workspace { height: auto; min-height: 0; grid-template-columns: 1fr; } .kiara-contact-list { display: flex; border-right: 0; border-bottom: 1px solid var(--border); gap: .4rem; overflow-x: auto; overflow-y: hidden; } .kiara-contact-list-title { display: none; } .kiara-contact-list > button { min-width: 210px; } .kiara-contact-dossier { overflow-y: visible; } }
 @media (max-width: 1100px) { .kiara-contact-dossier > header { grid-template-columns: minmax(0,1fr); } .kiara-contact-header-actions { justify-content: flex-start; } }
 @media (max-width: 600px) { .kiara-contact-dossier { padding: .8rem; } .kiara-contact-header-actions { flex-wrap: wrap; justify-content: flex-start; } .kiara-contact-grid { grid-template-columns: 1fr; } }
