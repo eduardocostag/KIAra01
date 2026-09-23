@@ -428,6 +428,19 @@ def test_google_places_is_primary_maps_provider_when_configured(monkeypatch):
     assert rows[0]["public_data"]["website_status"] == "present"
 
 
+def test_browserbase_billing_failure_opens_temporary_circuit():
+    class BillingError(Exception):
+        status_code = 402
+
+    previous = hunter._BROWSERBASE_DISABLED_UNTIL
+    try:
+        hunter._BROWSERBASE_DISABLED_UNTIL = 0.0
+        hunter._trip_browserbase_circuit(BillingError())
+        assert hunter._browserbase_circuit_open() is True
+    finally:
+        hunter._BROWSERBASE_DISABLED_UNTIL = previous
+
+
 def test_cross_source_identity_deduplication_is_conservative():
     duplicated = [
         {"source": "web", "title": "Clínica Aurora", "url": "https://aurora.example", "summary": "Telefone: +55 51 99999-0000"},

@@ -80,8 +80,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except Exception as error:
-        print(json.dumps({"error_type": type(error).__name__, "sqlstate": getattr(error, "sqlstate", None)}))
-        sys.exit(1)
+    asyncio.run(main(), loop_factory=asyncio.SelectorEventLoop)

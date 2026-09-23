@@ -52,6 +52,22 @@ HUNTER_MAX_RESULTS = 100
 SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "facebook": "Facebook"}
 logger = logging.getLogger(__name__)
 _PROVIDER_HTTP_SLOTS = threading.BoundedSemaphore(2)
+_BROWSERBASE_CIRCUIT_LOCK = threading.Lock()
+_BROWSERBASE_DISABLED_UNTIL = 0.0
+
+
+def _browserbase_circuit_open() -> bool:
+    with _BROWSERBASE_CIRCUIT_LOCK:
+        return time.monotonic() < _BROWSERBASE_DISABLED_UNTIL
+
+
+def _trip_browserbase_circuit(error: Exception) -> None:
+    """Back off configuration/billing failures that cannot recover immediately."""
+    if getattr(error, "status_code", None) not in {401, 402, 403}:
+        return
+    global _BROWSERBASE_DISABLED_UNTIL
+    with _BROWSERBASE_CIRCUIT_LOCK:
+        _BROWSERBASE_DISABLED_UNTIL = max(_BROWSERBASE_DISABLED_UNTIL, time.monotonic() + 900)
 
 
 class SearchCreate(BaseModel):
@@ -1000,15 +1016,18 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
                 if not content.strip():
                     return
                 target_host = (urlsplit(target).hostname or "").lower().removeprefix("www.")
-                relevant = re.compile(r"/(?:contato|contact|fale-conosco|sobre|about|equipe|team|unidades?|locations?|servicos?|services?)(?:/|$)", re.I)
+                relevant = re.compile(
+                    r"/(?:contato|contact|fale-conosco|sobre|about|equipe|team|unidades?|locations?|servicos?|services?)(?:/|$)",
+                    re.IGNORECASE,
+                )
                 internal_pages: list[str] = []
                 for link in links:
                     safe = safe_public_url(link)
                     parts = urlsplit(safe) if safe else None
                     host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
-                    if safe and host == target_host and relevant.search(parts.path) and safe.rstrip("/") != target.rstrip("/"):
-                        if safe not in internal_pages:
-                            internal_pages.append(safe)
+                    if (safe and host == target_host and relevant.search(parts.path)
+                            and safe.rstrip("/") != target.rstrip("/") and safe not in internal_pages):
+                        internal_pages.append(safe)
                     if len(internal_pages) >= 3:
                         break
                 page_count = 1
@@ -1244,6 +1263,9 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
             logger.warning("hunter.obscura.maps_failed", extra={"error_class": type(exc).__name__})
     if not key or not project:
         return await maps_index_search(query, limit)
+    if _browserbase_circuit_open():
+        logger.warning("hunter.maps.browserbase_circuit_open")
+        return await maps_index_search(query, limit)
     try:
         from browserbase import Browserbase
     except ImportError as exc:
@@ -1252,7 +1274,10 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     try:
         session = await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
     except Exception as exc:  # noqa: BLE001 — indexed public Maps pages remain available
-        logger.warning("hunter.maps.browserbase_unavailable", extra={"error_class": type(exc).__name__})
+        _trip_browserbase_circuit(exc)
+        logger.warning("hunter.maps.browserbase_unavailable", extra={
+            "error_class": type(exc).__name__, "provider_status": getattr(exc, "status_code", None),
+        })
         client.close()
         return await maps_index_search(query, limit)
     try:
