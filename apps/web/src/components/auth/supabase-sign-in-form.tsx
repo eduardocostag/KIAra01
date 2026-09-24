@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createClient } from "@/lib/supabase/browser"
+import { supabaseConfig } from "@/lib/supabase/config"
 
 export function SupabaseSignInForm() {
   const router = useRouter()
-  const [email, setEmail] = useState("")
+  const [login, setLogin] = useState("")
   const [password, setPassword] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,12 +24,38 @@ export function SupabaseSignInForm() {
     setError(null)
     try {
       const supabase = createClient()
-      const result = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      const identifier = login.trim().toLowerCase()
+      const email = identifier === "admin" ? "admin@kiara.local" : identifier
+      const result = await supabase.auth.signInWithPassword({ email, password })
       if (result.error) throw result.error
       router.replace("/app")
       router.refresh()
     } catch {
       setError("E-mail ou senha inválidos. Confira os dados liberados para sua conta.")
+      setBusy(false)
+    }
+  }
+
+  async function signInWithGoogle() {
+    setBusy(true)
+    setError(null)
+    try {
+      const { url, publishableKey } = supabaseConfig()
+      const settingsResponse = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: publishableKey } })
+      const settings = await settingsResponse.json() as { external?: { google?: boolean } }
+      if (!settings.external?.google) {
+        setError("O acesso pelo Google está aguardando a ativação do provedor. Entre com e-mail e senha ou fale com o suporte.")
+        setBusy(false)
+        return
+      }
+      const supabase = createClient()
+      const result = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=/app` },
+      })
+      if (result.error) throw result.error
+    } catch {
+      setError("O acesso pelo Google ainda não está disponível. Entre com e-mail e senha ou fale com o suporte.")
       setBusy(false)
     }
   }
@@ -45,23 +72,30 @@ export function SupabaseSignInForm() {
 
         {error ? <Alert variant="destructive"><LockKeyhole /><AlertTitle>Não foi possível entrar</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
 
+        <Button type="button" variant="outline" size="lg" className="h-12 w-full border-white/12 bg-white/[.04] text-white hover:bg-white/[.09] hover:text-white" disabled={busy} onClick={signInWithGoogle}>
+          <span className="grid size-5 place-items-center rounded-full bg-white text-xs font-bold text-[#4285f4]" aria-hidden="true">G</span>
+          Continuar com Google
+        </Button>
+
+        <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[.16em] text-white/35" aria-hidden="true"><span className="h-px flex-1 bg-white/10" />ou<span className="h-px flex-1 bg-white/10" /></div>
+
         <div className="grid gap-2">
-          <Label htmlFor="email">E-mail</Label>
+          <Label htmlFor="login">E-mail ou usuário</Label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-3.5 size-4 text-white/40" aria-hidden="true" />
-            <Input id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="h-12 border-white/10 bg-black/20 pl-10 text-white" placeholder="voce@empresa.com" disabled={busy} />
+            <Input id="login" name="login" type="text" autoComplete="username" required value={login} onChange={(event) => setLogin(event.target.value)} className="h-12 border-white/10 bg-black/20 pl-10 text-white" placeholder="voce@empresa.com ou admin" disabled={busy} />
           </div>
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="password">Senha</Label>
+          <div className="flex items-center justify-between gap-4"><Label htmlFor="password">Senha</Label><Link href="/forgot-password" className="text-xs font-medium text-violet-300 transition hover:text-violet-200">Esqueci minha senha</Link></div>
           <div className="relative">
             <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 size-4 text-white/40" aria-hidden="true" />
             <Input id="password" name="password" type="password" autoComplete="current-password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-12 border-white/10 bg-black/20 pl-10 text-white" placeholder="Sua senha" disabled={busy} />
           </div>
         </div>
 
-        <Button type="submit" size="lg" className="h-12 w-full" disabled={busy || !email.trim() || !password}>
+        <Button type="submit" size="lg" className="h-12 w-full" disabled={busy || !login.trim() || !password}>
           {busy ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}
           {busy ? "Entrando…" : "Entrar"}
         </Button>

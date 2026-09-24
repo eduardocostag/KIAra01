@@ -33,7 +33,7 @@ class PostgresWorkspaceResetRepository:
         user_uuid = _uuid("user", context.user_id)
         async with self._postgres._transaction(context.organization_id) as connection:
             await connection.execute("SELECT set_config('app.user_id', %s, true)", (str(user_uuid),))
-            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (context.user_id,))
+            await connection.execute("SELECT kiara.ensure_current_user('supabase', %s)", (context.user_id,))
 
             counts: dict[str, int] = {}
             for key, table in (

@@ -67,8 +67,8 @@ class PostgresRepository:
             )
             await connection.execute(
                 """INSERT INTO organizations (id, slug, name)
-                   VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING""",
-                (organization_uuid, f"clerk-{str(organization_uuid)[:18]}", "Kiara Workspace"),
+                   VALUES (%s, %s, %s) ON CONFLICT DO NOTHING""",
+                (organization_uuid, f"workspace-{organization_uuid}", "Kiara Workspace"),
             )
             yield connection
 
@@ -168,7 +168,7 @@ class PostgresRepository:
             replay = await self._replay(connection, organization_uuid, "approve_draft", idempotency_key, request_fingerprint)
             if replay is not None:
                 return replay
-            await connection.execute("SELECT kiara.ensure_current_user('clerk', %s)", (actor_user_id,))
+            await connection.execute("SELECT kiara.ensure_current_user('supabase', %s)", (actor_user_id,))
             await connection.execute(
                 """INSERT INTO memberships (organization_id,id,user_id,role,status)
                    VALUES (%s,%s,%s,'operator','active') ON CONFLICT (organization_id,user_id) DO NOTHING""",
