@@ -4,7 +4,6 @@ import { OrbitScene } from "@/components/brand/orbit-scene"
 import { SourceMark } from "@/components/brand/source-mark"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
 import { Button } from "@/components/ui/button"
-import { getInboxDTO } from "@/lib/api/inbox"
 import { getPipelineDTO } from "@/lib/api/pipeline-server"
 import { leadDisplayName, pipelineStages, sourceLabels } from "@/lib/api/pipeline"
 
@@ -20,10 +19,9 @@ function relativeTime(value: string, now: number) {
 }
 
 export default async function DashboardPage() {
-  const [pipeline, inbox] = await Promise.all([
-    getPipelineDTO().then((entries) => ({ entries, available: true })).catch(() => ({ entries: [], available: false })),
-    getInboxDTO().then((data) => ({ conversations: data.conversations, available: true })).catch(() => ({ conversations: [], available: false })),
-  ])
+  const pipeline = await getPipelineDTO()
+    .then((entries) => ({ entries, available: true }))
+    .catch(() => ({ entries: [], available: false }))
   const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
   const now = new Date().getTime()
   const nextHref = fresh.length ? "/app/inbox?view=contacts" : "/app/hunter"
@@ -35,7 +33,6 @@ export default async function DashboardPage() {
 
   const dateLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).format(new Date())
   return <div className="kiara-dashboard kiara-orbit-dashboard">
-    {(!pipeline.available || !inbox.available) && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm">Parte dos dados não pôde ser carregada. Os indicadores indisponíveis aparecem como “—”.</div>}
     <section className="kiara-dashboard-hero" aria-labelledby="dashboard-title">
       <div className="kiara-dashboard-copy">
         <p className="kiara-dashboard-eyebrow">{dateLabel}</p>

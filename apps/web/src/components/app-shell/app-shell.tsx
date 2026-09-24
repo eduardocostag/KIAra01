@@ -19,9 +19,10 @@ const nav = [
 
 function Navigation({ onNavigate, isSystemAdmin }: { onNavigate?: () => void; isSystemAdmin: boolean }) {
   const pathname = usePathname()
+  const visibleNav = isSystemAdmin ? nav : nav.filter((item) => item.href !== "/app/concorrencia")
   const items = isSystemAdmin
-    ? [...nav, { href: "/app/admin", label: "Administração", icon: ShieldCheck }]
-    : nav
+    ? [...visibleNav, { href: "/app/admin", label: "Administração", icon: ShieldCheck }]
+    : visibleNav
   return <nav aria-label="Navegação principal" className="kiara-shell-nav space-y-2">
     {items.map(({ href, label, icon: Icon }) => {
       const active = href === "/app" ? pathname === href : pathname.startsWith(href)
