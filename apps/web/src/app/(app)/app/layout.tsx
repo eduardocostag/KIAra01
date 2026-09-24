@@ -5,11 +5,13 @@ import "./reference-surfaces.css"
 import "./orbit-dashboard.css"
 
 export default async function OperationalLayout({ children }: { children: React.ReactNode }) {
+  let isSystemAdmin = false
   try {
-    await requireWorkspace()
+    const workspace = await requireWorkspace()
+    isSystemAdmin = workspace.isSystemAdmin
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) redirect("/sign-in")
     throw error
   }
-  return <AppShell>{children}</AppShell>
+  return <AppShell isSystemAdmin={isSystemAdmin}>{children}</AppShell>
 }
