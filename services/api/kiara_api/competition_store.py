@@ -24,14 +24,15 @@ class CompetitionRepository:
         name: str | None = None,
         status: str | None = None,
         prospect_count: int | None = None,
+        provider: str = "mailerfind",
     ) -> dict[str, Any]:
         organization_uuid = _uuid("organization", organization_id)
         safe_snapshot = json.dumps(snapshot, ensure_ascii=False, default=str)
         async with self._postgres._transaction(organization_id) as connection:
             row = await (await connection.execute(
                 """INSERT INTO competition_analyses
-                   (organization_id,provider_analysis_id,mode,target,name,status,prospect_count,provider_snapshot)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+                   (organization_id,provider,provider_analysis_id,mode,target,name,status,prospect_count,provider_snapshot)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
                    ON CONFLICT (organization_id,provider,provider_analysis_id) DO UPDATE SET
                      mode=COALESCE(EXCLUDED.mode,competition_analyses.mode),
                      target=COALESCE(EXCLUDED.target,competition_analyses.target),
@@ -40,8 +41,8 @@ class CompetitionRepository:
                      prospect_count=GREATEST(competition_analyses.prospect_count,EXCLUDED.prospect_count),
                      provider_snapshot=EXCLUDED.provider_snapshot,
                      updated_at=now(),last_synced_at=now()
-                   RETURNING id,provider_analysis_id,mode,target,name,status,prospect_count,created_at,updated_at""",
-                (organization_uuid, provider_analysis_id, mode, target, name, status or "created",
+                   RETURNING id,provider,provider_analysis_id,mode,target,name,status,prospect_count,created_at,updated_at""",
+                (organization_uuid, provider, provider_analysis_id, mode, target, name, status or "created",
                  max(0, prospect_count or 0), safe_snapshot),
             )).fetchone()
         return self._analysis(row)
@@ -49,7 +50,7 @@ class CompetitionRepository:
     async def list_analyses(self, organization_id: str, limit: int = 20) -> list[dict[str, Any]]:
         async with self._postgres._transaction(organization_id) as connection:
             rows = await (await connection.execute(
-                """SELECT id,provider_analysis_id,mode,target,name,status,prospect_count,created_at,updated_at
+                """SELECT id,provider,provider_analysis_id,mode,target,name,status,prospect_count,created_at,updated_at
                    FROM competition_analyses WHERE organization_id=%s
                    ORDER BY updated_at DESC,id DESC LIMIT %s""",
                 (_uuid("organization", organization_id), limit),
@@ -59,9 +60,8 @@ class CompetitionRepository:
     async def get_analysis(self, organization_id: str, provider_analysis_id: str) -> dict[str, Any] | None:
         async with self._postgres._transaction(organization_id) as connection:
             row = await (await connection.execute(
-                """SELECT id,provider_analysis_id,mode,target,name,status,prospect_count,created_at,updated_at
-                   FROM competition_analyses WHERE organization_id=%s AND provider='mailerfind'
-                     AND provider_analysis_id=%s""",
+                """SELECT id,provider,provider_analysis_id,mode,target,name,status,prospect_count,created_at,updated_at
+                   FROM competition_analyses WHERE organization_id=%s AND provider_analysis_id=%s""",
                 (_uuid("organization", organization_id), provider_analysis_id),
             )).fetchone()
         return self._analysis(row) if row else None
@@ -74,8 +74,7 @@ class CompetitionRepository:
         organization_uuid = _uuid("organization", organization_id)
         async with self._postgres._transaction(organization_id) as connection:
             analysis = await (await connection.execute(
-                """SELECT id FROM competition_analyses WHERE organization_id=%s AND provider='mailerfind'
-                   AND provider_analysis_id=%s""",
+                """SELECT id FROM competition_analyses WHERE organization_id=%s AND provider_analysis_id=%s""",
                 (organization_uuid, provider_analysis_id),
             )).fetchone()
             if not analysis:
@@ -86,6 +85,8 @@ class CompetitionRepository:
                 display_name = _first_text(prospect, "full_name", "fullName", "name", "display_name")
                 email = _first_text(prospect, "email", "publicEmail", "public_email")
                 phone = _first_text(prospect, "phone_number", "phone", "phoneNumber", "whatsapp")
+                profile_url = _first_text(prospect, "profile_url", "profileUrl")
+                whatsapp_url = _first_text(prospect, "whatsapp_url", "whatsappUrl")
                 provider_id = _first_text(prospect, "id", "prospectId", "prospect_id", "pk")
                 if not provider_id:
                     identity = "|".join((username.lower(), email.lower(), phone, display_name.lower()))
@@ -93,16 +94,19 @@ class CompetitionRepository:
                 await connection.execute(
                     """INSERT INTO competition_prospects
                        (organization_id,analysis_id,provider_prospect_id,instagram_username,display_name,
-                        public_email,phone,provider_snapshot)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+                        public_email,phone,profile_url,whatsapp_url,provider_snapshot)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
                        ON CONFLICT (organization_id,analysis_id,provider_prospect_id) DO UPDATE SET
                          instagram_username=COALESCE(EXCLUDED.instagram_username,competition_prospects.instagram_username),
                          display_name=COALESCE(EXCLUDED.display_name,competition_prospects.display_name),
                          public_email=COALESCE(EXCLUDED.public_email,competition_prospects.public_email),
                          phone=COALESCE(EXCLUDED.phone,competition_prospects.phone),
+                         profile_url=COALESCE(EXCLUDED.profile_url,competition_prospects.profile_url),
+                         whatsapp_url=COALESCE(EXCLUDED.whatsapp_url,competition_prospects.whatsapp_url),
                          provider_snapshot=EXCLUDED.provider_snapshot,updated_at=now()""",
                     (organization_uuid, analysis["id"], provider_id, username or None, display_name or None,
-                     email or None, phone or None, json.dumps(prospect, ensure_ascii=False, default=str)),
+                     email or None, phone or None, profile_url or None, whatsapp_url or None,
+                     json.dumps(prospect, ensure_ascii=False, default=str)),
                 )
                 saved += 1
             await connection.execute(
@@ -116,10 +120,11 @@ class CompetitionRepository:
         async with self._postgres._transaction(organization_id) as connection:
             rows = await (await connection.execute(
                 """SELECT p.id,p.provider_prospect_id,p.instagram_username,p.display_name,p.public_email,p.phone,
+                          p.profile_url,p.whatsapp_url,
                           p.created_at,p.updated_at
                    FROM competition_prospects p JOIN competition_analyses a
                      ON a.organization_id=p.organization_id AND a.id=p.analysis_id
-                   WHERE p.organization_id=%s AND a.provider='mailerfind' AND a.provider_analysis_id=%s
+                   WHERE p.organization_id=%s AND a.provider_analysis_id=%s
                    ORDER BY p.created_at,p.id LIMIT %s""",
                 (_uuid("organization", organization_id), provider_analysis_id, limit),
             )).fetchall()
@@ -127,6 +132,7 @@ class CompetitionRepository:
             "id": str(row["id"]), "prospectId": row["provider_prospect_id"],
             "username": row["instagram_username"], "full_name": row["display_name"],
             "email": row["public_email"], "phone_number": row["phone"],
+            "profile_url": row["profile_url"], "whatsapp_url": row["whatsapp_url"],
             "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat(),
         } for row in rows]
 
@@ -134,7 +140,7 @@ class CompetitionRepository:
     def _analysis(row: dict[str, Any]) -> dict[str, Any]:
         return {
             "id": row["provider_analysis_id"], "analysisId": row["provider_analysis_id"],
-            "archiveId": str(row["id"]), "mode": row["mode"], "target": row["target"],
+            "archiveId": str(row["id"]), "provider": row["provider"], "mode": row["mode"], "target": row["target"],
             "name": row["name"], "status": row["status"], "prospectCount": row["prospect_count"],
             "createdAt": row["created_at"].isoformat(), "updatedAt": row["updated_at"].isoformat(),
             "archived": True,

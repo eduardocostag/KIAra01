@@ -5,7 +5,9 @@ from kiara_api.competition import (
     _analysis_arguments,
     _analysis_id,
     _decode_mcp_body,
+    _imported_profile,
     _items,
+    _normalize_imported_profiles,
 )
 from kiara_api.http.errors import ApiError
 
@@ -38,3 +40,20 @@ def test_competition_extracts_nested_analysis_and_prospects() -> None:
     assert _items({"result": {"prospects": [{"username": "kiara"}]}}, "prospects", "items") == [
         {"username": "kiara"}
     ]
+
+
+def test_competition_normalizes_public_instagram_profiles() -> None:
+    assert _imported_profile("https://www.instagram.com/Kiara.Test/ | Kiara Test") == {
+        "id": "instagram:kiara.test",
+        "username": "kiara.test",
+        "full_name": "Kiara Test",
+        "profile_url": "https://www.instagram.com/kiara.test/",
+        "source": "kiara_public",
+    }
+
+
+def test_competition_import_deduplicates_and_rejects_non_profiles() -> None:
+    result = _normalize_imported_profiles([
+        "@Kiara.Test", "kiara.test", "https://instagram.com/KIARA.TEST/", "https://example.com/user", "https://instagram.com/reel/abc",
+    ])
+    assert [item["username"] for item in result] == ["kiara.test"]

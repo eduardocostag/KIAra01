@@ -5,7 +5,7 @@ import { AdministratorRequiredError, AuthenticationRequiredError, requireSystemA
 
 export const metadata: Metadata = {
   title: "Concorrência | Kiara",
-  description: "Análise de audiências públicas de concorrentes com MailerFind.",
+  description: "Análise própria de audiências públicas de concorrentes, com arquivo seguro na Kiara.",
 }
 
 export const dynamic = "force-dynamic"

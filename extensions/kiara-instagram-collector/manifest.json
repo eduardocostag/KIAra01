@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Kiara — Coletor Público",
+  "version": "1.0.0",
+  "description": "Copia perfis públicos já exibidos no Instagram para uma análise da Kiara.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://www.instagram.com/*"],
+  "action": {
+    "default_title": "Kiara — Coletor Público",
+    "default_popup": "popup.html"
+  }
+}

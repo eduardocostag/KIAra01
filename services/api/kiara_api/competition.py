@@ -5,6 +5,7 @@ import json
 import re
 from typing import Annotated, Any
 from typing import Literal
+from uuid import uuid4
 from urllib.parse import urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -122,6 +123,68 @@ class CompetitionAnalysisInput(BaseModel):
 
 class CompetitionStartInput(BaseModel):
     confirm: Literal[True]
+
+
+class CompetitionImportInput(BaseModel):
+    mode: CompetitionMode
+    target: str = Field(min_length=1, max_length=500)
+    profiles: list[str] = Field(min_length=1, max_length=500)
+    name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("target", "name")
+    @classmethod
+    def trim_import_text(cls, value: str | None) -> str | None:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("profiles")
+    @classmethod
+    def validate_profiles(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+        if not cleaned:
+            raise ValueError("Informe ao menos um perfil público.")
+        if any(len(value) > 500 for value in cleaned):
+            raise ValueError("Cada perfil deve ter no máximo 500 caracteres.")
+        return cleaned
+
+
+_INSTAGRAM_RESERVED_PATHS = {
+    "about", "accounts", "api", "challenge", "developer", "directory", "direct",
+    "emails", "explore", "legal", "p", "privacy", "reel", "reels", "stories", "web",
+}
+
+
+def _imported_profile(value: str) -> dict[str, Any] | None:
+    raw = value.strip()
+    label = ""
+    if "|" in raw:
+        raw, label = (part.strip() for part in raw.split("|", 1))
+    if raw.startswith(("http://", "https://")):
+        parsed = urlsplit(raw)
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+        if parsed.scheme != "https" or host != "instagram.com":
+            return None
+        handle = parsed.path.strip("/").split("/", 1)[0]
+    else:
+        handle = raw.removeprefix("@").split()[0] if raw else ""
+    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", handle) or handle.lower() in _INSTAGRAM_RESERVED_PATHS:
+        return None
+    username = handle.lower()
+    return {
+        "id": f"instagram:{username}",
+        "username": username,
+        "full_name": label[:200] or None,
+        "profile_url": f"https://www.instagram.com/{username}/",
+        "source": "kiara_public",
+    }
+
+
+def _normalize_imported_profiles(values: list[str]) -> list[dict[str, Any]]:
+    unique: dict[str, dict[str, Any]] = {}
+    for value in values:
+        profile = _imported_profile(value)
+        if profile:
+            unique.setdefault(str(profile["username"]), profile)
+    return list(unique.values())
 
 
 def _analysis_arguments(payload: CompetitionAnalysisInput) -> dict[str, Any]:
@@ -295,6 +358,35 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         result = await call(context, "mailerfind_analysis_create", _analysis_arguments(payload))
         await _archive_analysis(archive, context.organization_id, result, mode=payload.mode, target=payload.target, name=payload.name)
         return result
+
+    @router.post("/imports", status_code=201)
+    async def import_public_profiles(
+        payload: CompetitionImportInput,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        ensure_system_admin(context)
+        prospects = _normalize_imported_profiles(payload.profiles)
+        if not prospects:
+            raise ApiError(
+                422,
+                "instagram_profiles_invalid",
+                "Nenhum perfil público válido foi encontrado. Cole usuários como @perfil ou links HTTPS do Instagram.",
+            )
+        analysis_id = f"kiara_{uuid4().hex}"
+        name = payload.name or f"Kiara · {payload.mode} · {payload.target}"
+        analysis = await archive.upsert_analysis(
+            context.organization_id,
+            analysis_id,
+            {"source": "kiara_public", "imported": len(prospects)},
+            mode=payload.mode,
+            target=payload.target,
+            name=name,
+            status="completed",
+            prospect_count=len(prospects),
+            provider="kiara_public",
+        )
+        saved = await archive.upsert_prospects(context.organization_id, analysis_id, prospects)
+        return {"analysis": analysis, "saved": saved, "items": prospects}
 
     @router.post("/analyses/{analysis_id}/start")
     async def start_analysis(analysis_id: str, payload: CompetitionStartInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
