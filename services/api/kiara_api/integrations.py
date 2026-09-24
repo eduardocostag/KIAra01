@@ -84,6 +84,8 @@ class IntegrationRepository:
                 (_uuid("organization", organization_id), provider, encrypted, fields, instance_id, endpoint_fingerprint, is_global),
                 )).fetchone()
         except psycopg.errors.UniqueViolation:
+            if provider == "mailerfind" and is_global:
+                raise ApiError(409, "mailerfind_global_already_configured", "O MailerFind global já foi configurado por outro administrador.") from None
             raise ApiError(409, "hermes_instance_already_assigned", "Esta instância Hermes já pertence a outro workspace.") from None
         return {**row, "updated_at": row["updated_at"].isoformat()}
 

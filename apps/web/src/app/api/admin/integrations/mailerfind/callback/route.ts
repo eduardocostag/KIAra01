@@ -11,7 +11,9 @@ type TokenResponse = {
   token_type?: string
 }
 
-function resultRedirect(origin: string, result: "connected" | "denied" | "error") {
+type ConnectionResult = "connected" | "denied" | "state_error" | "token_error" | "validation_error" | "save_error" | "error"
+
+function resultRedirect(origin: string, result: ConnectionResult) {
   return Response.redirect(`${origin}/app/admin?mailerfind=${result}`)
 }
 
@@ -20,6 +22,7 @@ export async function GET(request: Request) {
   const cookieStore = await cookies()
   const sealed = cookieStore.get(MAILERFIND_COOKIE)?.value
   cookieStore.delete(MAILERFIND_COOKIE)
+  let stage: Exclude<ConnectionResult, "connected" | "denied" | "error"> = "state_error"
   try {
     await requireSystemAdmin()
     if (url.searchParams.get("error")) return resultRedirect(url.origin, "denied")
@@ -29,6 +32,7 @@ export async function GET(request: Request) {
     const state = openOAuthState(sealed)
     if (state.state !== returnedState || Date.now() - state.createdAt > 10 * 60_000) throw new Error("Estado OAuth expirado.")
 
+    stage = "token_error"
     const tokenBody = new URLSearchParams({
       grant_type: "authorization_code", code, redirect_uri: state.redirectUri,
       client_id: state.clientId, code_verifier: state.verifier,
@@ -41,6 +45,7 @@ export async function GET(request: Request) {
     const token = await tokenResponse.json() as TokenResponse
     if (!tokenResponse.ok || !token.access_token) throw new Error("O MailerFind não entregou um token válido.")
 
+    stage = "validation_error"
     const check = await fetch(MAILERFIND_MCP_URL, {
       method: "POST",
       headers: {
@@ -65,10 +70,29 @@ export async function GET(request: Request) {
       token_type: token.token_type || "Bearer",
       ...(typeof token.expires_in === "number" ? { expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString() } : {}),
     }
+    stage = "save_error"
     const saved = await kiaraApi("/v1/integrations/mailerfind/global", { method: "PUT", body: JSON.stringify({ credentials }) })
-    if (!saved.ok) throw new Error("A conexão foi autorizada, mas não pôde ser guardada no cofre da Kiara.")
+    if (!saved.ok) {
+      const payload = await saved.json().catch(() => null) as { error?: { code?: string; request_id?: string } } | null
+      console.error(JSON.stringify({
+        level: "error",
+        event: "mailerfind.oauth_save_failed",
+        upstream_status: saved.status,
+        upstream_code: payload?.error?.code,
+        request_id: payload?.error?.request_id,
+      }))
+      throw new Error("A conexão foi autorizada, mas não pôde ser guardada no cofre da Kiara.")
+    }
+    console.log(JSON.stringify({ level: "info", event: "mailerfind.oauth_connected", scope: token.scope ?? null }))
     return resultRedirect(url.origin, "connected")
-  } catch {
-    return resultRedirect(url.origin, "error")
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "mailerfind.oauth_failed",
+      stage,
+      error_class: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message.slice(0, 240) : "Falha desconhecida",
+    }))
+    return resultRedirect(url.origin, stage)
   }
 }

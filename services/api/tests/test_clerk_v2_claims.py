@@ -39,6 +39,16 @@ def test_supabase_claims_use_verified_subject_as_personal_workspace() -> None:
     assert principal.role == "owner"
 
 
+def test_verified_email_is_normalized_for_system_admin_authorization() -> None:
+    principal = _principal_from_claims({
+        "sub": "2f408462-c353-446f-880d-232c613d26f1",
+        "iss": "https://project.supabase.co/auth/v1",
+        "role": "authenticated",
+        "email": "  ADMIN@KIARA.LOCAL ",
+    })
+    assert principal.email == "admin@kiara.local"
+
+
 def test_supabase_es256_token_is_verified_from_jwks() -> None:
     issuer = "https://project.supabase.co/auth/v1"
     private_key = ec.generate_private_key(ec.SECP256R1())

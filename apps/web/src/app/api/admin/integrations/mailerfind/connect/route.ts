@@ -47,6 +47,12 @@ export async function GET(request: Request) {
     const origin = new URL(request.url).origin
     if (error instanceof AuthenticationRequiredError) return Response.redirect(`${origin}/sign-in`)
     if (error instanceof AdministratorRequiredError) return Response.json({ error: "Acesso exclusivo do administrador." }, { status: 403 })
+    console.error(JSON.stringify({
+      level: "error",
+      event: "mailerfind.oauth_start_failed",
+      error_class: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message.slice(0, 240) : "Falha desconhecida",
+    }))
     return Response.redirect(`${origin}/app/admin?mailerfind=error`)
   }
 }

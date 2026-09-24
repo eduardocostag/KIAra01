@@ -29,7 +29,9 @@ function formatDate(value: string | null) {
   }).format(date)
 }
 
-export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSnapshot: AdminSnapshot; mailerFindResult?: "connected" | "denied" | "error" }) {
+type MailerFindResult = "connected" | "denied" | "state_error" | "token_error" | "validation_error" | "save_error" | "error"
+
+export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSnapshot: AdminSnapshot; mailerFindResult?: MailerFindResult }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [refreshing, setRefreshing] = useState(false)
   const [resetting, setResetting] = useState<string | null>(null)

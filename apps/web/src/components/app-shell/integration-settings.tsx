@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 type Provider = "google" | "instagram" | "hermes" | "mailerfind"
 type Status = { provider: Provider; configured_fields: string[]; status: string; updated_at: string; is_global?: boolean }
 type Field = { name: string; label: string; secret?: boolean; required?: boolean; placeholder?: string }
+type MailerFindResult = "connected" | "denied" | "state_error" | "token_error" | "validation_error" | "save_error" | "error"
 const fields: Record<Provider, Field[]> = {
   google: [{ name: "developer_token", label: "Developer token", secret: true, required: true }, { name: "client_id", label: "OAuth Client ID", required: true, placeholder: "...apps.googleusercontent.com" }, { name: "client_secret", label: "OAuth Client Secret", secret: true, required: true }, { name: "refresh_token", label: "Refresh token", secret: true, required: true }, { name: "customer_id", label: "ID da conta cliente", required: true, placeholder: "10 dígitos, sem hífens" }, { name: "login_customer_id", label: "ID da conta gerente" }, { name: "ga4_property_id", label: "ID da propriedade GA4" }],
   instagram: [{ name: "app_id", label: "Meta App ID", required: true }, { name: "app_secret", label: "Meta App Secret", secret: true, required: true }, { name: "access_token", label: "Access token de longa duração", secret: true, required: true }, { name: "instagram_account_id", label: "Instagram Business Account ID", required: true }, { name: "page_id", label: "Facebook Page ID" }, { name: "verify_token", label: "Webhook verify token", secret: true }],
@@ -25,12 +26,16 @@ const info = {
   mailerfind: { name: "MailerFind", detail: "Maps, Instagram, X e enriquecimento via MCP", href: "https://help.mailerfind.com/pt-br/article/conecte-o-mailerfind-ao-claude-wunaig/", icon: SearchCheck },
 }
 
-export function IntegrationSettings({ adminMode = false, mailerFindResult }: { adminMode?: boolean; mailerFindResult?: "connected" | "denied" | "error" }) {
+export function IntegrationSettings({ adminMode = false, mailerFindResult }: { adminMode?: boolean; mailerFindResult?: MailerFindResult }) {
   const [statuses, setStatuses] = useState<Status[]>([]), [selected, setSelected] = useState<Provider | null>(() => mailerFindResult ? "mailerfind" : null)
   const [saving, setSaving] = useState<Provider | null>(null), [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(() => {
-    if (mailerFindResult === "connected") return { type: "ok", text: "MailerFind conectado e validado. Os tokens foram guardados no cofre criptografado da Kiara." }
+    if (mailerFindResult === "connected") return { type: "ok", text: "MailerFind conectado, validado e liberado para todos os usuários. Os tokens foram guardados no cofre criptografado da Kiara." }
     if (mailerFindResult === "denied") return { type: "error", text: "A autorização do MailerFind foi cancelada. Nenhuma credencial foi salva." }
-    if (mailerFindResult === "error") return { type: "error", text: "Não foi possível concluir a conexão com o MailerFind. Entre na sua conta MailerFind e tente novamente." }
+    if (mailerFindResult === "state_error") return { type: "error", text: "A sessão de autorização expirou ou voltou incompleta. Clique em Conectar para todos e conclua o acesso em até 10 minutos." }
+    if (mailerFindResult === "token_error") return { type: "error", text: "O MailerFind autorizou o acesso, mas não entregou o token. Entre novamente no MailerFind e repita a conexão." }
+    if (mailerFindResult === "validation_error") return { type: "error", text: "O token foi recebido, mas o endpoint MCP do MailerFind recusou a validação. Confirme que sua conta possui acesso ao MCP e tente novamente." }
+    if (mailerFindResult === "save_error") return { type: "error", text: "A autorização foi concluída, mas a API da Kiara não conseguiu salvar a conexão global. Aguarde a atualização do serviço e tente novamente." }
+    if (mailerFindResult === "error") return { type: "error", text: "A Kiara não conseguiu iniciar a autorização. Verifique sua sessão de administrador e tente novamente." }
     return null
   })
   const providers: Provider[] = adminMode ? ["mailerfind", "google", "instagram", "hermes"] : ["google", "instagram", "hermes"]
