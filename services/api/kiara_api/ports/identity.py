@@ -10,6 +10,7 @@ class IdentityPrincipal:
     organization_id: str
     membership_id: str
     role: str
+    email: str | None = None
 
 
 class IdentityVerifier(Protocol):

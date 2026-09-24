@@ -21,6 +21,7 @@ from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
+SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
 Provider = Literal["google", "instagram", "hermes", "mailerfind"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
@@ -53,12 +54,15 @@ class IntegrationRepository:
     async def list(self, organization_id: str) -> list[dict[str, object]]:
         async with self._postgres._transaction(organization_id) as connection:
             rows = await (await connection.execute(
-                "SELECT provider, configured_fields, status, last_error, updated_at FROM integration_credentials WHERE organization_id=%s ORDER BY provider",
-                (_uuid("organization", organization_id),),
+                """SELECT DISTINCT ON (provider) provider, configured_fields, status, last_error, updated_at, is_global
+                   FROM integration_credentials
+                   WHERE organization_id=%s OR (provider='mailerfind' AND is_global=true AND status!='disabled')
+                   ORDER BY provider, (organization_id=%s) DESC, is_global DESC""",
+                (_uuid("organization", organization_id), _uuid("organization", organization_id)),
             )).fetchall()
         return [{**row, "updated_at": row["updated_at"].isoformat()} for row in rows]
 
-    async def save(self, organization_id: str, provider: Provider, credentials: dict[str, str]) -> dict[str, object]:
+    async def save(self, organization_id: str, provider: Provider, credentials: dict[str, str], *, is_global: bool = False) -> dict[str, object]:
         unexpected = set(credentials) - ALLOWED_FIELDS[provider]
         if unexpected:
             raise ApiError(422, "unsupported_credential", "Um ou mais campos não são aceitos.", {"fields": sorted(unexpected)})
@@ -71,13 +75,13 @@ class IntegrationRepository:
         try:
             async with self._postgres._transaction(organization_id) as connection:
                 row = await (await connection.execute(
-                """INSERT INTO integration_credentials (organization_id, provider, encrypted_credentials, configured_fields, hermes_instance_id, hermes_endpoint_fingerprint)
-                   VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id,provider) DO UPDATE SET
+                """INSERT INTO integration_credentials (organization_id, provider, encrypted_credentials, configured_fields, hermes_instance_id, hermes_endpoint_fingerprint, is_global)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id,provider) DO UPDATE SET
                    encrypted_credentials=excluded.encrypted_credentials, configured_fields=excluded.configured_fields,
                    hermes_instance_id=excluded.hermes_instance_id, hermes_endpoint_fingerprint=excluded.hermes_endpoint_fingerprint,
-                   status='configured', last_error=NULL, updated_at=now()
-                   RETURNING provider, configured_fields, status, last_error, updated_at""",
-                (_uuid("organization", organization_id), provider, encrypted, fields, instance_id, endpoint_fingerprint),
+                   is_global=excluded.is_global, status='configured', last_error=NULL, updated_at=now()
+                   RETURNING provider, configured_fields, status, last_error, updated_at, is_global""",
+                (_uuid("organization", organization_id), provider, encrypted, fields, instance_id, endpoint_fingerprint, is_global),
                 )).fetchone()
         except psycopg.errors.UniqueViolation:
             raise ApiError(409, "hermes_instance_already_assigned", "Esta instância Hermes já pertence a outro workspace.") from None
@@ -92,8 +96,10 @@ class IntegrationRepository:
     async def credentials_for(self, organization_id: str, provider: Provider) -> dict[str, str] | None:
         async with self._postgres._transaction(organization_id) as connection:
             row = await (await connection.execute(
-                "SELECT encrypted_credentials FROM integration_credentials WHERE organization_id=%s AND provider=%s AND status!='disabled'",
-                (_uuid("organization", organization_id), provider),
+                """SELECT encrypted_credentials FROM integration_credentials
+                   WHERE provider=%s AND status!='disabled' AND (organization_id=%s OR is_global=true)
+                   ORDER BY (organization_id=%s) DESC, is_global DESC LIMIT 1""",
+                (provider, _uuid("organization", organization_id), _uuid("organization", organization_id)),
             )).fetchone()
         return self.decrypt_for_provider(row["encrypted_credentials"]) if row else None
 
@@ -164,6 +170,10 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
         if context.role not in {"owner", "admin"}:
             raise ApiError(403, "insufficient_permission", "Somente administradores podem gerenciar integrações.")
 
+    def ensure_system_admin(context: RequestContext) -> None:
+        if context.email != SYSTEM_ADMIN_EMAIL:
+            raise ApiError(403, "system_admin_required", "Somente o administrador geral pode configurar o MailerFind global.")
+
     @router.get("")
     async def list_integrations(context: Annotated[RequestContext, Depends(authenticated_context)]):
         return {"items": await repository.list(context.organization_id)}
@@ -171,7 +181,14 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
     @router.put("/{provider}")
     async def save_integration(provider: Provider, payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
         ensure_admin(context)
+        if provider == "mailerfind":
+            ensure_system_admin(context)
         return await repository.save(context.organization_id, provider, payload.credentials)
+
+    @router.put("/mailerfind/global")
+    async def save_global_mailerfind(payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
+        ensure_system_admin(context)
+        return await repository.save(context.organization_id, "mailerfind", payload.credentials, is_global=True)
 
     @router.get("/hermes/capabilities")
     async def hermes_capabilities(context: Annotated[RequestContext, Depends(authenticated_context)]):

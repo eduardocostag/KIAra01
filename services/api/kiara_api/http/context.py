@@ -12,6 +12,7 @@ class RequestContext:
     membership_id: str
     role: str
     correlation_id: str
+    email: str | None = None
 
     @classmethod
     def from_principal(cls, principal: IdentityPrincipal, correlation_id: str) -> RequestContext:
@@ -21,4 +22,5 @@ class RequestContext:
             membership_id=principal.membership_id,
             role=principal.role,
             correlation_id=correlation_id,
+            email=principal.email,
         )

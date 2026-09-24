@@ -159,7 +159,9 @@ def _principal_from_claims(claims: Mapping[str, Any]) -> IdentityPrincipal:
         membership_id = f"{organization_id}:{subject}"
     if not isinstance(membership_id, str) or not membership_id.strip():
         raise jwt.InvalidTokenError("invalid membership identity")
-    return IdentityPrincipal(subject, organization_id, membership_id, role)
+    raw_email = claims.get("email")
+    email = raw_email.strip().lower() if isinstance(raw_email, str) and 3 <= len(raw_email.strip()) <= 320 else None
+    return IdentityPrincipal(subject, organization_id, membership_id, role, email)
 
 
 def _required_text(values: Mapping[str, Any], key: str) -> str:

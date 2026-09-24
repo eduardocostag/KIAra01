@@ -65,7 +65,7 @@ export async function GET(request: Request) {
       token_type: token.token_type || "Bearer",
       ...(typeof token.expires_in === "number" ? { expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString() } : {}),
     }
-    const saved = await kiaraApi("/v1/integrations/mailerfind", { method: "PUT", body: JSON.stringify({ credentials }) })
+    const saved = await kiaraApi("/v1/integrations/mailerfind/global", { method: "PUT", body: JSON.stringify({ credentials }) })
     if (!saved.ok) throw new Error("A conexão foi autorizada, mas não pôde ser guardada no cofre da Kiara.")
     return resultRedirect(url.origin, "connected")
   } catch {
