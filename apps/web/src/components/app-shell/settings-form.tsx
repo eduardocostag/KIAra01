@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, type ReactNode } from "react"
-import { useClerk, useUser } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
+import type { User } from "@supabase/supabase-js"
 import { Building2, CheckCircle2, Database, KeyRound, LoaderCircle, LogOut, Mail, MessageSquareText, Plus, Save, ShieldCheck, Trash2, UserRound } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { salesRequest, type SalesProfile, templateLabels } from "@/lib/api/sales"
+import { createClient } from "@/lib/supabase/browser"
 
 type Section = "account" | "operation" | "templates" | "data"
 const sections = {
@@ -39,19 +41,17 @@ function customTemplateLabel(key: string) {
 }
 
 function authErrorMessage(error: unknown) {
-  if (error && typeof error === "object" && "errors" in error && Array.isArray(error.errors)) {
-    const first = error.errors[0]
-    if (first && typeof first === "object") {
-      const message = "longMessage" in first ? first.longMessage : "message" in first ? first.message : null
-      if (typeof message === "string" && message.trim()) return message
-    }
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string" && error.message.trim()) {
+    return error.message
   }
   return error instanceof Error ? error.message : "Não foi possível concluir a operação."
 }
 
 export function SettingsForm() {
-  const { isLoaded: userLoaded, user } = useUser()
-  const { signOut } = useClerk()
+  const router = useRouter()
+  const [supabase] = useState(createClient)
+  const [user, setUser] = useState<User | null>(null)
+  const [userLoaded, setUserLoaded] = useState(false)
   const [profile, setProfile] = useState<SalesProfile | null>(null)
   const [section, setSection] = useState<Section>("operation")
   const [busy, setBusy] = useState(false)
@@ -64,14 +64,20 @@ export function SettingsForm() {
   const [resetBusy, setResetBusy] = useState(false)
   const [accountFirstName, setAccountFirstName] = useState<string | null>(null)
   const [accountLastName, setAccountLastName] = useState<string | null>(null)
-  const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [accountBusy, setAccountBusy] = useState<"profile" | "password" | "logout" | null>(null)
   const [accountMessage, setAccountMessage] = useState<{ ok: boolean; text: string } | null>(null)
-  useEffect(() => { void salesRequest<SalesProfile>("/api/sales/profile").then(setProfile).catch((error) => setMessage({ ok: false, text: error instanceof Error ? error.message : "Falha ao carregar." })) }, [])
-  const resolvedFirstName = accountFirstName ?? user?.firstName ?? ""
-  const resolvedLastName = accountLastName ?? user?.lastName ?? ""
+  useEffect(() => {
+    void salesRequest<SalesProfile>("/api/sales/profile").then(setProfile).catch((error) => setMessage({ ok: false, text: error instanceof Error ? error.message : "Falha ao carregar." }))
+    void supabase.auth.getUser().then(({ data, error }) => {
+      if (error) setAccountMessage({ ok: false, text: "Não foi possível carregar os dados da conta." })
+      setUser(data.user)
+      setUserLoaded(true)
+    })
+  }, [supabase])
+  const resolvedFirstName = accountFirstName ?? (typeof user?.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "")
+  const resolvedLastName = accountLastName ?? (typeof user?.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "")
 
   async function save() {
     if (!profile) return
@@ -135,7 +141,13 @@ export function SettingsForm() {
     if (!user) return
     setAccountBusy("profile"); setAccountMessage(null)
     try {
-      await user.update({ firstName: resolvedFirstName.trim(), lastName: resolvedLastName.trim() })
+      const firstName = resolvedFirstName.trim()
+      const lastName = resolvedLastName.trim()
+      const { data, error } = await supabase.auth.updateUser({
+        data: { ...user.user_metadata, first_name: firstName, last_name: lastName, full_name: `${firstName} ${lastName}`.trim() },
+      })
+      if (error) throw error
+      setUser(data.user)
       setAccountMessage({ ok: true, text: "Nome atualizado com segurança." })
     } catch (error) {
       setAccountMessage({ ok: false, text: authErrorMessage(error) })
@@ -150,9 +162,10 @@ export function SettingsForm() {
     if (newPassword !== confirmPassword) { setAccountMessage({ ok: false, text: "A confirmação não corresponde à nova senha." }); return }
     setAccountBusy("password"); setAccountMessage(null)
     try {
-      await user.updatePassword({ currentPassword: user.passwordEnabled ? currentPassword : undefined, newPassword, signOutOfOtherSessions: true })
-      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("")
-      setAccountMessage({ ok: true, text: "Senha atualizada. As outras sessões foram encerradas." })
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      setNewPassword(""); setConfirmPassword("")
+      setAccountMessage({ ok: true, text: "Senha atualizada com segurança." })
     } catch (error) {
       setAccountMessage({ ok: false, text: authErrorMessage(error) })
     } finally {
@@ -163,7 +176,10 @@ export function SettingsForm() {
   async function logout() {
     setAccountBusy("logout"); setAccountMessage(null)
     try {
-      await signOut({ redirectUrl: "/sign-in" })
+      const { error } = await supabase.auth.signOut({ scope: "local" })
+      if (error) throw error
+      router.replace("/sign-in")
+      router.refresh()
     } catch (error) {
       setAccountBusy(null)
       setAccountMessage({ ok: false, text: authErrorMessage(error) })
@@ -174,7 +190,7 @@ export function SettingsForm() {
 
   return <div className="space-y-5">
     {message ? <Alert variant={message.ok ? "default" : "destructive"} className={message.ok ? "border-emerald-500/20 bg-emerald-500/5" : undefined}>{message.ok ? <CheckCircle2 /> : <ShieldCheck />}<AlertTitle>{message.title || (message.ok ? "Configurações atualizadas" : "Não foi possível salvar")}</AlertTitle><AlertDescription>{message.text}</AlertDescription></Alert> : null}
-    <Tabs value={section} onValueChange={(value) => { const next = value as Section; if (next === "account" && user) { setAccountFirstName(user.firstName ?? ""); setAccountLastName(user.lastName ?? ""); setAccountMessage(null) } setSection(next); setMessage(null) }} orientation="vertical" className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
+    <Tabs value={section} onValueChange={(value) => { const next = value as Section; if (next === "account" && user) { setAccountFirstName(typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : ""); setAccountLastName(typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : ""); setAccountMessage(null) } setSection(next); setMessage(null) }} orientation="vertical" className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-7"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5"><CardTitle className="text-sm">Áreas de configuração</CardTitle><CardDescription className="text-xs leading-5">Escolha uma seção para editar.</CardDescription></CardHeader><CardContent className="p-2">
         <TabsList className="grid h-auto w-full gap-1 bg-transparent p-0">{(Object.entries(sections) as [Section, typeof sections[Section]][]).map(([value, item]) => { const Icon = item.icon; return <TabsTrigger key={value} value={value} className="h-auto w-full justify-start gap-3 rounded-xl px-3 py-3.5 text-left data-active:bg-primary/12 data-active:text-foreground"><span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-primary"><Icon className="size-4" /></span><span className="min-w-0"><strong className="block text-sm font-semibold">{item.label}</strong><small className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">{item.description}</small></span></TabsTrigger> })}</TabsList>
       </CardContent></Card></aside>
@@ -185,15 +201,14 @@ export function SettingsForm() {
           <Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Perfil do usuário</CardTitle><CardDescription>Dados pessoais vinculados à sua conta de acesso.</CardDescription></CardHeader><CardContent className="grid gap-5 p-5 sm:p-6 md:grid-cols-2">
             <Field id="account-first-name" label="Nome" help="Como você será identificado na Kiara."><Input id="account-first-name" value={resolvedFirstName} onChange={(event) => setAccountFirstName(event.target.value)} disabled={!userLoaded || !user || accountBusy !== null} maxLength={100} autoComplete="given-name" /></Field>
             <Field id="account-last-name" label="Sobrenome" help="Complemento do seu nome de usuário."><Input id="account-last-name" value={resolvedLastName} onChange={(event) => setAccountLastName(event.target.value)} disabled={!userLoaded || !user || accountBusy !== null} maxLength={100} autoComplete="family-name" /></Field>
-            <Field id="account-email" label="E-mail" help="Endereço usado para entrar na sua conta." wide><div className="relative"><Mail className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" /><Input id="account-email" value={user?.primaryEmailAddress?.emailAddress ?? ""} readOnly className="pl-10 text-muted-foreground" /></div></Field>
+            <Field id="account-email" label="E-mail" help="Endereço usado para entrar na sua conta." wide><div className="relative"><Mail className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" /><Input id="account-email" value={user?.email ?? ""} readOnly className="pl-10 text-muted-foreground" /></div></Field>
             <div className="flex justify-end md:col-span-2"><Button type="button" onClick={() => void saveAccountProfile()} disabled={!userLoaded || !user || accountBusy !== null || !resolvedFirstName.trim()}>{accountBusy === "profile" ? <LoaderCircle className="animate-spin" /> : <Save />}Salvar perfil</Button></div>
           </CardContent></Card>
 
-          <Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Senha</CardTitle><CardDescription>{user?.passwordEnabled ? "Atualize sua senha e encerre as demais sessões abertas." : "Defina uma senha para também entrar com e-mail e senha."}</CardDescription></CardHeader><CardContent className="grid gap-5 p-5 sm:p-6 md:grid-cols-2">
-            {user?.passwordEnabled ? <Field id="current-password" label="Senha atual" help="Necessária para confirmar sua identidade." wide><Input id="current-password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} disabled={accountBusy !== null} autoComplete="current-password" /></Field> : null}
+          <Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Senha</CardTitle><CardDescription>Defina uma nova senha para sua conta.</CardDescription></CardHeader><CardContent className="grid gap-5 p-5 sm:p-6 md:grid-cols-2">
             <Field id="new-password" label="Nova senha" help="Use pelo menos 8 caracteres."><Input id="new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} disabled={accountBusy !== null} autoComplete="new-password" minLength={8} /></Field>
             <Field id="confirm-password" label="Confirmar senha" help="Digite novamente a nova senha."><Input id="confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={accountBusy !== null} autoComplete="new-password" minLength={8} /></Field>
-            <div className="flex justify-end md:col-span-2"><Button type="button" variant="outline" onClick={() => void changePassword()} disabled={!user || accountBusy !== null || !newPassword || !confirmPassword || (Boolean(user.passwordEnabled) && !currentPassword)}>{accountBusy === "password" ? <LoaderCircle className="animate-spin" /> : <KeyRound />}Alterar senha</Button></div>
+            <div className="flex justify-end md:col-span-2"><Button type="button" variant="outline" onClick={() => void changePassword()} disabled={!user || accountBusy !== null || !newPassword || !confirmPassword}>{accountBusy === "password" ? <LoaderCircle className="animate-spin" /> : <KeyRound />}Alterar senha</Button></div>
           </CardContent></Card>
 
           <Card className="gap-0 overflow-hidden py-0"><CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"><div><h3 className="font-semibold">Encerrar sessão</h3><p className="mt-1 text-sm text-muted-foreground">Saia com segurança desta conta neste dispositivo.</p></div><Button type="button" variant="outline" className="shrink-0" disabled={accountBusy !== null} onClick={() => void logout()}>{accountBusy === "logout" ? <LoaderCircle className="animate-spin" /> : <LogOut />}Fazer logoff</Button></CardContent></Card>

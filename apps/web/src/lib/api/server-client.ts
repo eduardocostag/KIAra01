@@ -1,5 +1,5 @@
 import "server-only"
-import { auth } from "@clerk/nextjs/server"
+import { AuthenticationRequiredError, requireAccessToken } from "@/lib/auth"
 
 type ApiErrorPayload = {
   error: { code: string; message: string; request_id: string; details?: Record<string, unknown> }
@@ -13,7 +13,7 @@ function errorResponse(status: number, code: string, message: string, requestId:
 }
 
 function upstreamFormatError(status: number, contentType: string, requestId: string) {
-  if (status === 401 || status === 403) return errorResponse(502, "upstream_auth_rejected", "A API recusou a autenticação enviada pelo site. Verifique a configuração Clerk/OIDC do backend.", requestId, { upstream_status: status })
+  if (status === 401 || status === 403) return errorResponse(502, "upstream_auth_rejected", "A API recusou a autenticação enviada pelo site. Verifique a configuração Supabase/OIDC do backend.", requestId, { upstream_status: status })
   if (status === 404) return errorResponse(502, "upstream_route_not_found", "A rota da API não foi encontrada. Verifique se KIARA_API_URL aponta para o backend correto.", requestId, { upstream_status: status })
   if (status === 412) return errorResponse(412, "version_conflict", "Este lead foi atualizado depois que a página foi carregada.", requestId, { upstream_status: status })
   if (status >= 500) return errorResponse(502, "upstream_server_error", "A API falhou internamente (HTTP " + status + ") e não devolveu o diagnóstico esperado.", requestId, { upstream_status: status })
@@ -30,9 +30,11 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
     else console.log(JSON.stringify(entry))
   }
 
-  const { getToken } = await auth()
-  const token = await getToken()
-  if (!token) {
+  let token: string
+  try {
+    token = await requireAccessToken()
+  } catch (error) {
+    if (!(error instanceof AuthenticationRequiredError)) throw error
     log("error", "kiara_api.session_missing")
     return errorResponse(401, "session_missing", "Sua sessão não forneceu um token válido. Entre novamente na Kiara.", requestId)
   }

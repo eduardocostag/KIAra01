@@ -14,7 +14,8 @@ from ..ports.identity import IdentityPrincipal
 
 JwksFetcher = Callable[[str], Mapping[str, Any] | Awaitable[Mapping[str, Any]]]
 
-_ALGORITHMS = ("RS256",)
+_ALGORITHMS = ("RS256", "ES256")
+_KTY_BY_ALGORITHM = {"RS256": "RSA", "ES256": "EC"}
 _ROLE_MAP = {
     "org:admin": "admin",
     "org:member": "operator",
@@ -60,13 +61,14 @@ class OidcIdentityVerifier:
         try:
             header = jwt.get_unverified_header(bearer_token)
             kid = _required_text(header, "kid")
-            if header.get("alg") not in _ALGORITHMS:
+            algorithm = header.get("alg")
+            if algorithm not in _ALGORITHMS:
                 raise jwt.InvalidAlgorithmError("unsupported algorithm")
             if header.get("typ") not in (None, "JWT"):
                 raise jwt.InvalidTokenError("unexpected token type")
 
             jwk = await self._key_for(kid)
-            key = jwt.PyJWK.from_dict(dict(jwk), algorithm="RS256").key
+            key = jwt.PyJWK.from_dict(dict(jwk), algorithm=algorithm).key
             decode_options = {"require": ["exp", "iss", "sub"]}
             if not self._audience:
                 decode_options["verify_aud"] = False
@@ -111,7 +113,12 @@ class OidcIdentityVerifier:
                     if not isinstance(item, Mapping):
                         raise TypeError("invalid JWK")
                     kid = _required_text(item, "kid")
-                    if item.get("kty") != "RSA" or item.get("alg") not in (None, "RS256"):
+                    algorithm = item.get("alg")
+                    if algorithm not in _ALGORITHMS:
+                        continue
+                    if item.get("kty") != _KTY_BY_ALGORITHM[algorithm]:
+                        continue
+                    if item.get("use") not in (None, "sig"):
                         continue
                     parsed[kid] = item
                 if not parsed:
@@ -133,9 +140,17 @@ def _principal_from_claims(claims: Mapping[str, Any]) -> IdentityPrincipal:
     if isinstance(organization, Mapping):
         organization_id = _required_text(organization, "id")
         provider_role = _required_text(organization, "rol")
-    else:
+    elif claims.get("org_id") is not None:
         organization_id = _required_text(claims, "org_id")
         provider_role = _required_text(claims, "org_role")
+    elif claims.get("role") == "authenticated" and _required_text(claims, "iss").endswith(".supabase.co/auth/v1"):
+        # Supabase Auth has no organization claim by default. Kiara's current
+        # commercial model is one isolated workspace per customer account, so
+        # the verified subject is also the tenant boundary.
+        organization_id = subject
+        provider_role = "owner"
+    else:
+        raise jwt.InvalidTokenError("active workspace required")
     role = _ROLE_MAP.get(provider_role)
     if role is None:
         raise jwt.InvalidTokenError("unsupported organization role")

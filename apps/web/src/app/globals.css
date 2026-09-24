@@ -686,7 +686,7 @@
 .segment-photo.segment-5 img { left: -500% !important; }
 .segment-card-copy { padding: .9rem; }
 .segment-card-copy h3 { color: rgb(255 255 255 / .84); font-size: .72rem; font-weight: 650; }
-.segment-card-copy p { min-height: 2.2rem; margin-top: .4rem; color: rgb(255 255 255 / .4); font-size: .57rem; line-height: 1.55; }
+.segment-card-copy p { min-height: 2.2rem; margin-top: .4rem; color: rgb(255 255 255 / .58); font-size: .57rem; line-height: 1.55; }
 .segment-card-copy a { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .8rem; color: rgb(179 151 255); font-size: .56rem; font-weight: 600; }
 .segment-card-copy a svg { width: .65rem; height: .65rem; }
 

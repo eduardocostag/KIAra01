@@ -1,8 +1,6 @@
 import "server-only"
 
-import { auth } from "@clerk/nextjs/server"
-
-import { requireWorkspace } from "@/lib/auth"
+import { requireAccessToken, requireWorkspace } from "@/lib/auth"
 
 export type InboxMessageDTO = Readonly<{
   id: string
@@ -179,9 +177,7 @@ function parseDetail(value: unknown): InboxConversationDTO {
 export async function getInboxDTO(): Promise<InboxViewDTO> {
   await requireWorkspace()
 
-  const session = await auth()
-  const token = await session.getToken()
-  if (!token) throw new KiaraApiError("A sessão não forneceu acesso à API.", crypto.randomUUID())
+  const token = await requireAccessToken()
   const page = object(await apiGet("/v1/inbox/threads", token), "thread page")
   if (!Array.isArray(page.items)) throw new KiaraApiError("A API retornou uma resposta inválida.", crypto.randomUUID())
 

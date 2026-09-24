@@ -1,13 +1,22 @@
 .git
+.env*
+**/.env*
+.obsidian-wrong-vault-backup
 .cache
 .pytest_cache
+.pytest-cache-*
 .ruff_cache
 .test-artifacts
 .tmp-*
 .venv
 build
+config
+data
 dist
 evidence
+generated-sites
+Sem título
+debug.log
 node_modules
 **/node_modules
 **/.next

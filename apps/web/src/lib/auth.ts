@@ -1,19 +1,25 @@
 import "server-only";
-import { auth } from "@clerk/nextjs/server";
+import { createClient } from "@/lib/supabase/server";
 
 export type WorkspaceRole = "admin" | "member";
 export type WorkspaceContext = Readonly<{ userId: string; workspaceId: string; role: WorkspaceRole }>;
 export class AuthenticationRequiredError extends Error {}
-export class ActiveWorkspaceRequiredError extends Error {}
-
-function normalizeRole(role: string | null | undefined): WorkspaceRole {
-  return role === "org:admin" || role === "admin" ? "admin" : "member";
-}
 
 /** The only tenant context application services may trust. Never accept workspaceId from request data. */
 export async function requireWorkspace(): Promise<WorkspaceContext> {
-  const session = await auth();
-  if (!session.userId) throw new AuthenticationRequiredError("Authentication required");
-  if (!session.orgId) throw new ActiveWorkspaceRequiredError("An active organization is required");
-  return { userId: session.userId, workspaceId: session.orgId, role: normalizeRole(session.orgRole) };
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.getClaims()
+  const userId = typeof data?.claims?.sub === "string" ? data.claims.sub : null
+  if (error || !userId) throw new AuthenticationRequiredError("Authentication required")
+  return { userId, workspaceId: userId, role: "admin" }
+}
+
+export async function requireAccessToken(): Promise<string> {
+  const supabase = await createClient()
+  const { data: claims, error: claimsError } = await supabase.auth.getClaims()
+  const { data: session, error: sessionError } = await supabase.auth.getSession()
+  if (claimsError || sessionError || !claims?.claims?.sub || !session.session?.access_token) {
+    throw new AuthenticationRequiredError("Authentication required")
+  }
+  return session.session.access_token
 }
