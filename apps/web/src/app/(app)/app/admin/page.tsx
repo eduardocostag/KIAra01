@@ -5,7 +5,7 @@ import { getAdminSnapshot } from "@/lib/admin/snapshot"
 
 export const dynamic = "force-dynamic"
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ mailerfind?: string }> }) {
   try {
     await requireSystemAdmin()
   } catch (error) {
@@ -13,5 +13,7 @@ export default async function AdminPage() {
     if (error instanceof AdministratorRequiredError) notFound()
     throw error
   }
-  return <div className="mx-auto w-full max-w-7xl"><AdminConsole initialSnapshot={await getAdminSnapshot()} /></div>
+  const result = (await searchParams).mailerfind
+  const mailerFindResult = result === "connected" || result === "denied" || result === "error" ? result : undefined
+  return <div className="mx-auto w-full max-w-7xl"><AdminConsole initialSnapshot={await getAdminSnapshot()} mailerFindResult={mailerFindResult} /></div>
 }

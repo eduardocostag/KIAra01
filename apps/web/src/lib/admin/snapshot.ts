@@ -1,6 +1,7 @@
 import "server-only"
 
 import { SYSTEM_ADMIN_EMAIL } from "@/lib/auth"
+import { kiaraApi } from "@/lib/api/server-client"
 import { createAdminClient, hasSupabaseAdminConfig } from "@/lib/supabase/admin"
 import type { AdminAuditEvent, AdminService, AdminSnapshot, AdminUser } from "./types"
 
@@ -82,7 +83,18 @@ async function loadAuditEvents(notices: string[]): Promise<AdminAuditEvent[]> {
   }
 }
 
-function serviceInventory(health: Health): AdminService[] {
+async function configuredIntegrations() {
+  try {
+    const response = await kiaraApi("/v1/integrations")
+    if (!response.ok) return new Set<string>()
+    const payload = await response.json() as { items?: Array<{ provider?: string; status?: string }> }
+    return new Set((payload.items ?? []).filter((item) => item.status !== "disabled").map((item) => item.provider).filter((value): value is string => Boolean(value)))
+  } catch {
+    return new Set<string>()
+  }
+}
+
+function serviceInventory(health: Health, integrations: Set<string>): AdminService[] {
   const authConfigured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
     && (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim(),
@@ -99,6 +111,7 @@ function serviceInventory(health: Health): AdminService[] {
     { id: "maps", name: "Google Maps e diretórios", category: "Diretórios", status: health.ready ? "operational" : "unknown", detail: health.ready ? "Busca gratuita por diretórios está disponível; Places é opcional." : "Aguardando confirmação da API.", configuration: "GOOGLE_PLACES_API_KEY é opcional" },
     { id: "meta", name: "Instagram e Facebook públicos", category: "Pesquisa", status: health.ready ? "operational" : "unknown", detail: "Descoberta pública disponível; dados privados exigem conexão oficial Meta.", configuration: "Conexão Instagram na seção Integrações" },
     { id: "scrapling", name: "Scrapling", category: "Pesquisa", status: health.ready ? "operational" : "unknown", detail: health.ready ? "Adaptador de leitura pública instalado no backend." : "O código está instalado, mas o backend não confirmou prontidão.", configuration: "services/api/kiara_api/scraping_adapters.py" },
+    { id: "mailerfind", name: "MailerFind MCP", category: "Pesquisa", status: integrations.has("mailerfind") ? "operational" : "attention", detail: integrations.has("mailerfind") ? "OAuth autorizado e credenciais protegidas no cofre da Kiara." : "Aguardando autorização da conta MailerFind pelo administrador.", configuration: "OAuth 2.0 + PKCE · https://mcp.mailerfind.com/mcp" },
     { id: "browser", name: "Navegação avançada", category: "Pesquisa", status: "unknown", detail: "Recurso opcional; o site não recebe nem expõe a chave do backend.", configuration: "BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID no projeto da API" },
     { id: "obscura", name: "Obscura CDP", category: "Pesquisa", status: "unknown", detail: "Conector opcional para sessões de navegador gerenciadas.", configuration: "OBSCURA_CDP_URL + OBSCURA_AUTH_TOKEN no projeto da API" },
   ]
@@ -106,15 +119,16 @@ function serviceInventory(health: Health): AdminService[] {
 
 export async function getAdminSnapshot(): Promise<AdminSnapshot> {
   const notices: string[] = []
-  const [health, users, auditEvents] = await Promise.all([
+  const [health, users, auditEvents, integrations] = await Promise.all([
     backendHealth(),
     loadUsers(notices),
     loadAuditEvents(notices),
+    configuredIntegrations(),
   ])
   return {
     generatedAt: new Date().toISOString(),
     users,
-    services: serviceInventory(health),
+    services: serviceInventory(health, integrations),
     auditEvents,
     notices,
   }

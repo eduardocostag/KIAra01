@@ -21,11 +21,12 @@ from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
-Provider = Literal["google", "instagram", "hermes"]
+Provider = Literal["google", "instagram", "hermes", "mailerfind"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
     "instagram": {"app_id", "app_secret", "access_token", "instagram_account_id", "page_id", "verify_token"},
     "hermes": {"endpoint_url", "api_key", "instance_id"},
+    "mailerfind": {"endpoint_url", "access_token", "refresh_token", "client_id", "client_secret", "expires_at", "scope", "token_type"},
 }
 
 
@@ -123,7 +124,8 @@ def _hermes_capabilities(credentials: dict[str, str]) -> dict[str, object]:
 def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> None:
         required = ({"developer_token", "client_id", "client_secret", "refresh_token", "customer_id"} if provider == "google" else
                     {"app_id", "app_secret", "access_token", "instagram_account_id"} if provider == "instagram" else
-                    {"endpoint_url", "api_key", "instance_id"})
+                    {"endpoint_url", "api_key", "instance_id"} if provider == "hermes" else
+                    {"endpoint_url", "access_token", "client_id"})
         missing = required - set(credentials)
         if missing:
             raise ApiError(422, "missing_credentials", "Preencha os campos obrigatórios.", {"fields": sorted(missing)})
@@ -148,6 +150,11 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                     raise ApiError(422, "invalid_hermes_endpoint", "A instância precisa de uma URL HTTPS pública.")
             if not re.fullmatch(r"[a-zA-Z0-9_-]{3,80}", credentials["instance_id"]):
                 raise ApiError(422, "invalid_hermes_instance", "ID de instância Hermes inválido.")
+        elif provider == "mailerfind":
+            if credentials["endpoint_url"] != "https://mcp.mailerfind.com/mcp":
+                raise ApiError(422, "invalid_mailerfind_endpoint", "O endpoint oficial do MailerFind não foi reconhecido.")
+            if credentials.get("token_type", "Bearer").lower() != "bearer":
+                raise ApiError(422, "invalid_mailerfind_token", "O MailerFind não retornou um token Bearer compatível.")
 
 
 def create_integration_router(repository: IntegrationRepository) -> APIRouter:

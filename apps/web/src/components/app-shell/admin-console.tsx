@@ -29,7 +29,7 @@ function formatDate(value: string | null) {
   }).format(date)
 }
 
-export function AdminConsole({ initialSnapshot }: { initialSnapshot: AdminSnapshot }) {
+export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSnapshot: AdminSnapshot; mailerFindResult?: "connected" | "denied" | "error" }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [refreshing, setRefreshing] = useState(false)
   const [resetting, setResetting] = useState<string | null>(null)
@@ -81,7 +81,7 @@ export function AdminConsole({ initialSnapshot }: { initialSnapshot: AdminSnapsh
     {message && <Alert variant={message.ok ? "default" : "destructive"} className={message.ok ? "border-emerald-500/20 bg-emerald-500/5" : undefined}>{message.ok ? <CheckCircle2 /> : <AlertTriangle />}<AlertTitle>{message.ok ? "Operação concluída" : "Não foi possível concluir"}</AlertTitle><AlertDescription>{message.text}</AlertDescription></Alert>}
     {snapshot.notices.map((notice) => <Alert key={notice}><CircleHelp /><AlertTitle>Informação do diagnóstico</AlertTitle><AlertDescription>{notice}</AlertDescription></Alert>)}
 
-    <Tabs defaultValue="overview" className="space-y-5">
+    <Tabs defaultValue={mailerFindResult ? "integrations" : "overview"} className="space-y-5">
       <TabsList style={{ height: "auto" }} className="grid w-full grid-cols-2 gap-1 rounded-2xl border bg-card p-1.5 sm:grid-cols-4">
         <TabsTrigger className="min-h-10 rounded-xl" value="overview">Visão geral</TabsTrigger>
         <TabsTrigger className="min-h-10 rounded-xl" value="users">Usuários</TabsTrigger>
@@ -98,7 +98,7 @@ export function AdminConsole({ initialSnapshot }: { initialSnapshot: AdminSnapsh
       </CardContent></Card></TabsContent>
 
       <TabsContent value="integrations" className="space-y-6">
-        <Card className="gap-0 overflow-hidden border-primary/20 py-0"><CardHeader className="border-b p-5 sm:p-6"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary"><KeyRound className="size-4" /></span><div><CardTitle>Credenciais por workspace</CardTitle><CardDescription className="mt-1">Configure diretamente abaixo. Os segredos são criptografados pelo backend e nunca retornam para o navegador.</CardDescription></div></div></CardHeader><CardContent className="p-5 sm:p-6"><IntegrationSettings /></CardContent></Card>
+        <Card className="gap-0 overflow-hidden border-primary/20 py-0"><CardHeader className="border-b p-5 sm:p-6"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary"><KeyRound className="size-4" /></span><div><CardTitle>Credenciais por workspace</CardTitle><CardDescription className="mt-1">Configure diretamente abaixo. Os segredos são criptografados pelo backend e nunca retornam para o navegador.</CardDescription></div></div></CardHeader><CardContent className="p-5 sm:p-6"><IntegrationSettings adminMode mailerFindResult={mailerFindResult} /></CardContent></Card>
         <Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Configuração global da infraestrutura</CardTitle><CardDescription>Chaves que alteram toda a plataforma ficam no cofre do ambiente, separadas das credenciais de cada cliente.</CardDescription></CardHeader><CardContent className="grid gap-3 p-5 sm:p-6 lg:grid-cols-2">{snapshot.services.filter((service) => service.category === "Infraestrutura" || service.status !== "operational").map((service) => <div key={service.id} className="rounded-2xl border bg-background/40 p-4"><div className="flex items-start justify-between gap-3"><p className="font-semibold">{service.name}</p><StatusBadge status={service.status} /></div><p className="mt-2 text-sm leading-5 text-muted-foreground">{service.detail}</p><code className="mt-3 block break-words rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-foreground/80">{service.configuration}</code></div>)}</CardContent><div className="flex flex-col gap-3 border-t bg-muted/20 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6"><p className="max-w-2xl text-xs leading-5 text-muted-foreground">Por segurança, valores globais nunca são exibidos nesta página. Alterações no cofre exigem uma nova implantação do serviço correspondente.</p><Button asChild variant="outline" className="shrink-0"><a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Abrir cofre da Vercel<ExternalLink /></a></Button></div></Card>
       </TabsContent>
 
