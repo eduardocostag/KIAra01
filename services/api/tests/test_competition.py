@@ -1,6 +1,12 @@
 import pytest
 
-from kiara_api.competition import CompetitionAnalysisInput, _analysis_arguments, _decode_mcp_body
+from kiara_api.competition import (
+    CompetitionAnalysisInput,
+    _analysis_arguments,
+    _analysis_id,
+    _decode_mcp_body,
+    _items,
+)
 from kiara_api.http.errors import ApiError
 
 
@@ -25,3 +31,10 @@ def test_competition_rejects_invalid_targets(target: str) -> None:
 
 def test_mcp_sse_response_is_decoded() -> None:
     assert _decode_mcp_body('event: message\ndata: {"result":{"ok":true}}\n') == {"result": {"ok": True}}
+
+
+def test_competition_extracts_nested_analysis_and_prospects() -> None:
+    assert _analysis_id({"data": {"analysis": {"analysisId": "analysis-123"}}}) == "analysis-123"
+    assert _items({"result": {"prospects": [{"username": "kiara"}]}}, "prospects", "items") == [
+        {"username": "kiara"}
+    ]

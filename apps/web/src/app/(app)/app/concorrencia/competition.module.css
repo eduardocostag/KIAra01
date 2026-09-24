@@ -5,6 +5,8 @@
 .header span { display: block; margin-top: .45rem; color: var(--muted-foreground); font-size: .88rem; }
 .connected { gap: .45rem; border-color: color-mix(in oklch, #34d399 35%, var(--border)); color: #6ee7b7; }
 .connected i { width: .42rem; height: .42rem; border-radius: 50%; background: #34d399; box-shadow: 0 0 12px #34d399; }
+.archived { gap: .45rem; border-color: color-mix(in oklch, var(--primary) 38%, var(--border)); color: var(--primary); }
+.archived i { width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(19rem, .75fr); gap: 1rem; align-items: start; }
 .builder { overflow: hidden; border-color: color-mix(in oklch, var(--primary) 18%, var(--border)); background: radial-gradient(circle at 95% 0%, color-mix(in oklch, var(--primary) 10%, transparent), transparent 15rem), var(--card); }
 .form { display: grid; gap: 1.1rem; }

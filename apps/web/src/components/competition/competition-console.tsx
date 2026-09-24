@@ -126,8 +126,10 @@ export function CompetitionConsole() {
   const liveProgress = firstNumber(liveRecord, ["progress", "progressPercent", "percentage"])
   const progressValue = typeof liveProgress === "number" ? Math.min(100, Math.max(0, liveProgress <= 1 ? liveProgress * 100 : liveProgress)) : null
   const account = asObject(overview.account)
+  const provider = asObject(overview.provider)
+  const providerAvailable = provider.available !== false
   const accountData = Object.keys(asObject(account.data)).length ? asObject(account.data) : account
-  const plan = firstString(accountData, ["plan", "planName", "subscriptionPlan"]) || "Conta conectada"
+  const plan = providerAvailable ? firstString(accountData, ["plan", "planName", "subscriptionPlan"]) || "Conta conectada" : "Arquivo disponível"
   const analysisCredits = asObject(accountData.analysisCredits ?? accountData.analysis_credits)
   const credits = firstNumber(analysisCredits, ["remaining", "balance", "creditsRemaining"])
     ?? firstNumber(accountData, ["creditsRemaining", "credits"])
@@ -215,7 +217,7 @@ export function CompetitionConsole() {
   return <div className={styles.page}>
     <header className={styles.header}>
       <div><p>Prévia exclusiva do administrador</p><h1>Inteligência de concorrência</h1><span>Transforme audiências públicas do Instagram em oportunidades analisáveis.</span></div>
-      <Badge variant="outline" className={styles.connected}><i /> MailerFind conectado</Badge>
+      <Badge variant="outline" className={providerAvailable ? styles.connected : styles.archived}><i /> {providerAvailable ? "MailerFind conectado" : "Resultados salvos na Kiara"}</Badge>
     </header>
 
     {notice && <Alert variant="destructive"><ShieldCheck /><AlertTitle>{notice.title}</AlertTitle><AlertDescription>{notice.text}</AlertDescription></Alert>}
@@ -234,7 +236,7 @@ export function CompetitionConsole() {
       </Card>
 
       <aside className={styles.summary}>
-        <Card><CardHeader><CardDescription>Conta MailerFind</CardDescription><CardTitle>{plan}</CardTitle></CardHeader><CardContent className={styles.accountStats}><span><b>{credits ?? "—"}</b> créditos de análise</span><a href="/app/admin?tab=integrations">Gerenciar conexão <ExternalLink /></a></CardContent></Card>
+        <Card><CardHeader><CardDescription>{providerAvailable ? "Conta MailerFind" : "Histórico de Concorrência"}</CardDescription><CardTitle>{plan}</CardTitle></CardHeader><CardContent className={styles.accountStats}><span><b>{providerAvailable ? credits ?? "—" : analyses.length}</b> {providerAvailable ? "créditos de análise" : "pesquisas arquivadas"}</span><a href="/app/admin?tab=integrations">{providerAvailable ? "Gerenciar conexão" : "Reconectar MailerFind"} <ExternalLink /></a></CardContent></Card>
         <Card><CardHeader className={styles.listHeader}><div><CardTitle>Análises recentes</CardTitle><CardDescription>{analyses.length} registros encontrados</CardDescription></div><Button variant="ghost" size="icon" onClick={() => void loadOverview()} disabled={loading !== null} aria-label="Atualizar análises"><RefreshCw className={loading === "overview" ? "animate-spin" : ""} /></Button></CardHeader><CardContent className={styles.analysisList}>{analyses.length ? analyses.map((analysis, index) => { const id = firstString(analysis, ["id", "analysisId", "analysis_id"]); const name = firstString(analysis, ["name", "target", "username"]) || `Análise ${index + 1}`; const count = firstNumber(analysis, ["prospectCount", "prospectsCount", "prospect_count", "totalProspects"]); const running = isRunning(analysis); return <button type="button" key={id || index} onClick={() => { if (!id) return; if (running) { setSelectedAnalysis(id); setTrackingId(id) } else void loadProspects(id) }} disabled={!id || loading !== null}><span><strong>{name}</strong><small>{statusLabel(analysis)}{typeof count === "number" ? ` · ${count} leads` : ""}</small></span><Badge variant="outline">{running ? "Acompanhar" : "Ver leads"}</Badge></button> }) : <div className={styles.empty}><Radar /><p>Nenhuma análise encontrada.</p></div>}</CardContent></Card>
       </aside>
     </div>

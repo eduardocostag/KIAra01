@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
+from .competition_store import CompetitionRepository
 from .integrations import IntegrationRepository, SYSTEM_ADMIN_EMAIL
 
 
@@ -140,7 +141,85 @@ def _analysis_arguments(payload: CompetitionAnalysisInput) -> dict[str, Any]:
     return arguments
 
 
-def create_competition_router(repository: IntegrationRepository) -> APIRouter:
+def _object(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _text(value: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        item = value.get(key)
+        if isinstance(item, str) and item.strip():
+            return item.strip()
+    return ""
+
+
+def _number(value: dict[str, Any], *keys: str) -> int | None:
+    for key in keys:
+        item = value.get(key)
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            return max(0, int(item))
+    return None
+
+
+def _analysis_record(value: Any) -> dict[str, Any]:
+    current = _object(value)
+    if not current:
+        return {}
+    if _text(current, "id", "analysisId", "analysis_id", "status", "state"):
+        return current
+    for key in ("analysis", "data", "result"):
+        nested = _analysis_record(current.get(key))
+        if nested:
+            return nested
+    return current
+
+
+def _analysis_id(value: Any) -> str:
+    return _text(_analysis_record(value), "id", "analysisId", "analysis_id")
+
+
+def _items(value: Any, *keys: str) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    current = _object(value)
+    if not current:
+        return []
+    for key in keys:
+        if isinstance(current.get(key), list):
+            return _items(current[key], *keys)
+    for key in ("data", "result"):
+        nested = _items(current.get(key), *keys)
+        if nested:
+            return nested
+    return []
+
+
+async def _archive_analysis(
+    archive: CompetitionRepository,
+    organization_id: str,
+    value: Any,
+    *,
+    mode: str | None = None,
+    target: str | None = None,
+    name: str | None = None,
+) -> dict[str, Any] | None:
+    record = _analysis_record(value)
+    identifier = _analysis_id(record)
+    if not identifier:
+        return None
+    return await archive.upsert_analysis(
+        organization_id,
+        identifier,
+        record,
+        mode=mode or _text(record, "mode"),
+        target=target or _text(record, "target", "username", "postUrl"),
+        name=name or _text(record, "name"),
+        status=_text(record, "status", "state") or "created",
+        prospect_count=_number(record, "prospectCount", "prospectsCount", "prospect_count", "totalProspects"),
+    )
+
+
+def create_competition_router(repository: IntegrationRepository, archive: CompetitionRepository) -> APIRouter:
     router = APIRouter(prefix="/v1/competition", tags=["competition"])
 
     def ensure_system_admin(context: RequestContext) -> None:
@@ -194,27 +273,51 @@ def create_competition_router(repository: IntegrationRepository) -> APIRouter:
 
     @router.get("/overview")
     async def overview(context: Annotated[RequestContext, Depends(authenticated_context)]):
-        account, analyses = await asyncio.gather(
-            call(context, "mailerfind_user_get_info", {}),
-            call(context, "mailerfind_analyses_list", {"limit": 20}),
-        )
-        return {"account": account, "analyses": analyses}
+        ensure_system_admin(context)
+        try:
+            account, analyses = await asyncio.gather(
+                call(context, "mailerfind_user_get_info", {}),
+                call(context, "mailerfind_analyses_list", {"limit": 20}),
+            )
+            for item in _items(analyses, "analyses", "items"):
+                await _archive_analysis(archive, context.organization_id, item)
+            local = await archive.list_analyses(context.organization_id)
+            return {"account": account, "analyses": {"items": local}, "provider": {"available": True}}
+        except ApiError as error:
+            local = await archive.list_analyses(context.organization_id)
+            return {
+                "account": {}, "analyses": {"items": local},
+                "provider": {"available": False, "code": error.code, "message": error.message},
+            }
 
     @router.post("/analyses", status_code=201)
     async def create_analysis(payload: CompetitionAnalysisInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
-        return await call(context, "mailerfind_analysis_create", _analysis_arguments(payload))
+        result = await call(context, "mailerfind_analysis_create", _analysis_arguments(payload))
+        await _archive_analysis(archive, context.organization_id, result, mode=payload.mode, target=payload.target, name=payload.name)
+        return result
 
     @router.post("/analyses/{analysis_id}/start")
     async def start_analysis(analysis_id: str, payload: CompetitionStartInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", analysis_id):
             raise ApiError(422, "analysis_id_invalid", "A análise selecionada não possui um identificador válido.")
-        return await call(context, "mailerfind_analysis_start", {"analysisId": analysis_id})
+        result = await call(context, "mailerfind_analysis_start", {"analysisId": analysis_id})
+        await _archive_analysis(archive, context.organization_id, result)
+        return result
 
     @router.get("/analyses/{analysis_id}")
     async def get_analysis(analysis_id: str, context: Annotated[RequestContext, Depends(authenticated_context)]):
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", analysis_id):
             raise ApiError(422, "analysis_id_invalid", "A análise selecionada não possui um identificador válido.")
-        return await call(context, "mailerfind_analysis_get", {"analysisId": analysis_id})
+        ensure_system_admin(context)
+        try:
+            result = await call(context, "mailerfind_analysis_get", {"analysisId": analysis_id})
+            await _archive_analysis(archive, context.organization_id, result)
+            return result
+        except ApiError:
+            local = await archive.get_analysis(context.organization_id, analysis_id)
+            if local:
+                return local
+            raise
 
     @router.get("/prospects")
     async def list_prospects(
@@ -227,9 +330,18 @@ def create_competition_router(repository: IntegrationRepository) -> APIRouter:
             raise ApiError(422, "analysis_id_invalid", "A análise selecionada não possui um identificador válido.")
         if not 1 <= limit <= 100:
             raise ApiError(422, "prospect_limit_invalid", "O limite deve ficar entre 1 e 100.")
+        ensure_system_admin(context)
+        local = await archive.list_prospects(context.organization_id, analysis_id, limit)
+        if local:
+            return {"items": local, "archived": True}
         arguments: dict[str, Any] = {"analysisId": analysis_id, "limit": limit}
         if contactable_only:
             arguments["hasEmail"] = True
-        return await call(context, "mailerfind_prospects_list", arguments)
+        result = await call(context, "mailerfind_prospects_list", arguments)
+        if not await archive.get_analysis(context.organization_id, analysis_id):
+            await archive.upsert_analysis(context.organization_id, analysis_id, {}, status="completed")
+        await archive.upsert_prospects(context.organization_id, analysis_id, _items(result, "prospects", "items"))
+        local = await archive.list_prospects(context.organization_id, analysis_id, limit)
+        return {"items": local, "archived": True}
 
     return router
