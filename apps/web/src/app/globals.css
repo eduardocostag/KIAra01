@@ -486,6 +486,96 @@
   mask-image: radial-gradient(ellipse at center, black 0%, transparent 72%);
 }
 
+.auth-visual {
+  isolation: isolate;
+  min-width: 0;
+  padding: clamp(2rem, 4vw, 3.75rem);
+  background:
+    radial-gradient(circle at 75% 31%, rgb(126 72 255 / .13), transparent 12rem),
+    radial-gradient(circle at 18% 82%, rgb(62 83 210 / .06), transparent 18rem);
+}
+.auth-visual::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: clamp(7rem, 15vh, 10rem);
+  right: clamp(-7rem, -4vw, -2rem);
+  width: clamp(15rem, 27vw, 23rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(102 51 224 / .095), transparent 68%);
+  filter: blur(20px);
+}
+.auth-visual::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  opacity: .24;
+  background-image: radial-gradient(circle, rgb(166 130 255 / .22) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: radial-gradient(ellipse at 33% 45%, black, transparent 63%);
+}
+.auth-brand { position: relative; z-index: 1; }
+.auth-hero {
+  display: grid;
+  align-content: center;
+  flex: 1;
+  width: min(100%, 37rem);
+  padding-block: clamp(2rem, 6vh, 4rem);
+}
+.auth-orb-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: clamp(5.75rem, 12vh, 8rem);
+  margin-bottom: clamp(1.5rem, 3.5vh, 2.5rem);
+}
+.auth-orb-stage::before {
+  content: "";
+  position: absolute;
+  left: clamp(-1rem, -1vw, 0rem);
+  width: clamp(8rem, 14vw, 11rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(125 66 255 / .18), transparent 68%);
+  filter: blur(14px);
+}
+.auth-hero-orb.kiara-orb-lg {
+  width: clamp(5.75rem, 8vw, 7.5rem);
+  height: clamp(5.75rem, 8vw, 7.5rem);
+}
+.auth-title {
+  max-width: 11ch;
+  margin-top: .875rem;
+  font-size: clamp(2.65rem, 4.3vw, 4rem);
+  line-height: 1.01;
+  letter-spacing: -.045em;
+  text-wrap: balance;
+}
+.auth-description {
+  max-width: 33rem;
+  margin-top: 1.25rem;
+  font-size: .9375rem;
+  line-height: 1.65;
+}
+.auth-form-panel {
+  background: linear-gradient(145deg, rgb(255 255 255 / .024), rgb(117 72 234 / .025));
+  backdrop-filter: blur(20px);
+}
+
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .auth-visual { padding: 2rem 2.25rem; }
+  .auth-title { font-size: clamp(2.35rem, 4.6vw, 3rem); }
+  .auth-description { max-width: 28rem; line-height: 1.55; }
+  .auth-orb-stage { height: 5.75rem; margin-bottom: 1.5rem; }
+  .auth-hero-orb.kiara-orb-lg { width: 5.75rem; height: 5.75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-hero-orb { animation: none; }
+}
+
 .hero-display {
   font-size: clamp(2.5rem, 4.15vw, 4.05rem);
   font-weight: 600;
