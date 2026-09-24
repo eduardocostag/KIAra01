@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createClient } from "@/lib/supabase/browser"
-import { supabaseConfig } from "@/lib/supabase/config"
 
-export function SupabaseSignInForm() {
+export function SupabaseSignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   const router = useRouter()
   const [login, setLogin] = useState("")
   const [password, setPassword] = useState("")
@@ -40,14 +39,6 @@ export function SupabaseSignInForm() {
     setBusy(true)
     setError(null)
     try {
-      const { url, publishableKey } = supabaseConfig()
-      const settingsResponse = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: publishableKey } })
-      const settings = await settingsResponse.json() as { external?: { google?: boolean } }
-      if (!settings.external?.google) {
-        setError("O acesso pelo Google está aguardando a ativação do provedor. Entre com e-mail e senha ou fale com o suporte.")
-        setBusy(false)
-        return
-      }
       const supabase = createClient()
       const result = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -72,12 +63,13 @@ export function SupabaseSignInForm() {
 
         {error ? <Alert variant="destructive"><LockKeyhole /><AlertTitle>Não foi possível entrar</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
 
-        <Button type="button" variant="outline" size="lg" className="h-12 w-full border-white/12 bg-white/[.04] text-white hover:bg-white/[.09] hover:text-white" disabled={busy} onClick={signInWithGoogle}>
-          <span className="grid size-5 place-items-center rounded-full bg-white text-xs font-bold text-[#4285f4]" aria-hidden="true">G</span>
-          Continuar com Google
-        </Button>
-
-        <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[.16em] text-white/35" aria-hidden="true"><span className="h-px flex-1 bg-white/10" />ou<span className="h-px flex-1 bg-white/10" /></div>
+        {googleEnabled ? <>
+          <Button type="button" variant="outline" size="lg" className="h-12 w-full border-white/12 bg-white/[.04] text-white hover:bg-white/[.09] hover:text-white" disabled={busy} onClick={signInWithGoogle}>
+            <span className="grid size-5 place-items-center rounded-full bg-white text-xs font-bold text-[#4285f4]" aria-hidden="true">G</span>
+            Continuar com Google
+          </Button>
+          <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[.16em] text-white/35" aria-hidden="true"><span className="h-px flex-1 bg-white/10" />ou<span className="h-px flex-1 bg-white/10" /></div>
+        </> : null}
 
         <div className="grid gap-2">
           <Label htmlFor="login">E-mail ou usuário</Label>

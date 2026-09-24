@@ -74,6 +74,39 @@
 .kiara-notes-field > p.is-error { color: var(--destructive); }
 @media (max-width: 850px) { .kiara-contact-workspace { height: auto; min-height: 0; grid-template-columns: 1fr; } .kiara-contact-list { display: flex; border-right: 0; border-bottom: 1px solid var(--border); gap: .4rem; overflow-x: auto; overflow-y: hidden; } .kiara-contact-list-title { display: none; } .kiara-contact-list > button { min-width: 210px; } .kiara-contact-dossier { overflow-y: visible; } }
 @media (max-width: 1100px) { .kiara-contact-dossier > header { grid-template-columns: minmax(0,1fr); } .kiara-contact-header-actions { justify-content: flex-start; } }
-@media (max-width: 600px) { .kiara-contact-dossier { padding: .8rem; } .kiara-contact-header-actions { flex-wrap: wrap; justify-content: flex-start; } .kiara-contact-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .kiara-inbox-search input { height: 2.5rem; }
+  .kiara-contact-workspace { border-radius: .9rem; box-shadow: none; }
+  .kiara-contact-list { gap: .35rem; padding: .5rem; scroll-padding-inline: .5rem; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .kiara-contact-list::-webkit-scrollbar { display: none; }
+  .kiara-contact-list > button { min-width: 180px; gap: .55rem; padding: .55rem; scroll-snap-align: start; }
+  .kiara-contact-list button strong { font-size: .7rem; }
+  .kiara-contact-list button small { font-size: .58rem; }
+  .kiara-contact-initial { width: 1.85rem; height: 1.85rem; border-radius: .6rem; font-size: .65rem; }
+  .kiara-contact-dossier { padding: .75rem; }
+  .kiara-contact-dossier > header { gap: .75rem; }
+  .kiara-contact-identity { gap: .65rem; }
+  .kiara-contact-identity > span { width: 2.5rem; height: 2.5rem; }
+  .kiara-contact-identity > span svg { width: 1.45rem; height: 1.45rem; }
+  .kiara-contact-identity h2 { font-size: 1rem; }
+  .kiara-contact-status { padding: .2rem .5rem; font-size: .56rem; }
+  .kiara-contact-header-actions { flex-wrap: wrap; justify-content: flex-start; gap: .35rem; }
+  .kiara-contact-grid { grid-template-columns: 1fr; gap: .55rem; margin-top: .6rem; }
+  .kiara-contact-grid > section, .kiara-contact-description { border-radius: .8rem; padding: .8rem; }
+  .kiara-contact-grid dl { gap: .6rem; margin-top: .6rem; }
+  .kiara-contact-grid dl > div { grid-template-columns: minmax(82px,.4fr) minmax(0,1fr); }
+  .kiara-contact-quick-actions > * { padding: .5rem .6rem; }
+  .kiara-contact-quick-actions small { display: none; }
+  .kiara-contact-description { margin-top: .55rem; }
+  .kiara-notes-editor { padding: .8rem; }
+  .kiara-notes-editor > header { gap: .65rem; padding-bottom: .8rem; }
+  .kiara-notes-editor > header > span { width: 2.35rem; height: 2.35rem; border-radius: .7rem; }
+  .kiara-notes-editor > header h2 { font-size: .95rem; }
+  .kiara-notes-field { margin-top: .9rem; }
+  .kiara-notes-field textarea { min-height: 210px; padding: .8rem; }
+  .kiara-notes-field > div { flex-direction: column-reverse; align-items: stretch; gap: .5rem; margin-top: .6rem; }
+  .kiara-notes-field > div > span { align-self: flex-end; }
+  .kiara-notes-field > div button { width: 100%; }
+}
 @media (max-width: 640px) { .kiara-inbox-toolbar { align-items: stretch; flex-direction: column; } .kiara-inbox-toolbar > [role="tablist"] { width: 100%; } .kiara-inbox-search { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .kiara-contact-list > button { transition: none; } }

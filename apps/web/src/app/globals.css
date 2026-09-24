@@ -345,6 +345,16 @@
 .kiara-section-heading.is-compact { padding: 1rem 1.25rem; }
 .kiara-section-heading.is-compact .kiara-page-title { font-size: clamp(1.55rem, 2.4vw, 2rem); }
 .kiara-section-heading.is-compact p { line-height: 1.35; }
+@media (max-width: 640px) {
+  .kiara-section-heading.is-mobile-minimal { overflow: visible; border: 0; border-radius: 0; background: transparent; padding: .15rem 0 0; }
+  .kiara-section-heading.is-mobile-minimal::before { display: none; }
+  .kiara-section-heading.is-mobile-minimal > div:first-child > p { display: none; }
+  .kiara-section-heading.is-mobile-minimal .kiara-page-title { font-size: 1.5rem; line-height: 1.15; }
+  .kiara-section-heading.is-mobile-minimal { flex-direction: row; align-items: center; justify-content: space-between; gap: .75rem; }
+  .kiara-section-heading.is-mobile-minimal > div:last-child { display: flex; }
+  .kiara-section-heading.is-mobile-minimal > div:last-child button { width: 2.4rem; height: 2.4rem; padding: 0; gap: 0; font-size: 0; }
+  .kiara-section-heading.is-mobile-minimal > div:last-child button svg { width: 1rem; height: 1rem; margin: 0; }
+}
 .dark .kiara-workspace .inbox-premium > [role="tablist"] { background: var(--card); border-color: var(--border); box-shadow: 0 10px 30px rgb(0 0 0 / .15); }
 .dark .kiara-workspace .inbox-premium [role="tabpanel"] > .divide-y > article { background: var(--card); border-color: var(--border); }
 .dark .kiara-workspace .inbox-premium [role="tabpanel"] > .divide-y > article:hover { border-color: color-mix(in oklch, var(--primary) 30%, var(--border)); }
@@ -675,9 +685,9 @@
 .segment-card-track { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: .6rem; }
 .segment-card { overflow: hidden; border: 1px solid rgb(255 255 255 / .09); border-radius: .85rem; background: rgb(18 17 30); transition: transform .25s ease, border-color .25s ease; }
 .segment-card:hover { border-color: rgb(151 113 255 / .26); transform: translateY(-4px); }
-.segment-photo { position: relative; height: 145px; overflow: hidden; }
+.segment-photo { position: relative; height: 170px; overflow: hidden; background: rgb(12 11 22); }
 .segment-photo::after { position: absolute; inset: 0; z-index: 1; content: ""; background: linear-gradient(180deg, transparent 45%, rgb(18 17 30)); }
-.segment-photo img { top: 50% !important; width: 600% !important; height: auto !important; max-width: none !important; transform: translateY(-50%); }
+.segment-photo img { top: 0 !important; width: 600% !important; height: auto !important; max-width: none !important; }
 .segment-photo.segment-0 img { left: 0 !important; }
 .segment-photo.segment-1 img { left: -100% !important; }
 .segment-photo.segment-2 img { left: -200% !important; }
@@ -713,7 +723,7 @@
   .reference-cta-orb { top: -25%; right: -15%; }
   .segment-card-track { display: flex; margin-right: -1.25rem; overflow-x: auto; padding-right: 1.25rem; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .segment-card { width: 72vw; flex: 0 0 auto; scroll-snap-align: start; }
-  .segment-photo { height: 210px; }
+  .segment-photo { height: min(92vw, 390px); }
 }
 
 .marketing-step-card::before, .marketing-feature-card::before { position: absolute; inset: 0; pointer-events: none; content: ""; background: radial-gradient(circle at 85% 8%, rgb(125 78 255 / .13), transparent 32%); opacity: 0; transition: opacity .3s ease; }

@@ -68,7 +68,7 @@ export function LandingPage() {
         <section id="segmentos" className="reference-segments border-y border-white/8 bg-white/[.016]">
           <div className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
             <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><p className="eyebrow">Soluções por segmento</p><h2 className="mt-4 max-w-md text-4xl font-semibold leading-[1.04] tracking-[-.045em] text-white">Prospecção para diferentes mercados.</h2></div><p className="max-w-md text-sm leading-6 text-white/46">Use filtros e fontes adequados ao público que sua empresa precisa encontrar.</p></div>
-            <div className="segment-card-track mt-10">{segments.map(([title, copy], index) => <article className="segment-card" key={title}><div className={`segment-photo segment-${index}`}><Image src="/images/kiara-segments.png" alt={`Profissional do segmento de ${title}`} fill sizes="100vw" /></div><div className="segment-card-copy"><h3>{title}</h3><p>{copy}</p><Link href="/sign-up">Encontrar leads <ArrowRight /></Link></div></article>)}</div>
+            <div className="segment-card-track mt-10">{segments.map(([title, copy], index) => <article className="segment-card" key={title}><div className={`segment-photo segment-${index}`}><Image src="/images/kiara-segments.png" alt={`Profissional do segmento de ${title}`} fill sizes="(max-width: 767px) 1800px, 1320px" /></div><div className="segment-card-copy"><h3>{title}</h3><p>{copy}</p><Link href="/sign-up">Encontrar leads <ArrowRight /></Link></div></article>)}</div>
           </div>
         </section>
 
