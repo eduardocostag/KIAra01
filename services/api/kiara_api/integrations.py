@@ -22,10 +22,11 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
-Provider = Literal["google", "instagram", "hermes", "mailerfind"]
+Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
     "instagram": {"app_id", "app_secret", "access_token", "instagram_account_id", "page_id", "verify_token"},
+    "instagram_session": {"session_id", "username"},
     "hermes": {"endpoint_url", "api_key", "instance_id"},
     "mailerfind": {"endpoint_url", "access_token", "refresh_token", "client_id", "client_secret", "expires_at", "scope", "token_type"},
 }
@@ -132,6 +133,7 @@ def _hermes_capabilities(credentials: dict[str, str]) -> dict[str, object]:
 def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> None:
         required = ({"developer_token", "client_id", "client_secret", "refresh_token", "customer_id"} if provider == "google" else
                     {"app_id", "app_secret", "access_token", "instagram_account_id"} if provider == "instagram" else
+                    {"session_id"} if provider == "instagram_session" else
                     {"endpoint_url", "api_key", "instance_id"} if provider == "hermes" else
                     {"endpoint_url", "access_token", "client_id"})
         missing = required - set(credentials)
@@ -143,6 +145,9 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                     raise ApiError(422, "invalid_customer_id", "O ID da conta Google Ads deve ter 10 dígitos.", {"field": field})
         elif provider == "instagram" and not credentials["app_id"].isdigit():
             raise ApiError(422, "invalid_app_id", "O App ID da Meta deve conter apenas números.")
+        elif provider == "instagram_session":
+            if not re.fullmatch(r"[A-Za-z0-9%:_-]{20,4096}", credentials["session_id"]):
+                raise ApiError(422, "invalid_instagram_session", "A sessão do Instagram não possui um formato válido.")
         elif provider == "hermes":
             parsed = urlsplit(credentials["endpoint_url"])
             if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
@@ -183,9 +188,21 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
     @router.put("/{provider}")
     async def save_integration(provider: Provider, payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
         ensure_admin(context)
-        if provider == "mailerfind":
+        if provider in {"mailerfind", "instagram_session"}:
             ensure_system_admin(context)
         return await repository.save(context.organization_id, provider, payload.credentials)
+
+    @router.get("/instagram-session/status")
+    async def instagram_session_status(context: Annotated[RequestContext, Depends(authenticated_context)]):
+        ensure_system_admin(context)
+        credentials = await repository.credentials_for(context.organization_id, "instagram_session")
+        if not credentials:
+            raise ApiError(404, "instagram_session_not_configured", "Conecte uma sessão do Instagram no painel administrativo.")
+        from .instagram_private import InstagramSessionFailure, verify_instagram_session
+        try:
+            return await asyncio.to_thread(verify_instagram_session, credentials["session_id"])
+        except InstagramSessionFailure as error:
+            raise ApiError(error.status_code, error.code, error.message) from None
 
     @router.put("/mailerfind/global")
     async def save_global_mailerfind(payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):

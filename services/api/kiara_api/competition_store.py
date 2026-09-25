@@ -120,7 +120,7 @@ class CompetitionRepository:
         async with self._postgres._transaction(organization_id) as connection:
             rows = await (await connection.execute(
                 """SELECT p.id,p.provider_prospect_id,p.instagram_username,p.display_name,p.public_email,p.phone,
-                          p.profile_url,p.whatsapp_url,
+                          p.profile_url,p.whatsapp_url,p.provider_snapshot,
                           p.created_at,p.updated_at
                    FROM competition_prospects p JOIN competition_analyses a
                      ON a.organization_id=p.organization_id AND a.id=p.analysis_id
@@ -133,6 +133,8 @@ class CompetitionRepository:
             "username": row["instagram_username"], "full_name": row["display_name"],
             "email": row["public_email"], "phone_number": row["phone"],
             "profile_url": row["profile_url"], "whatsapp_url": row["whatsapp_url"],
+            "relationship_type": (row["provider_snapshot"] or {}).get("relationship_type"),
+            "source_media_url": (row["provider_snapshot"] or {}).get("source_media_url"),
             "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat(),
         } for row in rows]
 

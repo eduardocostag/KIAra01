@@ -18,7 +18,7 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .competition_store import CompetitionRepository
 from .integrations import IntegrationRepository, SYSTEM_ADMIN_EMAIL
-from .scraping_adapters import fetch_public_with_scrapling
+from .instagram_private import InstagramSessionFailure, collect_instagram_relationships
 
 
 def _decode_mcp_body(raw: str) -> dict[str, Any]:
@@ -155,41 +155,6 @@ def _kiara_public_target(payload: KiaraCompetitionInput) -> tuple[str, str | Non
     if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", username) or username.lower() in _INSTAGRAM_RESERVED_PATHS:
         raise ApiError(422, "instagram_username_invalid", "Informe somente o @usuário público do concorrente.")
     return f"https://www.instagram.com/{username}/", username.lower()
-
-
-def _profiles_from_public_links(links: list[str], excluded_username: str | None = None) -> list[dict[str, Any]]:
-    profiles: dict[str, dict[str, Any]] = {}
-    for link in links:
-        parsed = urlsplit(link)
-        host = (parsed.hostname or "").lower().removeprefix("www.")
-        parts = parsed.path.strip("/").split("/") if parsed.path.strip("/") else []
-        if parsed.scheme not in {"http", "https"} or host != "instagram.com" or len(parts) != 1:
-            continue
-        username = parts[0].lower()
-        if (
-            not re.fullmatch(r"[A-Za-z0-9._]{1,30}", username)
-            or username in _INSTAGRAM_RESERVED_PATHS
-            or username == excluded_username
-        ):
-            continue
-        profiles.setdefault(username, {
-            "id": f"instagram:{username}",
-            "username": username,
-            "profile_url": f"https://www.instagram.com/{username}/",
-            "source": "kiara_public_serverless",
-        })
-    return list(profiles.values())[:100]
-
-
-async def _collect_kiara_public(payload: KiaraCompetitionInput) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    url, excluded_username = _kiara_public_target(payload)
-    try:
-        _, links, final_url = await asyncio.to_thread(fetch_public_with_scrapling, url)
-    except (OSError, RuntimeError, ValueError, TypeError, UnicodeError) as error:
-        return [], {"source": "kiara_public_serverless", "access": "limited", "error_class": type(error).__name__}
-    return _profiles_from_public_links(links, excluded_username), {
-        "source": "kiara_public_serverless", "access": "public", "final_url": final_url,
-    }
 
 
 def _analysis_arguments(payload: CompetitionAnalysisInput) -> dict[str, Any]:
@@ -370,7 +335,23 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         context: Annotated[RequestContext, Depends(authenticated_context)],
     ):
         ensure_system_admin(context)
-        prospects, snapshot = await _collect_kiara_public(payload)
+        normalized_target, _ = _kiara_public_target(payload)
+        credentials = await repository.credentials_for(context.organization_id, "instagram_session")
+        if not credentials:
+            raise ApiError(
+                409,
+                "instagram_connection_required",
+                "Conecte uma conta do Instagram em Administração > APIs e conexões antes de iniciar a análise.",
+            )
+        try:
+            prospects, snapshot = await asyncio.to_thread(
+                collect_instagram_relationships,
+                credentials["session_id"],
+                payload.mode,
+                normalized_target if payload.mode == "commenters" else payload.target,
+            )
+        except InstagramSessionFailure as error:
+            raise ApiError(error.status_code, error.code, error.message) from None
         analysis_id = f"kiara_{uuid4().hex}"
         name = payload.name or f"Kiara · {payload.mode} · {payload.target}"
         analysis = await archive.upsert_analysis(
@@ -382,15 +363,10 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
             name=name,
             status="completed",
             prospect_count=len(prospects),
-            provider="kiara_public",
+            provider="kiara_instagram",
         )
         saved = await archive.upsert_prospects(context.organization_id, analysis_id, prospects)
-        message = None
-        if not prospects:
-            message = (
-                "O Instagram não expôs perfis públicos nesta consulta. "
-                "Tente uma publicação pública diferente ou execute novamente mais tarde."
-            )
+        message = None if prospects else "Nenhum comentário ou curtida acessível foi encontrado nas publicações consultadas."
         return {"analysis": analysis, "saved": saved, "items": prospects, "message": message}
 
     @router.post("/analyses/{analysis_id}/start")
