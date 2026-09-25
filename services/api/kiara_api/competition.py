@@ -18,6 +18,7 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .competition_store import CompetitionRepository
 from .integrations import IntegrationRepository, SYSTEM_ADMIN_EMAIL
+from .scraping_adapters import fetch_public_with_scrapling
 
 
 def _decode_mcp_body(raw: str) -> dict[str, Any]:
@@ -108,6 +109,7 @@ def _mailerfind_call(credentials: dict[str, str], tool_name: str, arguments: dic
 
 
 CompetitionMode = Literal["followers", "account_audience", "account_commenters", "commenters"]
+KiaraCompetitionMode = Literal["account_audience", "account_commenters", "commenters"]
 
 
 class CompetitionAnalysisInput(BaseModel):
@@ -125,26 +127,15 @@ class CompetitionStartInput(BaseModel):
     confirm: Literal[True]
 
 
-class CompetitionImportInput(BaseModel):
-    mode: CompetitionMode
+class KiaraCompetitionInput(BaseModel):
+    mode: KiaraCompetitionMode
     target: str = Field(min_length=1, max_length=500)
-    profiles: list[str] = Field(min_length=1, max_length=500)
     name: str | None = Field(default=None, max_length=120)
 
     @field_validator("target", "name")
     @classmethod
-    def trim_import_text(cls, value: str | None) -> str | None:
+    def trim_kiara_text(cls, value: str | None) -> str | None:
         return value.strip() if isinstance(value, str) else value
-
-    @field_validator("profiles")
-    @classmethod
-    def validate_profiles(cls, values: list[str]) -> list[str]:
-        cleaned = [value.strip() for value in values if isinstance(value, str) and value.strip()]
-        if not cleaned:
-            raise ValueError("Informe ao menos um perfil público.")
-        if any(len(value) > 500 for value in cleaned):
-            raise ValueError("Cada perfil deve ter no máximo 500 caracteres.")
-        return cleaned
 
 
 _INSTAGRAM_RESERVED_PATHS = {
@@ -153,38 +144,52 @@ _INSTAGRAM_RESERVED_PATHS = {
 }
 
 
-def _imported_profile(value: str) -> dict[str, Any] | None:
-    raw = value.strip()
-    label = ""
-    if "|" in raw:
-        raw, label = (part.strip() for part in raw.split("|", 1))
-    if raw.startswith(("http://", "https://")):
-        parsed = urlsplit(raw)
+def _kiara_public_target(payload: KiaraCompetitionInput) -> tuple[str, str | None]:
+    if payload.mode == "commenters":
+        parsed = urlsplit(payload.target)
         host = (parsed.hostname or "").lower().removeprefix("www.")
-        if parsed.scheme != "https" or host != "instagram.com":
-            return None
-        handle = parsed.path.strip("/").split("/", 1)[0]
-    else:
-        handle = raw.removeprefix("@").split()[0] if raw else ""
-    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", handle) or handle.lower() in _INSTAGRAM_RESERVED_PATHS:
-        return None
-    username = handle.lower()
-    return {
-        "id": f"instagram:{username}",
-        "username": username,
-        "full_name": label[:200] or None,
-        "profile_url": f"https://www.instagram.com/{username}/",
-        "source": "kiara_public",
+        if parsed.scheme != "https" or host != "instagram.com" or not re.fullmatch(r"/(?:p|reel)/[A-Za-z0-9_-]+/?", parsed.path):
+            raise ApiError(422, "instagram_post_url_invalid", "Cole o link HTTPS de uma publicação ou Reel público do Instagram.")
+        return payload.target, None
+    username = payload.target.removeprefix("@").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", username) or username.lower() in _INSTAGRAM_RESERVED_PATHS:
+        raise ApiError(422, "instagram_username_invalid", "Informe somente o @usuário público do concorrente.")
+    return f"https://www.instagram.com/{username}/", username.lower()
+
+
+def _profiles_from_public_links(links: list[str], excluded_username: str | None = None) -> list[dict[str, Any]]:
+    profiles: dict[str, dict[str, Any]] = {}
+    for link in links:
+        parsed = urlsplit(link)
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+        parts = parsed.path.strip("/").split("/") if parsed.path.strip("/") else []
+        if parsed.scheme not in {"http", "https"} or host != "instagram.com" or len(parts) != 1:
+            continue
+        username = parts[0].lower()
+        if (
+            not re.fullmatch(r"[A-Za-z0-9._]{1,30}", username)
+            or username in _INSTAGRAM_RESERVED_PATHS
+            or username == excluded_username
+        ):
+            continue
+        profiles.setdefault(username, {
+            "id": f"instagram:{username}",
+            "username": username,
+            "profile_url": f"https://www.instagram.com/{username}/",
+            "source": "kiara_public_serverless",
+        })
+    return list(profiles.values())[:100]
+
+
+async def _collect_kiara_public(payload: KiaraCompetitionInput) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    url, excluded_username = _kiara_public_target(payload)
+    try:
+        _, links, final_url = await asyncio.to_thread(fetch_public_with_scrapling, url)
+    except (OSError, RuntimeError, ValueError, TypeError, UnicodeError) as error:
+        return [], {"source": "kiara_public_serverless", "access": "limited", "error_class": type(error).__name__}
+    return _profiles_from_public_links(links, excluded_username), {
+        "source": "kiara_public_serverless", "access": "public", "final_url": final_url,
     }
-
-
-def _normalize_imported_profiles(values: list[str]) -> list[dict[str, Any]]:
-    unique: dict[str, dict[str, Any]] = {}
-    for value in values:
-        profile = _imported_profile(value)
-        if profile:
-            unique.setdefault(str(profile["username"]), profile)
-    return list(unique.values())
 
 
 def _analysis_arguments(payload: CompetitionAnalysisInput) -> dict[str, Any]:
@@ -359,25 +364,19 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         await _archive_analysis(archive, context.organization_id, result, mode=payload.mode, target=payload.target, name=payload.name)
         return result
 
-    @router.post("/imports", status_code=201)
-    async def import_public_profiles(
-        payload: CompetitionImportInput,
+    @router.post("/kiara/analyses", status_code=201)
+    async def create_kiara_analysis(
+        payload: KiaraCompetitionInput,
         context: Annotated[RequestContext, Depends(authenticated_context)],
     ):
         ensure_system_admin(context)
-        prospects = _normalize_imported_profiles(payload.profiles)
-        if not prospects:
-            raise ApiError(
-                422,
-                "instagram_profiles_invalid",
-                "Nenhum perfil público válido foi encontrado. Cole usuários como @perfil ou links HTTPS do Instagram.",
-            )
+        prospects, snapshot = await _collect_kiara_public(payload)
         analysis_id = f"kiara_{uuid4().hex}"
         name = payload.name or f"Kiara · {payload.mode} · {payload.target}"
         analysis = await archive.upsert_analysis(
             context.organization_id,
             analysis_id,
-            {"source": "kiara_public", "imported": len(prospects)},
+            {**snapshot, "collected": len(prospects)},
             mode=payload.mode,
             target=payload.target,
             name=name,
@@ -386,7 +385,13 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
             provider="kiara_public",
         )
         saved = await archive.upsert_prospects(context.organization_id, analysis_id, prospects)
-        return {"analysis": analysis, "saved": saved, "items": prospects}
+        message = None
+        if not prospects:
+            message = (
+                "O Instagram não expôs perfis públicos nesta consulta. "
+                "Tente uma publicação pública diferente ou execute novamente mais tarde."
+            )
+        return {"analysis": analysis, "saved": saved, "items": prospects, "message": message}
 
     @router.post("/analyses/{analysis_id}/start")
     async def start_analysis(analysis_id: str, payload: CompetitionStartInput, context: Annotated[RequestContext, Depends(authenticated_context)]):

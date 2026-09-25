@@ -2,12 +2,13 @@ import pytest
 
 from kiara_api.competition import (
     CompetitionAnalysisInput,
+    KiaraCompetitionInput,
     _analysis_arguments,
     _analysis_id,
     _decode_mcp_body,
-    _imported_profile,
     _items,
-    _normalize_imported_profiles,
+    _kiara_public_target,
+    _profiles_from_public_links,
 )
 from kiara_api.http.errors import ApiError
 
@@ -42,18 +43,24 @@ def test_competition_extracts_nested_analysis_and_prospects() -> None:
     ]
 
 
-def test_competition_normalizes_public_instagram_profiles() -> None:
-    assert _imported_profile("https://www.instagram.com/Kiara.Test/ | Kiara Test") == {
-        "id": "instagram:kiara.test",
-        "username": "kiara.test",
-        "full_name": "Kiara Test",
-        "profile_url": "https://www.instagram.com/kiara.test/",
-        "source": "kiara_public",
-    }
+def test_kiara_serverless_accepts_public_post_and_rejects_followers_mode() -> None:
+    payload = KiaraCompetitionInput(mode="commenters", target="https://www.instagram.com/p/ABC_123/")
+    assert _kiara_public_target(payload) == (payload.target, None)
+    with pytest.raises(ValueError):
+        KiaraCompetitionInput(mode="followers", target="@concorrente")
 
 
-def test_competition_import_deduplicates_and_rejects_non_profiles() -> None:
-    result = _normalize_imported_profiles([
-        "@Kiara.Test", "kiara.test", "https://instagram.com/KIARA.TEST/", "https://example.com/user", "https://instagram.com/reel/abc",
-    ])
-    assert [item["username"] for item in result] == ["kiara.test"]
+def test_kiara_serverless_extracts_only_profile_links() -> None:
+    profiles = _profiles_from_public_links([
+        "https://www.instagram.com/Pessoa.Um/",
+        "https://instagram.com/pessoa.um/",
+        "https://www.instagram.com/p/POST/",
+        "https://example.com/pessoa",
+        "https://www.instagram.com/concorrente/",
+    ], excluded_username="concorrente")
+    assert profiles == [{
+        "id": "instagram:pessoa.um",
+        "username": "pessoa.um",
+        "profile_url": "https://www.instagram.com/pessoa.um/",
+        "source": "kiara_public_serverless",
+    }]

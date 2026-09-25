@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AtSign, CheckCircle2, ClipboardPaste, Database, Download, ExternalLink, ListChecks, Loader2, MessageCircleMore, Play, Radar, RefreshCw, ScanSearch, Search, ShieldCheck, Sparkles, UsersRound } from "lucide-react"
+import { AtSign, CheckCircle2, Database, ListChecks, Loader2, MessageCircleMore, Radar, RefreshCw, ScanSearch, Search, ShieldCheck, Sparkles, UsersRound } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,16 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import styles from "@/app/(app)/app/concorrencia/competition.module.css"
 
 type JsonObject = Record<string, unknown>
-type Mode = "followers" | "account_audience" | "account_commenters" | "commenters"
-type Engine = "kiara" | "mailerfind"
+type Mode = "account_audience" | "account_commenters" | "commenters"
 type Notice = { title: string; text: string }
 
 const modes: Record<Mode, { label: string; description: string; placeholder: string; icon: typeof UsersRound }> = {
-  followers: { label: "Seguidores", description: "Pessoas que seguem o perfil", placeholder: "@perfilconcorrente", icon: UsersRound },
   account_audience: { label: "Audiência engajada", description: "Curtidas e comentários recentes", placeholder: "@perfilconcorrente", icon: Radar },
   account_commenters: { label: "Comentaristas da conta", description: "Pessoas que respondem às publicações", placeholder: "@perfilconcorrente", icon: MessageCircleMore },
   commenters: { label: "Comentários de publicação", description: "Leads de um post ou Reel específico", placeholder: "https://instagram.com/p/...", icon: AtSign },
@@ -76,12 +73,9 @@ async function bodyOrError(response: Response) {
 }
 
 export function CompetitionConsole() {
-  const [engine, setEngine] = useState<Engine>("kiara")
-  const [mode, setMode] = useState<Mode>("followers")
+  const [mode, setMode] = useState<Mode>("commenters")
   const [target, setTarget] = useState("")
-  const [importedProfiles, setImportedProfiles] = useState("")
   const [overview, setOverview] = useState<JsonObject>({})
-  const [prepared, setPrepared] = useState<JsonObject | null>(null)
   const [prospects, setProspects] = useState<JsonObject[]>([])
   const [selectedAnalysis, setSelectedAnalysis] = useState("")
   const [trackingId, setTrackingId] = useState("")
@@ -124,14 +118,6 @@ export function CompetitionConsole() {
   const liveCount = firstNumber(liveRecord, ["prospectsCount", "prospectCount", "prospect_count", "totalProspects"]) ?? 0
   const liveProgress = firstNumber(liveRecord, ["progress", "progressPercent", "percentage"])
   const progressValue = typeof liveProgress === "number" ? Math.min(100, Math.max(0, liveProgress <= 1 ? liveProgress * 100 : liveProgress)) : null
-  const account = asObject(overview.account)
-  const provider = asObject(overview.provider)
-  const providerAvailable = provider.available !== false
-  const accountData = Object.keys(asObject(account.data)).length ? asObject(account.data) : account
-  const plan = providerAvailable ? firstString(accountData, ["plan", "planName", "subscriptionPlan"]) || "Conta conectada" : "Arquivo disponível"
-  const analysisCredits = asObject(accountData.analysisCredits ?? accountData.analysis_credits)
-  const credits = firstNumber(analysisCredits, ["remaining", "balance", "creditsRemaining"])
-    ?? firstNumber(accountData, ["creditsRemaining", "credits"])
 
   useEffect(() => {
     if (!activeId) return
@@ -167,56 +153,20 @@ export function CompetitionConsole() {
   }, [activeId])
 
   async function createAnalysis(event: React.FormEvent) {
-    event.preventDefault(); setLoading("create"); setNotice(null); setPrepared(null)
+    event.preventDefault(); setLoading("create"); setNotice(null)
     try {
-      const response = await fetch("/api/competition/analyses", {
+      const response = await fetch("/api/competition/kiara/analyses", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, target, name: `Kiara · ${modes[mode].label} · ${target}` }),
       })
       const body = await bodyOrError(response)
-      if (!findIdentifier(body)) throw new Error("O MailerFind criou a análise, mas não retornou seu identificador. Atualize a lista antes de tentar novamente.")
-      setPrepared(body)
-      await loadOverview()
-    } catch (error) {
-      setNotice({ title: "Não foi possível preparar", text: error instanceof Error ? error.message : "Revise o perfil informado." })
-    } finally { setLoading(null) }
-  }
-
-  async function startAnalysis() {
-    const id = findIdentifier(prepared)
-    if (!id) return
-    setLoading("start"); setNotice(null)
-    try {
-      const response = await fetch(`/api/competition/analyses/${encodeURIComponent(id)}/start`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }),
-      })
-      const body = await bodyOrError(response)
-      setPrepared(null)
-      setSelectedAnalysis(id)
-      setTrackingId(id)
-      setLiveAnalysis(body)
-      await loadOverview()
-    } catch (error) {
-      setNotice({ title: "Coleta não iniciada", text: error instanceof Error ? error.message : "Verifique os créditos e o plano MailerFind." })
-    } finally { setLoading(null) }
-  }
-
-  async function importProfiles(event: React.FormEvent) {
-    event.preventDefault(); setLoading("create"); setNotice(null); setPrepared(null)
-    try {
-      const profiles = importedProfiles.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean)
-      const response = await fetch("/api/competition/imports", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, target, profiles, name: `Kiara · ${modes[mode].label} · ${target}` }),
-      })
-      const body = await bodyOrError(response)
       const id = findIdentifier(asObject(body.analysis))
-      if (!id) throw new Error("A lista foi recebida, mas não foi possível criar o arquivo da análise.")
-      setImportedProfiles("")
+      if (!id) throw new Error("A pesquisa terminou, mas não foi possível abrir o arquivo criado.")
       await loadOverview()
       await loadProspects(id)
+      if (typeof body.message === "string" && body.message) setNotice({ title: "Consulta concluída", text: body.message })
     } catch (error) {
-      setNotice({ title: "Não foi possível importar", text: error instanceof Error ? error.message : "Revise os perfis informados." })
+      setNotice({ title: "Não foi possível concluir", text: error instanceof Error ? error.message : "Revise o perfil ou publicação informada." })
     } finally { setLoading(null) }
   }
 
@@ -242,37 +192,25 @@ export function CompetitionConsole() {
 
     <div className={styles.workspace}>
       <Card className={styles.builder}>
-        <CardHeader><CardTitle>Nova análise</CardTitle><CardDescription>{engine === "kiara" ? "Importe perfis públicos capturados e salve tudo no arquivo da Kiara." : "Crie primeiro; a coleta só começa após sua confirmação."}</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Nova análise</CardTitle><CardDescription>A Kiara consulta os sinais públicos disponíveis e salva os resultados automaticamente.</CardDescription></CardHeader>
         <CardContent>
-          <div className={styles.engineTabs} role="tablist" aria-label="Motor da análise">
-            <button type="button" role="tab" aria-selected={engine === "kiara"} onClick={() => setEngine("kiara")}><Sparkles />Kiara própria <small>sem créditos</small></button>
-            <button type="button" role="tab" aria-selected={engine === "mailerfind"} onClick={() => setEngine("mailerfind")}><Database />MailerFind <small>opcional</small></button>
-          </div>
-          {engine === "kiara" ? <form onSubmit={importProfiles} className={styles.form}>
-            <div className={styles.kiaraIntro}><div><ClipboardPaste /><span><strong>Cole os perfis capturados</strong><small>A extensão lê somente perfis públicos já visíveis na sua aba.</small></span></div><a href="/downloads/kiara-instagram-collector.zip" download><Download />Baixar extensão</a></div>
-            <div className={styles.field}><Label htmlFor="kiara-mode">Tipo de sinal</Label><Select value={mode} onValueChange={(value) => setMode(value as Mode)}><SelectTrigger id="kiara-mode"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(modes).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
-            <div className={styles.field}><Label htmlFor="kiara-target">Perfil ou publicação analisada</Label><Input id="kiara-target" value={target} onChange={(event) => setTarget(event.target.value)} placeholder={modes[mode].placeholder} required autoComplete="off" /></div>
-            <div className={styles.field}><Label htmlFor="kiara-profiles">Perfis públicos capturados</Label><Textarea id="kiara-profiles" value={importedProfiles} onChange={(event) => setImportedProfiles(event.target.value)} placeholder={"@perfil1 | Nome público\n@perfil2\nhttps://instagram.com/perfil3/"} rows={7} required /><p>Um perfil por linha. Duplicados e links inválidos são removidos automaticamente.</p></div>
-            <ol className={styles.steps}><li><b>1</b>Entre no Instagram e abra seguidores ou comentários.</li><li><b>2</b>Role a lista e capture os perfis com a extensão.</li><li><b>3</b>Copie, cole acima e salve na Kiara.</li></ol>
-            <Button type="submit" size="lg" disabled={loading !== null || !target.trim() || !importedProfiles.trim()}>{loading === "create" ? <Loader2 className="animate-spin" /> : <Sparkles />}Criar análise na Kiara</Button>
-          </form> : <form onSubmit={createAnalysis} className={styles.form}>
+          <form onSubmit={createAnalysis} className={styles.form}>
             <div className={styles.field}><Label htmlFor="competition-mode">Tipo de sinal</Label><Select value={mode} onValueChange={(value) => setMode(value as Mode)}><SelectTrigger id="competition-mode"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(modes).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select><p>{modes[mode].description}</p></div>
             <div className={styles.field}><Label htmlFor="competition-target">{mode === "commenters" ? "Link da publicação" : "Perfil do concorrente"}</Label><Input id="competition-target" value={target} onChange={(event) => setTarget(event.target.value)} placeholder={modes[mode].placeholder} required minLength={2} autoComplete="off" /><p>Use somente perfis e publicações públicas.</p></div>
-            <Button type="submit" size="lg" disabled={loading !== null || !target.trim()}>{loading === "create" ? <Loader2 className="animate-spin" /> : <Search />}Preparar análise</Button>
-          </form>}
-          {engine === "mailerfind" && prepared && <div className={styles.confirm}><strong>Pronta para iniciar</strong><Button onClick={() => void startAnalysis()} disabled={loading !== null}>{loading === "start" ? <Loader2 className="animate-spin" /> : <Play />}Iniciar pesquisa</Button></div>}
+            <Button type="submit" size="lg" disabled={loading !== null || !target.trim()}>{loading === "create" ? <Loader2 className="animate-spin" /> : <Search />}Iniciar análise</Button>
+          </form>
         </CardContent>
       </Card>
 
       <aside className={styles.summary}>
-        {engine === "kiara" ? <Card><CardHeader><CardDescription>Motor próprio da Kiara</CardDescription><CardTitle>Disponível sem créditos</CardTitle></CardHeader><CardContent className={styles.accountStats}><span><b>{analyses.length}</b> pesquisas arquivadas</span><a href="/downloads/kiara-instagram-collector.zip" download>Instalar coletor <Download /></a></CardContent></Card> : <Card><CardHeader><CardDescription>{providerAvailable ? "Conta MailerFind" : "Histórico de Concorrência"}</CardDescription><CardTitle>{plan}</CardTitle></CardHeader><CardContent className={styles.accountStats}><span><b>{providerAvailable ? credits ?? "—" : analyses.length}</b> {providerAvailable ? "créditos de análise" : "pesquisas arquivadas"}</span><a href="/app/admin?tab=integrations">{providerAvailable ? "Gerenciar conexão" : "Reconectar MailerFind"} <ExternalLink /></a></CardContent></Card>}
+        <Card><CardHeader><CardDescription>Motor próprio da Kiara</CardDescription><CardTitle>Coleta pública ativa</CardTitle></CardHeader><CardContent className={styles.accountStats}><span><b>{analyses.length}</b> pesquisas arquivadas</span><span className={styles.serverlessStatus}><i />Processamento ativo</span></CardContent></Card>
         <Card><CardHeader className={styles.listHeader}><div><CardTitle>Análises recentes</CardTitle><CardDescription>{analyses.length} registros encontrados</CardDescription></div><Button variant="ghost" size="icon" onClick={() => void loadOverview()} disabled={loading !== null} aria-label="Atualizar análises"><RefreshCw className={loading === "overview" ? "animate-spin" : ""} /></Button></CardHeader><CardContent className={styles.analysisList}>{analyses.length ? analyses.map((analysis, index) => { const id = firstString(analysis, ["id", "analysisId", "analysis_id"]); const name = firstString(analysis, ["name", "target", "username"]) || `Análise ${index + 1}`; const count = firstNumber(analysis, ["prospectCount", "prospectsCount", "prospect_count", "totalProspects"]); const running = isRunning(analysis); const source = firstString(analysis, ["provider"]); return <button type="button" key={id || index} onClick={() => { if (!id) return; if (running) { setSelectedAnalysis(id); setTrackingId(id) } else void loadProspects(id) }} disabled={!id || loading !== null}><span><strong>{name}</strong><small>{source === "kiara_public" ? "Kiara" : "MailerFind"} · {statusLabel(analysis)}{typeof count === "number" ? ` · ${count} leads` : ""}</small></span><Badge variant="outline">{running ? "Acompanhar" : "Ver leads"}</Badge></button> }) : <div className={styles.empty}><Radar /><p>Nenhuma análise encontrada.</p></div>}</CardContent></Card>
       </aside>
     </div>
 
-    {activeId && <section className={styles.livePanel} role="status" aria-live="polite" aria-label="Pesquisa de concorrência em andamento">
+    {(activeId || loading === "create") && <section className={styles.livePanel} role="status" aria-live="polite" aria-label="Pesquisa de concorrência em andamento">
       <div className={styles.liveVisual} aria-hidden="true"><span className={styles.liveOrbitOne} /><span className={styles.liveOrbitTwo} /><span className={styles.liveSweep} /><span className={styles.liveCore}><ScanSearch /></span><i className={styles.liveDotOne} /><i className={styles.liveDotTwo} /><i className={styles.liveDotThree} /></div>
-      <div className={styles.liveContent}><span className={styles.liveEyebrow}><i /> Pesquisa em andamento</span><h2>Mapeando a audiência do concorrente</h2><p>{liveName}</p><div className={styles.liveProgress} aria-label={progressValue === null ? "Progresso em processamento" : `Progresso ${Math.round(progressValue)}%`}><span style={progressValue === null ? undefined : { width: `${progressValue}%` }} className={progressValue === null ? styles.indeterminate : ""} /></div><div className={styles.liveStages}><span className={styles.stageDone}><Database />Fonte conectada</span><span className={styles.stageActive}><ScanSearch />Coletando perfis</span><span><ListChecks />Organizando contatos</span></div></div>
+      <div className={styles.liveContent}><span className={styles.liveEyebrow}><i /> Pesquisa em andamento</span><h2>Analisando sinais públicos</h2><p>{activeId ? liveName : target}</p><div className={styles.liveProgress} aria-label={progressValue === null ? "Progresso em processamento" : `Progresso ${Math.round(progressValue)}%`}><span style={progressValue === null ? undefined : { width: `${progressValue}%` }} className={progressValue === null ? styles.indeterminate : ""} /></div><div className={styles.liveStages}><span className={styles.stageDone}><Database />Consulta iniciada</span><span className={styles.stageActive}><ScanSearch />Coletando perfis</span><span><ListChecks />Salvando resultados</span></div></div>
       <div className={styles.liveMetric}><Sparkles /><strong>{liveCount}</strong><span>leads encontrados</span><small>Atualização automática</small></div>
     </section>}
 
