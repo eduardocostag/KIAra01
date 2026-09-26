@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
@@ -39,8 +40,10 @@ class ProfileRequest(BaseModel):
     username: str = Field(min_length=1, max_length=31)
 
 
-class AnalysisRequest(ProfileRequest):
+class AnalysisRequest(BaseModel):
+    workspace_id: str = Field(min_length=1, max_length=200)
     mode: Literal["commenters", "likers", "post_audience"]
+    username: str = Field(min_length=1, max_length=500)
     media_id: str = Field(min_length=1, max_length=160)
     limit: int = Field(default=100, ge=1, le=100)
 
@@ -52,6 +55,7 @@ class LiveSession:
     context: BrowserContext
     page: Page
     lock: asyncio.Lock
+    last_activity: float
 
 
 class BrowserSessions:
@@ -59,7 +63,7 @@ class BrowserSessions:
         self.data_dir = Path(os.getenv("KIARA_BROWSER_DATA_DIR", "/data"))
         self.profile_root = self.data_dir / "profiles"
         self.profile_root.mkdir(parents=True, exist_ok=True)
-        self.executable = os.getenv("KIARA_CHROMIUM_PATH", "/usr/bin/chromium")
+        self.executable = os.getenv("KIARA_CHROMIUM_PATH") or None
         self._playwright = None
         self._sessions: dict[str, LiveSession] = {}
         self._workspace_sessions: dict[str, str] = {}
@@ -74,25 +78,48 @@ class BrowserSessions:
         async with self._guard:
             current_id = self._workspace_sessions.get(workspace_id)
             if current_id and current_id in self._sessions:
-                return self._sessions[current_id]
+                session = self._sessions[current_id]
+                session.last_activity = time.monotonic()
+                return session
+            # Expira sessões abandonadas após 10 minutos para não bloquear outros usuários.
+            stale = [
+                session_id
+                for session_id, session in self._sessions.items()
+                if time.monotonic() - session.last_activity > 600
+            ]
+            for session_id in stale:
+                session = self._sessions.pop(session_id)
+                self._workspace_sessions.pop(session.workspace_id, None)
+                await session.context.close()
             if self._sessions:
                 raise HTTPException(429, "O navegador está atendendo outra conexão. Tente novamente em instantes.")
             if self._playwright is None:
                 self._playwright = await async_playwright().start()
             profile = self.profile_path(workspace_id)
             profile.mkdir(parents=True, exist_ok=True)
+            launch_args = {
+                "headless": True,
+                "viewport": {"width": 1280, "height": 800},
+                "locale": "pt-BR",
+                "timezone_id": "America/Sao_Paulo",
+                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+            }
+            if self.executable:
+                launch_args["executable_path"] = self.executable
             context = await self._playwright.chromium.launch_persistent_context(
                 str(profile),
-                executable_path=self.executable,
-                headless=True,
-                viewport={"width": 1280, "height": 800},
-                locale="pt-BR",
-                timezone_id="America/Sao_Paulo",
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+                **launch_args,
             )
             page = context.pages[0] if context.pages else await context.new_page()
             await page.goto(INSTAGRAM_LOGIN, wait_until="domcontentloaded", timeout=45_000)
-            session = LiveSession(uuid4().hex, workspace_id, context, page, asyncio.Lock())
+            session = LiveSession(
+                uuid4().hex,
+                workspace_id,
+                context,
+                page,
+                asyncio.Lock(),
+                time.monotonic(),
+            )
             self._sessions[session.id] = session
             self._workspace_sessions[workspace_id] = session.id
             return session
@@ -101,6 +128,7 @@ class BrowserSessions:
         session = self._sessions.get(session_id)
         if not session or not hmac.compare_digest(session.workspace_id, workspace_id):
             raise HTTPException(404, "A tela de conexão expirou. Abra uma nova conexão.")
+        session.last_activity = time.monotonic()
         return session
 
     async def close(self, session_id: str) -> None:
@@ -153,7 +181,17 @@ def authorize(x_kiara_worker_token: Annotated[str | None, Header()] = None) -> N
 
 async def instagram_cookie(workspace_id: str) -> str:
     cookies = await sessions.cookies(workspace_id)
-    return next((str(cookie["value"]) for cookie in cookies if cookie.get("name") == "sessionid"), "")
+    session_id = next(
+        (str(cookie["value"]) for cookie in cookies if cookie.get("name") == "sessionid"),
+        "",
+    )
+    if not session_id:
+        return ""
+    return "; ".join(
+        f"{cookie['name']}={cookie['value']}"
+        for cookie in cookies
+        if cookie.get("name") and cookie.get("value")
+    )
 
 
 @app.get("/health/live")

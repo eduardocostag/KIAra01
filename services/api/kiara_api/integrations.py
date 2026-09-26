@@ -90,11 +90,11 @@ class IntegrationRepository:
             raise ApiError(409, "hermes_instance_already_assigned", "Esta instância Hermes já pertence a outro workspace.") from None
         return {**row, "updated_at": row["updated_at"].isoformat()}
 
-    def decrypt_for_provider(self, encrypted: str) -> dict[str, str]:
+    def decrypt_for_provider(self, encrypted: str) -> dict[str, str] | None:
         try:
             return json.loads(self._cipher.decrypt(encrypted.encode()))
-        except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
-            raise RuntimeError("Stored integration credential cannot be decrypted") from exc
+        except (InvalidToken, ValueError, json.JSONDecodeError):
+            return None
 
     async def credentials_for(self, organization_id: str, provider: Provider) -> dict[str, str] | None:
         async with self._postgres._transaction(organization_id) as connection:

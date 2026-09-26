@@ -31,10 +31,13 @@ class InstagramSessionFailure(Exception):
 
 
 def _headers(session_id: str) -> dict[str, str]:
+    cookie_header = session_id if ";" in session_id else f"sessionid={session_id}"
     return {
         "Accept": "*/*",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
-        "Cookie": f"sessionid={session_id}",
+        "Cookie": cookie_header,
+        "Referer": "https://www.instagram.com/",
+        "Origin": "https://www.instagram.com",
         "User-Agent": _USER_AGENT,
         "X-ASBD-ID": "129477",
         "X-IG-App-ID": "567067343352427",
@@ -62,7 +65,9 @@ def _failure_for_payload(data: dict[str, Any], default: InstagramSessionFailure)
             "instagram_rate_limited",
             "O Instagram limitou temporariamente as consultas. Aguarde alguns minutos e tente novamente.",
         )
-    return default
+    raw_message = str(data.get("message") or "").strip()
+    safe_message = raw_message[:200] if raw_message else "O Instagram recusou a consulta."
+    return InstagramSessionFailure(default.status_code, default.code, safe_message)
 
 
 def _json_get(url: str, session_id: str, *, max_bytes: int = 4_000_000) -> dict[str, Any]:
@@ -71,11 +76,11 @@ def _json_get(url: str, session_id: str, *, max_bytes: int = 4_000_000) -> dict[
         with urlopen(request, timeout=15) as response:
             raw = response.read(max_bytes + 1)
     except HTTPError as error:
-        if error.code in {401, 403}:
+        if error.code in {301, 302, 303, 307, 308, 401, 403}:
             raise InstagramSessionFailure(
                 409,
                 "instagram_session_expired",
-                "A sessão do Instagram não foi aceita. Atualize a conexão em Administração > APIs e conexões.",
+                "A sessão do Instagram não foi aceita. Reconecte a conta e confirme que o feed abriu antes de concluir.",
             ) from None
         if error.code == 404:
             raise InstagramSessionFailure(
@@ -153,7 +158,7 @@ def load_instagram_profile(session_id: str, username: str, *, media_limit: int =
         if not isinstance(item, dict):
             continue
         code = str(item.get("code") or "")
-        media_id = str(item.get("id") or item.get("pk") or "")
+        media_id = str(item.get("pk") or item.get("id") or "").split("_", 1)[0]
         if not code or not media_id:
             continue
         caption = item.get("caption") if isinstance(item.get("caption"), dict) else {}
@@ -242,11 +247,20 @@ def collect_instagram_relationships(
     media_items = media_data.get("items") if isinstance(media_data.get("items"), list) else []
     media = media_items[0] if media_items and isinstance(media_items[0], dict) else {"id": media_id}
     found: dict[str, dict[str, Any]] = {}
+    comments_available = True
     if mode in {"commenters", "post_audience"}:
-        comments_data = _json_get(
-            f"{_MOBILE_BASE}/media/{quote(media_id, safe='_')}/comments/?can_support_threading=true&permalink_enabled=false",
-            session_id,
-        )
+        try:
+            comments_data = _json_get(
+                f"{_MOBILE_BASE}/media/{quote(media_id, safe='_')}/comments/?can_support_threading=true&permalink_enabled=false",
+                session_id,
+            )
+        except InstagramSessionFailure as error:
+            if error.code != "instagram_collection_failed":
+                raise
+            # Algumas publicações permitem curtidas, mas bloqueiam a listagem de
+            # comentários. Isso não deve invalidar a análise combinada inteira.
+            comments_available = False
+            comments_data = {}
         comments = comments_data.get("comments") if isinstance(comments_data.get("comments"), list) else []
         for comment in comments:
             if not isinstance(comment, dict):
@@ -269,5 +283,6 @@ def collect_instagram_relationships(
         "media_checked": 1,
         "media_id": media_id,
         "target": target,
+        "comments_available": comments_available,
         "collected": len(found),
     }
