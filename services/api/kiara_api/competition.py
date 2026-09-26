@@ -110,7 +110,7 @@ def _mailerfind_call(credentials: dict[str, str], tool_name: str, arguments: dic
 
 
 CompetitionMode = Literal["followers", "account_audience", "account_commenters", "commenters"]
-KiaraCompetitionMode = Literal["account_audience", "account_commenters", "commenters", "likers", "post_audience"]
+KiaraCompetitionMode = Literal["followers", "account_audience", "account_commenters", "commenters", "likers", "post_audience"]
 
 
 class CompetitionAnalysisInput(BaseModel):
@@ -437,7 +437,7 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         payload: KiaraCompetitionInput,
         context: Annotated[RequestContext, Depends(authenticated_context)],
     ):
-        normalized_target, _ = _kiara_public_target(payload)
+        normalized_target, normalized_username = _kiara_public_target(payload)
         client = BrowserWorkerClient()
         try:
             result = await asyncio.to_thread(
@@ -445,7 +445,7 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
                 context.organization_id,
                 {
                     "mode": payload.mode,
-                    "username": normalized_target,
+                    "username": normalized_username or normalized_target,
                     "media_id": payload.media_id,
                     "limit": 100,
                 },

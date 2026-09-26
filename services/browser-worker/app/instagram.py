@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 
 InstagramCollectionMode = Literal[
-    "account_audience", "account_commenters", "commenters", "likers", "post_audience"
+    "followers", "account_audience", "account_commenters", "commenters", "likers", "post_audience"
 ]
 _MOBILE_BASE = "https://i.instagram.com/api/v1"
 _WEB_BASE = "https://www.instagram.com/api/v1"
@@ -253,6 +253,29 @@ def _add_profile(items: dict[str, dict[str, Any]], profile: dict[str, Any] | Non
     current["relationship_type"] = ",".join(sorted(relationships))
 
 
+def collect_instagram_followers(
+    username: str,
+    payload: dict[str, Any],
+    *,
+    limit: int = 100,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    users = payload.get("users") if isinstance(payload.get("users"), list) else []
+    found: dict[str, dict[str, Any]] = {}
+    for user in users:
+        if isinstance(user, dict):
+            _add_profile(found, _profile(user, relationship="follows"), limit)
+        if len(found) >= limit:
+            break
+    return list(found.values()), {
+        "source": "kiara_instagram_authenticated",
+        "evidence": "instagram_followers_relationship",
+        "mode": "followers",
+        "target": username,
+        "collected": len(found),
+        "next_max_id": str(payload.get("next_max_id") or ""),
+    }
+
+
 def collect_instagram_relationships(
     session_id: str,
     mode: InstagramCollectionMode,
@@ -269,6 +292,7 @@ def collect_instagram_relationships(
     media = media_items[0] if media_items and isinstance(media_items[0], dict) else {"id": media_id}
     found: dict[str, dict[str, Any]] = {}
     comments_available = True
+    comment_limit = limit if mode == "commenters" else max(1, limit // 2)
     if mode in {"commenters", "post_audience"}:
         comments_data: dict[str, Any] = comments_override or {}
         comment_urls = (
@@ -299,8 +323,8 @@ def collect_instagram_relationships(
         for comment in comments:
             if not isinstance(comment, dict):
                 continue
-            _add_profile(found, _profile(comment.get("user", {}), relationship="commented", media=media, comment=comment), limit)
-            if len(found) >= limit:
+            _add_profile(found, _profile(comment.get("user", {}), relationship="commented", media=media, comment=comment), comment_limit)
+            if len(found) >= comment_limit:
                 break
     if mode in {"likers", "post_audience"} and len(found) < limit:
         likers_data = _json_get(f"{_MOBILE_BASE}/media/{quote(media_id, safe='_')}/likers/", session_id)

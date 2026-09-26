@@ -43,9 +43,9 @@ class ProfileRequest(BaseModel):
 
 class AnalysisRequest(BaseModel):
     workspace_id: str = Field(min_length=1, max_length=200)
-    mode: Literal["commenters", "likers", "post_audience"]
+    mode: Literal["followers", "commenters", "likers", "post_audience"]
     username: str = Field(min_length=1, max_length=500)
-    media_id: str = Field(min_length=1, max_length=160)
+    media_id: str | None = Field(default=None, max_length=160)
     limit: int = Field(default=100, ge=1, le=100)
 
 
@@ -173,7 +173,7 @@ class BrowserSessions:
                 raise InstagramSessionFailure(
                     502,
                     "instagram_collection_failed",
-                    "O Instagram recusou a listagem de comentários desta publicação.",
+                    "O Instagram recusou a consulta autenticada.",
                 )
             parsed = json.loads(str(result.get("text") or "{}"))
             if not isinstance(parsed, dict):
@@ -325,6 +325,34 @@ async def instagram_analyse(payload: AnalysisRequest) -> dict:
     cookie = await instagram_cookie(payload.workspace_id)
     if not cookie:
         raise HTTPException(409, "A conexão com o Instagram expirou. Entre novamente.")
+    if payload.mode == "followers":
+        from .instagram import collect_instagram_followers, load_instagram_profile
+
+        profile = await asyncio.to_thread(
+            load_instagram_profile,
+            cookie,
+            payload.username,
+            media_limit=1,
+        )
+        profile_data = profile.get("profile", {}) if isinstance(profile, dict) else {}
+        user_id = str(profile_data.get("id") or "")
+        if not user_id:
+            raise HTTPException(404, "O perfil informado não foi encontrado.")
+        followers_url = (
+            "https://www.instagram.com/api/v1/friendships/"
+            f"{user_id}/followers/?count={payload.limit}&search_surface=follow_list_page"
+        )
+        followers_payload = await sessions.fetch_instagram_json(
+            payload.workspace_id,
+            followers_url,
+        )
+        items, snapshot = collect_instagram_followers(
+            payload.username,
+            followers_payload,
+            limit=payload.limit,
+        )
+        return {"items": items, "snapshot": snapshot}
+
     comments_override = None
     if payload.mode in {"commenters", "post_audience"}:
         comments_url = (

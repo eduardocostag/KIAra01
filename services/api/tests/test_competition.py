@@ -43,13 +43,16 @@ def test_competition_extracts_nested_analysis_and_prospects() -> None:
     ]
 
 
-def test_kiara_authenticated_collector_accepts_public_post_and_rejects_followers_mode() -> None:
+def test_kiara_authenticated_collector_accepts_posts_and_followers_mode() -> None:
     payload = KiaraCompetitionInput(mode="commenters", target="https://www.instagram.com/p/ABC_123/")
     assert _kiara_public_target(payload) == (payload.target, None)
     likes = KiaraCompetitionInput(mode="likers", target="https://www.instagram.com/reel/ABC_123/")
     assert _kiara_public_target(likes) == (likes.target, None)
-    with pytest.raises(ValueError):
-        KiaraCompetitionInput(mode="followers", target="@concorrente")
+    followers = KiaraCompetitionInput(mode="followers", target="@concorrente")
+    assert _kiara_public_target(followers) == (
+        "https://www.instagram.com/concorrente/",
+        "concorrente",
+    )
 
 
 def test_kiara_prospect_requires_instagram_user_evidence() -> None:

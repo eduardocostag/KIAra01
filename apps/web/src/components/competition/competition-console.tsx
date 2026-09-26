@@ -44,7 +44,7 @@ import {
 import styles from "@/app/(app)/app/concorrencia/competition.module.css";
 
 type JsonObject = Record<string, unknown>;
-type Mode = "commenters" | "likers" | "post_audience";
+type Mode = "followers" | "commenters" | "likers" | "post_audience";
 type Notice = { title: string; text: string };
 type InstagramConnection = {
   state: "loading" | "connected" | "disconnected" | "connecting";
@@ -52,16 +52,20 @@ type InstagramConnection = {
 };
 
 const modes: Record<Mode, { label: string; description: string }> = {
+  followers: {
+    label: "Seguidores do perfil",
+    description: "Perfis públicos que seguem o concorrente carregado",
+  },
   post_audience: {
-    label: "Curtidas e comentários",
-    description: "Reúne todas as interações acessíveis da publicação",
+    label: "Curtidas e comentários da publicação",
+    description: "Reúne somente as interações acessíveis da publicação selecionada",
   },
   commenters: {
-    label: "Somente comentários",
+    label: "Comentários da publicação",
     description: "Perfis que comentaram na publicação selecionada",
   },
   likers: {
-    label: "Somente curtidas",
+    label: "Curtidas da publicação",
     description: "Perfis que curtiram a publicação selecionada",
   },
 };
@@ -497,16 +501,19 @@ export function CompetitionConsole() {
       const publicationUrl = publication
         ? firstString(publication, ["url"])
         : "";
-      if (!publicationUrl)
+      const profileUsername = firstString(loadedProfile, ["username"]);
+      if (mode !== "followers" && !publicationUrl)
         throw new Error("Selecione uma publicação antes de iniciar a análise.");
+      if (!profileUsername)
+        throw new Error("Carregue um perfil antes de iniciar a análise.");
       const response = await fetch("/api/competition/kiara/analyses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          target: publicationUrl,
-          media_id: selectedPublication,
-          name: `Kiara · ${modes[mode].label} · @${firstString(loadedProfile, ["username"])}`,
+          target: mode === "followers" ? profileUsername : publicationUrl,
+          media_id: mode === "followers" ? null : selectedPublication,
+          name: `Kiara · ${modes[mode].label} · @${profileUsername}`,
         }),
       });
       const body = await bodyOrError(response);
@@ -900,7 +907,7 @@ export function CompetitionConsole() {
                 </div>
               )}
 
-              {selectedPublication && (
+              {Object.keys(loadedProfile).length > 0 && (
                 <div className={styles.field}>
                   <Label htmlFor="competition-mode">
                     O que deseja extrair?
@@ -926,14 +933,20 @@ export function CompetitionConsole() {
               <Button
                 type="submit"
                 size="lg"
-                disabled={loading !== null || !selectedPublication}
+                disabled={
+                  loading !== null ||
+                  !Object.keys(loadedProfile).length ||
+                  (mode !== "followers" && !selectedPublication)
+                }
               >
                 {loading === "create" ? (
                   <Loader2 className="animate-spin" />
                 ) : (
                   <ScanSearch />
                 )}
-                Extrair interações da publicação
+                {mode === "followers"
+                  ? "Extrair seguidores do perfil"
+                  : "Extrair interações da publicação"}
               </Button>
             </form>
           </CardContent>
