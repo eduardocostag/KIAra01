@@ -1006,7 +1006,6 @@ export function CompetitionConsole() {
                     "totalProspects",
                   ]);
                   const running = isRunning(analysis);
-                  const source = firstString(analysis, ["provider"]);
                   return (
                     <button
                       type="button"
@@ -1023,8 +1022,7 @@ export function CompetitionConsole() {
                       <span>
                         <strong>{name}</strong>
                         <small>
-                          {source === "kiara_public" ? "Kiara" : "MailerFind"} ·{" "}
-                          {statusLabel(analysis)}
+                          Kiara · {statusLabel(analysis)}
                           {typeof count === "number" ? ` · ${count} leads` : ""}
                         </small>
                       </span>
@@ -1142,24 +1140,7 @@ export function CompetitionConsole() {
                     "whatsapp_url",
                     "whatsappUrl",
                   ]);
-                  const relationship = firstString(item, ["relationship_type"]);
-                  const intent = firstString(item, ["intent"]);
-                  const score = firstNumber(item, ["lead_score"]);
-                  const reason = firstString(item, ["qualification_reason"]);
                   const comment = firstString(item, ["comment_text"]);
-                  const intentLabels: Record<string, string> = {
-                    alta_intencao: "Alta intenção",
-                    intencao_compra: "Intenção de compra",
-                    pergunta: "Pergunta comercial",
-                    objecao: "Objeção",
-                    interesse_positivo: "Interesse positivo",
-                    comentario_relevante: "Comentário relevante",
-                    marcacao: "Marcação",
-                    engajamento_generico: "Engajamento genérico",
-                    interesse_leve: "Interesse leve",
-                    audiencia_concorrente: "Audiência do concorrente",
-                    spam: "Possível spam",
-                  };
                   return (
                     <article
                       key={firstString(item, ["id", "prospectId"]) || index}
@@ -1177,28 +1158,6 @@ export function CompetitionConsole() {
                             "name",
                           ]) || "Perfil público"}
                         </span>
-                        <div className={styles.qualification}>
-                          {intent && (
-                            <Badge variant="outline">
-                              {intentLabels[intent] || intent.replaceAll("_", " ")}
-                            </Badge>
-                          )}
-                          {typeof score === "number" && (
-                            <Badge variant="secondary">Score {score}</Badge>
-                          )}
-                          {relationship && (
-                            <Badge variant="outline">
-                              {relationship.includes("commented") && relationship.includes("liked")
-                                ? "Comentou e curtiu"
-                                : relationship.includes("commented")
-                                  ? "Comentou"
-                                  : relationship.includes("liked")
-                                    ? "Curtiu"
-                                    : "Segue"}
-                            </Badge>
-                          )}
-                        </div>
-                        {reason && <span className={styles.reason}>{reason}</span>}
                         {comment && <q className={styles.comment}>{comment}</q>}
                         {email && (
                           <a className={styles.email} href={`mailto:${email}`}>

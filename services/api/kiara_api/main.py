@@ -406,7 +406,6 @@ def create_app(
             integration_repository = IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key)
             app.include_router(create_integration_router(integration_repository))
             app.include_router(create_competition_router(
-                integration_repository,
                 CompetitionRepository(PostgresRepository(config.database_url)),
             ))
         app.include_router(create_sales_router(SalesRepository(PostgresRepository(config.database_url))))

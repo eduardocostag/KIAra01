@@ -634,15 +634,6 @@
   color: var(--muted-foreground);
   font-size: 0.68rem;
 }
-.qualification {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.4rem;
-}
-.reason {
-  margin-top: 0.35rem;
-}
 .comment {
   display: -webkit-box;
   max-width: 32rem;
