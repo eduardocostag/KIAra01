@@ -8,8 +8,8 @@ from kiara_api.competition import (
     _decode_mcp_body,
     _items,
     _kiara_public_target,
-    _profiles_from_public_links,
 )
+from kiara_api.instagram_private import _profile
 from kiara_api.http.errors import ApiError
 
 
@@ -43,24 +43,22 @@ def test_competition_extracts_nested_analysis_and_prospects() -> None:
     ]
 
 
-def test_kiara_serverless_accepts_public_post_and_rejects_followers_mode() -> None:
+def test_kiara_authenticated_collector_accepts_public_post_and_rejects_followers_mode() -> None:
     payload = KiaraCompetitionInput(mode="commenters", target="https://www.instagram.com/p/ABC_123/")
     assert _kiara_public_target(payload) == (payload.target, None)
+    likes = KiaraCompetitionInput(mode="likers", target="https://www.instagram.com/reel/ABC_123/")
+    assert _kiara_public_target(likes) == (likes.target, None)
     with pytest.raises(ValueError):
         KiaraCompetitionInput(mode="followers", target="@concorrente")
 
 
-def test_kiara_serverless_extracts_only_profile_links() -> None:
-    profiles = _profiles_from_public_links([
-        "https://www.instagram.com/Pessoa.Um/",
-        "https://instagram.com/pessoa.um/",
-        "https://www.instagram.com/p/POST/",
-        "https://example.com/pessoa",
-        "https://www.instagram.com/concorrente/",
-    ], excluded_username="concorrente")
-    assert profiles == [{
-        "id": "instagram:pessoa.um",
-        "username": "pessoa.um",
-        "profile_url": "https://www.instagram.com/pessoa.um/",
-        "source": "kiara_public_serverless",
-    }]
+def test_kiara_prospect_requires_instagram_user_evidence() -> None:
+    user = type("User", (), {"pk": "123", "username": "Pessoa.Um", "full_name": "Pessoa Um"})()
+    media = type("Media", (), {"pk": "456", "code": "POST123"})()
+    prospect = _profile(user, relationship="commented", media=media)
+    assert prospect is not None
+    assert prospect["id"] == "instagram:123"
+    assert prospect["username"] == "pessoa.um"
+    assert prospect["relationship_type"] == "commented"
+    assert prospect["source_media_url"] == "https://www.instagram.com/p/POST123/"
+    assert _profile(type("User", (), {"pk": "", "username": "popular"})(), relationship="liked") is None

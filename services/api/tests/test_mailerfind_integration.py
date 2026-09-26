@@ -15,6 +15,16 @@ def test_mailerfind_accepts_official_mcp_oauth_credentials() -> None:
     })
 
 
+def test_instagram_session_accepts_only_a_session_secret() -> None:
+    _validate_credentials("instagram_session", {
+        "session_id": "1234567890%3Aabcdefghijklmnopqrstuv",
+        "username": "kiara",
+    })
+    with pytest.raises(ApiError) as error:
+        _validate_credentials("instagram_session", {"session_id": "short"})
+    assert error.value.code == "invalid_instagram_session"
+
+
 @pytest.mark.parametrize("endpoint", [
     "http://mcp.mailerfind.com/mcp",
     "https://example.com/mcp",

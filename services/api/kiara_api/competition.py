@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 from typing import Annotated, Any
@@ -18,7 +19,7 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .competition_store import CompetitionRepository
 from .integrations import IntegrationRepository, SYSTEM_ADMIN_EMAIL
-from .instagram_private import InstagramSessionFailure, collect_instagram_relationships
+from .browser_worker import BrowserWorkerClient, BrowserWorkerError
 
 
 def _decode_mcp_body(raw: str) -> dict[str, Any]:
@@ -109,7 +110,7 @@ def _mailerfind_call(credentials: dict[str, str], tool_name: str, arguments: dic
 
 
 CompetitionMode = Literal["followers", "account_audience", "account_commenters", "commenters"]
-KiaraCompetitionMode = Literal["account_audience", "account_commenters", "commenters"]
+KiaraCompetitionMode = Literal["account_audience", "account_commenters", "commenters", "likers", "post_audience"]
 
 
 class CompetitionAnalysisInput(BaseModel):
@@ -130,12 +131,35 @@ class CompetitionStartInput(BaseModel):
 class KiaraCompetitionInput(BaseModel):
     mode: KiaraCompetitionMode
     target: str = Field(min_length=1, max_length=500)
+    media_id: str | None = Field(default=None, max_length=100)
     name: str | None = Field(default=None, max_length=120)
 
-    @field_validator("target", "name")
+    @field_validator("target", "media_id", "name")
     @classmethod
     def trim_kiara_text(cls, value: str | None) -> str | None:
         return value.strip() if isinstance(value, str) else value
+
+
+class BrowserInputCommand(BaseModel):
+    action: Literal["click", "type", "key", "scroll", "reload"]
+    x: float | None = None
+    y: float | None = None
+    text: str | None = Field(default=None, max_length=500)
+    key: str | None = Field(default=None, max_length=40)
+    delta_y: float | None = Field(default=None, ge=-3000, le=3000)
+
+
+def _browser_error(error: BrowserWorkerError) -> ApiError:
+    return ApiError(error.status_code, error.code, error.message)
+
+
+class InstagramProfilePreviewInput(BaseModel):
+    username: str = Field(min_length=1, max_length=31)
+
+    @field_validator("username")
+    @classmethod
+    def clean_username(cls, value: str) -> str:
+        return value.strip()
 
 
 _INSTAGRAM_RESERVED_PATHS = {
@@ -145,7 +169,7 @@ _INSTAGRAM_RESERVED_PATHS = {
 
 
 def _kiara_public_target(payload: KiaraCompetitionInput) -> tuple[str, str | None]:
-    if payload.mode == "commenters":
+    if payload.mode in {"commenters", "likers", "post_audience"}:
         parsed = urlsplit(payload.target)
         host = (parsed.hostname or "").lower().removeprefix("www.")
         if parsed.scheme != "https" or host != "instagram.com" or not re.fullmatch(r"/(?:p|reel)/[A-Za-z0-9_-]+/?", parsed.path):
@@ -282,6 +306,83 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         except (KeyError, ValueError, TypeError, json.JSONDecodeError):
             raise ApiError(502, "mailerfind_invalid_response", "O MailerFind respondeu em formato incompatível. Contate o administrador.") from None
 
+    @router.get("/instagram/connection")
+    async def instagram_connection(context: Annotated[RequestContext, Depends(authenticated_context)]):
+        client = BrowserWorkerClient()
+        try:
+            return await asyncio.to_thread(client.profile_status, context.organization_id)
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
+    @router.post("/instagram/connection", status_code=201)
+    async def start_instagram_connection(context: Annotated[RequestContext, Depends(authenticated_context)]):
+        client = BrowserWorkerClient()
+        try:
+            return await asyncio.to_thread(client.create_session, context.organization_id)
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
+    @router.get("/instagram/connection/{session_id}")
+    async def instagram_connection_status(
+        session_id: str,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        client = BrowserWorkerClient()
+        try:
+            return await asyncio.to_thread(client.session_status, context.organization_id, session_id)
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
+    @router.get("/instagram/connection/{session_id}/screenshot")
+    async def instagram_connection_screenshot(
+        session_id: str,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        client = BrowserWorkerClient()
+        try:
+            image = await asyncio.to_thread(client.screenshot, context.organization_id, session_id)
+            return {"image": "data:image/jpeg;base64," + base64.b64encode(image).decode("ascii")}
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
+    @router.post("/instagram/connection/{session_id}/input")
+    async def instagram_connection_input(
+        session_id: str,
+        payload: BrowserInputCommand,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        client = BrowserWorkerClient()
+        try:
+            return await asyncio.to_thread(
+                client.input,
+                context.organization_id,
+                session_id,
+                payload.model_dump(exclude_none=True),
+            )
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
+    @router.post("/instagram/connection/{session_id}/complete")
+    async def complete_instagram_connection(
+        session_id: str,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        client = BrowserWorkerClient()
+        try:
+            return await asyncio.to_thread(client.complete, context.organization_id, session_id)
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
+    @router.delete("/instagram/connection", status_code=204)
+    async def disconnect_instagram_connection(
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        client = BrowserWorkerClient()
+        try:
+            await asyncio.to_thread(client.disconnect, context.organization_id)
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
+
     @router.get("/tools")
     async def list_tools(context: Annotated[RequestContext, Depends(authenticated_context)]):
         credentials = await credentials_for_admin(context)
@@ -306,7 +407,9 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
 
     @router.get("/overview")
     async def overview(context: Annotated[RequestContext, Depends(authenticated_context)]):
-        ensure_system_admin(context)
+        if context.email != SYSTEM_ADMIN_EMAIL:
+            local = await archive.list_analyses(context.organization_id)
+            return {"account": {}, "analyses": {"items": local}, "provider": {"available": True, "name": "kiara_instagram"}}
         try:
             account, analyses = await asyncio.gather(
                 call(context, "mailerfind_user_get_info", {}),
@@ -334,24 +437,23 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         payload: KiaraCompetitionInput,
         context: Annotated[RequestContext, Depends(authenticated_context)],
     ):
-        ensure_system_admin(context)
         normalized_target, _ = _kiara_public_target(payload)
-        credentials = await repository.credentials_for(context.organization_id, "instagram_session")
-        if not credentials:
-            raise ApiError(
-                409,
-                "instagram_connection_required",
-                "Conecte uma conta do Instagram em Administração > APIs e conexões antes de iniciar a análise.",
-            )
+        client = BrowserWorkerClient()
         try:
-            prospects, snapshot = await asyncio.to_thread(
-                collect_instagram_relationships,
-                credentials["session_id"],
-                payload.mode,
-                normalized_target if payload.mode == "commenters" else payload.target,
+            result = await asyncio.to_thread(
+                client.analyse,
+                context.organization_id,
+                {
+                    "mode": payload.mode,
+                    "username": normalized_target,
+                    "media_id": payload.media_id,
+                    "limit": 100,
+                },
             )
-        except InstagramSessionFailure as error:
-            raise ApiError(error.status_code, error.code, error.message) from None
+            prospects = result.get("items", []) if isinstance(result.get("items"), list) else []
+            snapshot = result.get("snapshot", {}) if isinstance(result.get("snapshot"), dict) else {}
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
         analysis_id = f"kiara_{uuid4().hex}"
         name = payload.name or f"Kiara · {payload.mode} · {payload.target}"
         analysis = await archive.upsert_analysis(
@@ -368,6 +470,20 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
         saved = await archive.upsert_prospects(context.organization_id, analysis_id, prospects)
         message = None if prospects else "Nenhum comentário ou curtida acessível foi encontrado nas publicações consultadas."
         return {"analysis": analysis, "saved": saved, "items": prospects, "message": message}
+
+    @router.post("/kiara/profile-preview")
+    async def preview_instagram_profile(
+        payload: InstagramProfilePreviewInput,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        username = payload.username.removeprefix("@").strip()
+        if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", username) or username.lower() in _INSTAGRAM_RESERVED_PATHS:
+            raise ApiError(422, "instagram_username_invalid", "Informe um @usuário válido do Instagram.")
+        client = BrowserWorkerClient()
+        try:
+            return await asyncio.to_thread(client.profile, context.organization_id, username)
+        except BrowserWorkerError as error:
+            raise _browser_error(error) from None
 
     @router.post("/analyses/{analysis_id}/start")
     async def start_analysis(analysis_id: str, payload: CompetitionStartInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
@@ -403,9 +519,9 @@ def create_competition_router(repository: IntegrationRepository, archive: Compet
             raise ApiError(422, "analysis_id_invalid", "A análise selecionada não possui um identificador válido.")
         if not 1 <= limit <= 100:
             raise ApiError(422, "prospect_limit_invalid", "O limite deve ficar entre 1 e 100.")
-        ensure_system_admin(context)
         local = await archive.list_prospects(context.organization_id, analysis_id, limit)
-        if local:
+        archived_analysis = await archive.get_analysis(context.organization_id, analysis_id)
+        if archived_analysis:
             return {"items": local, "archived": True}
         arguments: dict[str, Any] = {"analysisId": analysis_id, "limit": limit}
         if contactable_only:

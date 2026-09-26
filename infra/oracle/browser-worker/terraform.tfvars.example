@@ -1,0 +1,9 @@
+tenancy_ocid     = "ocid1.tenancy.oc1..exemplo"
+user_ocid        = "ocid1.user.oc1..exemplo"
+fingerprint      = "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+private_key_path = "C:/Users/voce/.oci/oci_api_key.pem"
+region           = "sa-saopaulo-1"
+compartment_ocid = "ocid1.compartment.oc1..exemplo"
+ssh_public_key   = "ssh-ed25519 AAAA..."
+ssh_allowed_cidr = "203.0.113.10/32"
+

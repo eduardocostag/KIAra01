@@ -1,0 +1,38 @@
+services:
+  worker:
+    build:
+      context: ./browser-worker
+    restart: unless-stopped
+    environment:
+      KIARA_WORKER_TOKEN: ${KIARA_WORKER_TOKEN:?required}
+      KIARA_PROFILE_SALT: ${KIARA_PROFILE_SALT:?required}
+      KIARA_BROWSER_DATA_DIR: /data
+      KIARA_CHROMIUM_PATH: /usr/bin/chromium
+    volumes:
+      - browser-data:/data
+    shm_size: 1gb
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WORKER_HOST: ${WORKER_HOST:?required}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [worker]
+    networks: [internal]
+
+networks:
+  internal:
+
+volumes:
+  browser-data:
+  caddy-data:
+  caddy-config:
+

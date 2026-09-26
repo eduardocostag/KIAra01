@@ -24,9 +24,10 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
   const requestId = crypto.randomUUID()
   const startedAt = Date.now()
   const method = init.method ?? "GET"
-  const log = (level: "info" | "error", event: string, data: Record<string, unknown> = {}) => {
+  const log = (level: "info" | "warn" | "error", event: string, data: Record<string, unknown> = {}) => {
     const entry = { level, event, route: path, method, request_id: requestId, duration_ms: Date.now() - startedAt, ...data }
     if (level === "error") console.error(JSON.stringify(entry))
+    else if (level === "warn") console.warn(JSON.stringify(entry))
     else console.log(JSON.stringify(entry))
   }
 
@@ -56,7 +57,11 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
   }
 
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-  const timeoutMs = path.endsWith("/confirm") || path.endsWith("/process") ? 290_000 : 15_000
+  const timeoutMs = path.endsWith("/confirm") || path.endsWith("/process")
+    ? 290_000
+    : path.startsWith("/v1/competition/kiara/") || path.startsWith("/v1/competition/instagram/")
+      ? 55_000
+      : 15_000
   log("info", "kiara_api.request_started", { upstream_host: target.host, timeout_ms: timeoutMs })
   try {
     const response = await fetch(target, {
@@ -80,7 +85,8 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
       log("error", "kiara_api.invalid_response", { upstream_status: response.status, content_type: contentType })
       return upstreamFormatError(response.status, contentType, requestId)
     }
-    log(response.ok ? "info" : "error", response.ok ? "kiara_api.request_completed" : "kiara_api.upstream_error", { upstream_status: response.status })
+    const level = response.ok ? "info" : response.status < 500 ? "warn" : "error"
+    log(level, response.ok ? "kiara_api.request_completed" : "kiara_api.upstream_response", { upstream_status: response.status })
     return Response.json(payload, { status: response.status, headers: { "Cache-Control": "no-store", "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId } })
   } catch (error) {
     const timedOut = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")

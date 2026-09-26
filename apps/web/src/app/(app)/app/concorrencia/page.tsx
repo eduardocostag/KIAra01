@@ -1,22 +1,22 @@
-import type { Metadata } from "next"
-import { notFound, redirect } from "next/navigation"
-import { CompetitionConsole } from "@/components/competition/competition-console"
-import { AdministratorRequiredError, AuthenticationRequiredError, requireSystemAdmin } from "@/lib/auth"
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { CompetitionConsole } from "@/components/competition/competition-console";
+import { AuthenticationRequiredError, requireWorkspace } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Concorrência | Kiara",
-  description: "Análise própria de audiências públicas de concorrentes, com arquivo seguro na Kiara.",
-}
+  description:
+    "Análise própria de audiências públicas de concorrentes, com arquivo seguro na Kiara.",
+};
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 export default async function CompetitionPage() {
   try {
-    await requireSystemAdmin()
+    await requireWorkspace();
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) redirect("/sign-in")
-    if (error instanceof AdministratorRequiredError) notFound()
-    throw error
+    if (error instanceof AuthenticationRequiredError) redirect("/sign-in");
+    throw error;
   }
-  return <CompetitionConsole />
+  return <CompetitionConsole />;
 }

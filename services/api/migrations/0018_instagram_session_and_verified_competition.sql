@@ -20,4 +20,14 @@ ALTER TABLE competition_analyses
 ALTER TABLE competition_analyses
   VALIDATE CONSTRAINT competition_analyses_provider_check;
 
+ALTER TABLE competition_analyses
+  DROP CONSTRAINT IF EXISTS competition_analyses_mode_check;
+ALTER TABLE competition_analyses
+  ADD CONSTRAINT competition_analyses_mode_check
+  CHECK (mode IS NULL OR mode IN (
+    'followers', 'account_audience', 'account_commenters', 'commenters', 'likers', 'post_audience'
+  )) NOT VALID;
+ALTER TABLE competition_analyses
+  VALIDATE CONSTRAINT competition_analyses_mode_check;
+
 COMMIT;

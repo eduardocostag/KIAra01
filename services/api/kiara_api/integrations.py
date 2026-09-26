@@ -106,6 +106,13 @@ class IntegrationRepository:
             )).fetchone()
         return self.decrypt_for_provider(row["encrypted_credentials"]) if row else None
 
+    async def disconnect(self, organization_id: str, provider: Provider) -> None:
+        async with self._postgres._transaction(organization_id) as connection:
+            await connection.execute(
+                "DELETE FROM integration_credentials WHERE organization_id=%s AND provider=%s AND is_global=false",
+                (_uuid("organization", organization_id), provider),
+            )
+
 
 class _DenyRedirects(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -187,17 +194,26 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
 
     @router.put("/{provider}")
     async def save_integration(provider: Provider, payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
-        ensure_admin(context)
-        if provider in {"mailerfind", "instagram_session"}:
+        if provider != "instagram_session":
+            ensure_admin(context)
+        if provider == "mailerfind":
             ensure_system_admin(context)
         return await repository.save(context.organization_id, provider, payload.credentials)
 
+    @router.delete("/{provider}", status_code=204)
+    async def disconnect_integration(provider: Provider, context: Annotated[RequestContext, Depends(authenticated_context)]):
+        if provider != "instagram_session":
+            ensure_admin(context)
+        if provider == "mailerfind":
+            ensure_system_admin(context)
+        await repository.disconnect(context.organization_id, provider)
+        return None
+
     @router.get("/instagram-session/status")
     async def instagram_session_status(context: Annotated[RequestContext, Depends(authenticated_context)]):
-        ensure_system_admin(context)
         credentials = await repository.credentials_for(context.organization_id, "instagram_session")
         if not credentials:
-            raise ApiError(404, "instagram_session_not_configured", "Conecte uma sessão do Instagram no painel administrativo.")
+            raise ApiError(404, "instagram_session_not_configured", "Conecte seu Instagram na aba Concorrência.")
         from .instagram_private import InstagramSessionFailure, verify_instagram_session
         try:
             return await asyncio.to_thread(verify_instagram_session, credentials["session_id"])
