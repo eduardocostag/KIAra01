@@ -38,7 +38,7 @@ class PostgresRepository:
     def __init__(self, database_url: str) -> None:
         self._database_url = _psycopg_url(database_url)
 
-    async def _connect(self, *, row_factory: Any = dict_row) -> psycopg.AsyncConnection:
+    async def _connect(self, *, row_factory: Any = dict_row) -> Any:
         """Open a database connection with bounded retries for transient pool failures."""
         last_error: psycopg.OperationalError | None = None
         for delay in (0.0, 0.2, 0.5):
@@ -51,6 +51,7 @@ class PostgresRepository:
                 }
                 if row_factory is not None:
                     options["row_factory"] = row_factory
+                # Em ambientes assíncronos padrão usamos AsyncConnection
                 return await psycopg.AsyncConnection.connect(**options)
             except psycopg.OperationalError as exc:
                 last_error = exc
@@ -74,9 +75,9 @@ class PostgresRepository:
 
     async def ready(self) -> bool:
         try:
-            async with await self._connect(row_factory=None) as connection:
+            async with await self._connect() as connection:
                 row = await (await connection.execute("SELECT to_regclass('public.organizations')")).fetchone()
-                return bool(row and row[0])
+                return bool(row and (row.get("to_regclass") if isinstance(row, dict) else row[0]))
         except psycopg.Error:
             return False
 

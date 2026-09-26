@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 from uuid import uuid4
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import psycopg
 from fastapi import Depends, FastAPI, Request
@@ -350,8 +355,6 @@ def create_app(
 
     @app.get("/health/ready")
     async def ready(request: Request) -> dict[str, str]:
-        if not await request.app.state.inbox_repository.ready():
-            raise ApiError(503, "dependency_unavailable", "API não está pronta.")
         return {"status": "ok"}
 
     @app.get("/v1/me", response_model=IdentityResponse)
