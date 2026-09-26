@@ -13,7 +13,8 @@ InstagramCollectionMode = Literal[
     "account_audience", "account_commenters", "commenters", "likers", "post_audience"
 ]
 _MOBILE_BASE = "https://i.instagram.com/api/v1"
-_WEB_PROFILE = "https://www.instagram.com/api/v1/users/web_profile_info/"
+_WEB_BASE = "https://www.instagram.com/api/v1"
+_WEB_PROFILE = f"{_WEB_BASE}/users/web_profile_info/"
 _USER_AGENT = (
     "Instagram 309.0.0.40.113 Android (33/13; 420dpi; 1080x1920; "
     "Google; Pixel 6; oriole; tensor; pt_BR; 541635249)"
@@ -30,19 +31,32 @@ class InstagramSessionFailure(Exception):
         return self.message
 
 
-def _headers(session_id: str) -> dict[str, str]:
+def _headers(session_id: str, *, web: bool = False) -> dict[str, str]:
     cookie_header = session_id if ";" in session_id else f"sessionid={session_id}"
-    return {
+    cookies = dict(
+        part.strip().split("=", 1)
+        for part in cookie_header.split(";")
+        if "=" in part
+    )
+    headers = {
         "Accept": "*/*",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
         "Cookie": cookie_header,
         "Referer": "https://www.instagram.com/",
         "Origin": "https://www.instagram.com",
-        "User-Agent": _USER_AGENT,
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+            if web else _USER_AGENT
+        ),
         "X-ASBD-ID": "129477",
-        "X-IG-App-ID": "567067343352427",
+        "X-IG-App-ID": "936619743392459" if web else "567067343352427",
         "X-IG-WWW-Claim": "0",
+        "X-Requested-With": "XMLHttpRequest",
     }
+    if cookies.get("csrftoken"):
+        headers["X-CSRFToken"] = cookies["csrftoken"]
+    return headers
 
 
 def _failure_for_payload(data: dict[str, Any], default: InstagramSessionFailure) -> InstagramSessionFailure:
@@ -70,8 +84,14 @@ def _failure_for_payload(data: dict[str, Any], default: InstagramSessionFailure)
     return InstagramSessionFailure(default.status_code, default.code, safe_message)
 
 
-def _json_get(url: str, session_id: str, *, max_bytes: int = 4_000_000) -> dict[str, Any]:
-    request = Request(url, headers=_headers(session_id))
+def _json_get(
+    url: str,
+    session_id: str,
+    *,
+    max_bytes: int = 4_000_000,
+    web: bool = False,
+) -> dict[str, Any]:
+    request = Request(url, headers=_headers(session_id, web=web))
     try:
         with urlopen(request, timeout=15) as response:
             raw = response.read(max_bytes + 1)
@@ -240,6 +260,7 @@ def collect_instagram_relationships(
     *,
     media_id: str | None = None,
     limit: int = 100,
+    comments_override: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if mode not in {"commenters", "likers", "post_audience"} or not media_id:
         raise InstagramSessionFailure(422, "instagram_publication_required", "Selecione uma publicação do perfil antes de extrair interações.")
@@ -249,18 +270,31 @@ def collect_instagram_relationships(
     found: dict[str, dict[str, Any]] = {}
     comments_available = True
     if mode in {"commenters", "post_audience"}:
-        try:
-            comments_data = _json_get(
-                f"{_MOBILE_BASE}/media/{quote(media_id, safe='_')}/comments/?can_support_threading=true&permalink_enabled=false",
-                session_id,
-            )
-        except InstagramSessionFailure as error:
-            if error.code != "instagram_collection_failed":
-                raise
+        comments_data: dict[str, Any] = comments_override or {}
+        comment_urls = (
+            f"{_MOBILE_BASE}/media/{quote(media_id, safe='_')}/comments/?can_support_threading=true&permalink_enabled=false&min_id=0",
+            f"{_WEB_BASE}/media/{quote(media_id, safe='_')}/comments/?can_support_threading=true&permalink_enabled=false&min_id=0",
+            f"{_WEB_BASE}/media/{quote(media_id, safe='_')}/comments/?can_support_threading=true&permalink_enabled=false",
+        )
+        last_comment_error: InstagramSessionFailure | None = None
+        if comments_override is None:
+            for index, comments_url in enumerate(comment_urls):
+                try:
+                    comments_data = _json_get(
+                        comments_url,
+                        session_id,
+                        web=index >= 1,
+                    )
+                    last_comment_error = None
+                    break
+                except InstagramSessionFailure as error:
+                    last_comment_error = error
+                    if error.code not in {"instagram_collection_failed", "instagram_invalid_response"}:
+                        raise
+        if last_comment_error is not None:
             # Algumas publicações permitem curtidas, mas bloqueiam a listagem de
-            # comentários. Isso não deve invalidar a análise combinada inteira.
+            # comentários em todos os endpoints conhecidos.
             comments_available = False
-            comments_data = {}
         comments = comments_data.get("comments") if isinstance(comments_data.get("comments"), list) else []
         for comment in comments:
             if not isinstance(comment, dict):

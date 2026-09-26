@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import json
 import os
 import re
 import time
@@ -149,6 +150,44 @@ class BrowserSessions:
         finally:
             await self.close(session.id)
 
+    async def fetch_instagram_json(self, workspace_id: str, url: str) -> dict:
+        session = await self.start(workspace_id)
+        try:
+            async with session.lock:
+                result = await session.page.evaluate(
+                    """async (url) => {
+                        const response = await fetch(url, {
+                            credentials: 'include',
+                            headers: {
+                                'Accept': '*/*',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-IG-App-ID': '936619743392459'
+                            }
+                        });
+                        const text = await response.text();
+                        return { status: response.status, text };
+                    }""",
+                    url,
+                )
+            if not isinstance(result, dict) or int(result.get("status", 500)) >= 400:
+                raise InstagramSessionFailure(
+                    502,
+                    "instagram_collection_failed",
+                    "O Instagram recusou a listagem de comentários desta publicação.",
+                )
+            parsed = json.loads(str(result.get("text") or "{}"))
+            if not isinstance(parsed, dict):
+                raise ValueError("invalid Instagram response")
+            return parsed
+        except (json.JSONDecodeError, ValueError) as error:
+            raise InstagramSessionFailure(
+                502,
+                "instagram_invalid_response",
+                "O Instagram respondeu em formato incompatível.",
+            ) from error
+        finally:
+            await self.close(session.id)
+
     async def disconnect(self, workspace_id: str) -> None:
         current_id = self._workspace_sessions.get(workspace_id)
         if current_id:
@@ -286,6 +325,19 @@ async def instagram_analyse(payload: AnalysisRequest) -> dict:
     cookie = await instagram_cookie(payload.workspace_id)
     if not cookie:
         raise HTTPException(409, "A conexão com o Instagram expirou. Entre novamente.")
+    comments_override = None
+    if payload.mode in {"commenters", "post_audience"}:
+        comments_url = (
+            "https://www.instagram.com/api/v1/media/"
+            f"{payload.media_id}/comments/?can_support_threading=true&permalink_enabled=false"
+        )
+        try:
+            comments_override = await sessions.fetch_instagram_json(
+                payload.workspace_id,
+                comments_url,
+            )
+        except InstagramSessionFailure:
+            comments_override = None
     items, snapshot = await asyncio.to_thread(
         collect_instagram_relationships,
         cookie,
@@ -293,5 +345,6 @@ async def instagram_analyse(payload: AnalysisRequest) -> dict:
         payload.username,
         media_id=payload.media_id,
         limit=payload.limit,
+        comments_override=comments_override,
     )
     return {"items": items, "snapshot": snapshot}

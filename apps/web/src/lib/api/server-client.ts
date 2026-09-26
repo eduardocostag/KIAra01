@@ -40,10 +40,18 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
     return errorResponse(401, "session_missing", "Sua sessão não forneceu um token válido. Entre novamente na Kiara.", requestId)
   }
 
-  const configuredBase = process.env.KIARA_API_URL?.trim()
+  const isCompetitionRoute = path.startsWith("/v1/competition/")
+  const configuredBase = (
+    isCompetitionRoute
+      ? process.env.KIARA_COMPETITION_API_URL
+      : process.env.KIARA_API_URL
+  )?.trim()
+  const configurationName = isCompetitionRoute
+    ? "KIARA_COMPETITION_API_URL"
+    : "KIARA_API_URL"
   if (!configuredBase) {
-    log("error", "kiara_api.not_configured")
-    return errorResponse(503, "api_not_configured", "A conexão com o backend não está configurada. Cadastre KIARA_API_URL na Vercel.", requestId)
+    log("error", "kiara_api.not_configured", { configuration: configurationName })
+    return errorResponse(503, "api_not_configured", `A conexão com o backend não está configurada. Cadastre ${configurationName} na Vercel.`, requestId)
   }
 
   let target: URL
