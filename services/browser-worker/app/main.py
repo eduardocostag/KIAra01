@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
@@ -150,41 +151,111 @@ class BrowserSessions:
         finally:
             await self.close(session.id)
 
-    async def fetch_instagram_json(self, workspace_id: str, url: str) -> dict:
-        session = await self.start(workspace_id)
+    async def _page_json(self, session: LiveSession, url: str) -> dict:
+        async with session.lock:
+            result = await session.page.evaluate(
+                """async (url) => {
+                    const response = await fetch(url, {
+                        credentials: 'include',
+                        headers: {
+                            'Accept': '*/*',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-IG-App-ID': '936619743392459'
+                        }
+                    });
+                    const text = await response.text();
+                    return { status: response.status, text };
+                }""",
+                url,
+            )
+        if not isinstance(result, dict) or int(result.get("status", 500)) >= 400:
+            raise InstagramSessionFailure(
+                502,
+                "instagram_collection_failed",
+                "O Instagram recusou a consulta autenticada.",
+            )
         try:
-            async with session.lock:
-                result = await session.page.evaluate(
-                    """async (url) => {
-                        const response = await fetch(url, {
-                            credentials: 'include',
-                            headers: {
-                                'Accept': '*/*',
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'X-IG-App-ID': '936619743392459'
-                            }
-                        });
-                        const text = await response.text();
-                        return { status: response.status, text };
-                    }""",
-                    url,
-                )
-            if not isinstance(result, dict) or int(result.get("status", 500)) >= 400:
-                raise InstagramSessionFailure(
-                    502,
-                    "instagram_collection_failed",
-                    "O Instagram recusou a consulta autenticada.",
-                )
             parsed = json.loads(str(result.get("text") or "{}"))
-            if not isinstance(parsed, dict):
-                raise ValueError("invalid Instagram response")
-            return parsed
-        except (json.JSONDecodeError, ValueError) as error:
+        except json.JSONDecodeError as error:
             raise InstagramSessionFailure(
                 502,
                 "instagram_invalid_response",
                 "O Instagram respondeu em formato incompatível.",
             ) from error
+        if not isinstance(parsed, dict):
+            raise InstagramSessionFailure(
+                502,
+                "instagram_invalid_response",
+                "O Instagram respondeu em formato incompatível.",
+            )
+        return parsed
+
+    async def fetch_instagram_json(self, workspace_id: str, url: str) -> dict:
+        session = await self.start(workspace_id)
+        try:
+            return await self._page_json(session, url)
+        finally:
+            await self.close(session.id)
+
+    async def fetch_instagram_comments(
+        self,
+        workspace_id: str,
+        media_id: str,
+        limit: int,
+    ) -> dict:
+        session = await self.start(workspace_id)
+        collected: list[dict] = []
+        seen: set[str] = set()
+        cursor = ""
+        pages = 0
+        try:
+            while len(collected) < limit and pages < 20:
+                url = (
+                    "https://www.instagram.com/api/v1/media/"
+                    f"{media_id}/comments/?can_support_threading=true"
+                    "&permalink_enabled=false"
+                )
+                if cursor:
+                    url += "&min_id=" + quote(cursor, safe="")
+                payload = await self._page_json(session, url)
+                comments = payload.get("comments")
+                if not isinstance(comments, list):
+                    break
+                for comment in comments:
+                    if not isinstance(comment, dict):
+                        continue
+                    comment_id = str(comment.get("pk") or comment.get("id") or "")
+                    if comment_id and comment_id not in seen:
+                        seen.add(comment_id)
+                        collected.append(comment)
+                    preview = comment.get("preview_child_comments")
+                    if isinstance(preview, list):
+                        for child in preview:
+                            if not isinstance(child, dict):
+                                continue
+                            child_id = str(child.get("pk") or child.get("id") or "")
+                            if child_id and child_id not in seen:
+                                seen.add(child_id)
+                                collected.append(child)
+                            if len(collected) >= limit:
+                                break
+                    if len(collected) >= limit:
+                        break
+                next_cursor = str(
+                    payload.get("next_min_id")
+                    or payload.get("next_max_id")
+                    or payload.get("next_cursor")
+                    or ""
+                )
+                pages += 1
+                if not next_cursor or next_cursor == cursor:
+                    break
+                cursor = next_cursor
+            return {
+                "comments": collected[:limit],
+                "pages_fetched": pages,
+                "has_more_comments": bool(cursor),
+            }
         finally:
             await self.close(session.id)
 
@@ -354,15 +425,12 @@ async def instagram_analyse(payload: AnalysisRequest) -> dict:
         return {"items": items, "snapshot": snapshot}
 
     comments_override = None
-    if payload.mode in {"commenters", "post_audience"}:
-        comments_url = (
-            "https://www.instagram.com/api/v1/media/"
-            f"{payload.media_id}/comments/?can_support_threading=true&permalink_enabled=false"
-        )
+    if payload.mode in {"commenters", "post_audience"} and payload.media_id:
         try:
-            comments_override = await sessions.fetch_instagram_json(
+            comments_override = await sessions.fetch_instagram_comments(
                 payload.workspace_id,
-                comments_url,
+                payload.media_id,
+                payload.limit,
             )
         except InstagramSessionFailure:
             comments_override = None

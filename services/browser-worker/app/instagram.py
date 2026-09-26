@@ -217,6 +217,38 @@ def _value(value: Any, name: str, default: Any = "") -> Any:
     return value.get(name, default) if isinstance(value, dict) else getattr(value, name, default)
 
 
+def _comment_intent(text: str) -> tuple[str, int, str]:
+    normalized = text.strip().lower()
+    if not normalized:
+        return "sem_texto", 15, "Comentário sem texto analisável"
+    spam_terms = ("dm me", "promote it", "send pic", "check my page", "follow back", "promo")
+    if any(term in normalized for term in spam_terms):
+        return "spam", 0, "Possível spam ou autopromoção"
+    purchase_terms = (
+        "preço", "preco", "valor", "quanto custa", "comprar", "onde compra",
+        "como comprar", "pedido", "entrega", "frete", "disponível", "disponivel",
+        "price", "how much", "where can i buy", "shipping", "available",
+    )
+    if any(term in normalized for term in purchase_terms):
+        return "intencao_compra", 95, "Pergunta comercial ou intenção de compra"
+    question_terms = ("?", "como", "onde", "quando", "qual", "tem ", "can i", "where", "when", "how")
+    if any(term in normalized for term in question_terms):
+        return "pergunta", 80, "Pergunta que permite iniciar uma conversa"
+    objection_terms = ("caro", "problema", "ruim", "não gostei", "nao gostei", "demora", "reclama", "expensive", "bad")
+    if any(term in normalized for term in objection_terms):
+        return "objecao", 70, "Objeção ou insatisfação que permite abordagem consultiva"
+    tag_count = normalized.count("@")
+    emoji_like = all(not char.isalnum() for char in normalized.replace(" ", ""))
+    if emoji_like or len(normalized) <= 4:
+        return "engajamento_generico", 30, "Interação curta ou composta apenas por emojis"
+    if tag_count:
+        return "marcacao", 40, "Marcou outro perfil na publicação"
+    positive_terms = ("amei", "lindo", "perfeito", "quero", "gostei", "love", "beautiful", "amazing", "want")
+    if any(term in normalized for term in positive_terms):
+        return "interesse_positivo", 65, "Demonstração positiva de interesse"
+    return "comentario_relevante", 55, "Comentário textual com potencial de abordagem"
+
+
 def _profile(user: Any, *, relationship: str, media: Any = None, comment: Any = None) -> dict[str, Any] | None:
     username = str(_value(user, "username") or "").strip().lower()
     user_id = str(_value(user, "pk") or _value(user, "id") or "").strip()
@@ -235,8 +267,17 @@ def _profile(user: Any, *, relationship: str, media: Any = None, comment: Any = 
         "source": "kiara_instagram_authenticated",
     }
     if comment is not None:
+        comment_text = str(_value(comment, "text") or "")[:500]
+        intent, score, reason = _comment_intent(comment_text)
         profile["comment_id"] = str(_value(comment, "pk") or _value(comment, "id") or "")
-        profile["comment_text"] = str(_value(comment, "text") or "")[:500]
+        profile["comment_text"] = comment_text
+        profile["intent"] = intent
+        profile["lead_score"] = score
+        profile["qualification_reason"] = reason
+    elif relationship == "liked":
+        profile.update(intent="interesse_leve", lead_score=35, qualification_reason="Curtiu a publicação selecionada")
+    elif relationship == "follows":
+        profile.update(intent="audiencia_concorrente", lead_score=25, qualification_reason="Segue o perfil concorrente")
     return profile
 
 
@@ -251,6 +292,17 @@ def _add_profile(items: dict[str, dict[str, Any]], profile: dict[str, Any] | Non
     relationships = {str(current.get("relationship_type", "")), str(profile.get("relationship_type", ""))}
     relationships.discard("")
     current["relationship_type"] = ",".join(sorted(relationships))
+    if len(relationships) > 1:
+        current["intent"] = "alta_intencao"
+        current["lead_score"] = max(90, int(current.get("lead_score") or 0))
+        current["qualification_reason"] = "Comentou e curtiu a publicação selecionada"
+    elif int(profile.get("lead_score") or 0) > int(current.get("lead_score") or 0):
+        current["intent"] = profile.get("intent")
+        current["lead_score"] = profile.get("lead_score")
+        current["qualification_reason"] = profile.get("qualification_reason")
+    if profile.get("comment_text") and not current.get("comment_text"):
+        current["comment_text"] = profile["comment_text"]
+        current["comment_id"] = profile.get("comment_id")
 
 
 def collect_instagram_followers(

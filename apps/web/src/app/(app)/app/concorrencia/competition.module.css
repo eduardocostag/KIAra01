@@ -634,6 +634,26 @@
   color: var(--muted-foreground);
   font-size: 0.68rem;
 }
+.qualification {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+.reason {
+  margin-top: 0.35rem;
+}
+.comment {
+  display: -webkit-box;
+  max-width: 32rem;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .email {
   margin-top: 0.2rem;
   color: var(--primary);

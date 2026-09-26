@@ -135,6 +135,10 @@ class CompetitionRepository:
             "profile_url": row["profile_url"], "whatsapp_url": row["whatsapp_url"],
             "relationship_type": (row["provider_snapshot"] or {}).get("relationship_type"),
             "source_media_url": (row["provider_snapshot"] or {}).get("source_media_url"),
+            "comment_text": (row["provider_snapshot"] or {}).get("comment_text"),
+            "intent": (row["provider_snapshot"] or {}).get("intent"),
+            "lead_score": (row["provider_snapshot"] or {}).get("lead_score"),
+            "qualification_reason": (row["provider_snapshot"] or {}).get("qualification_reason"),
             "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat(),
         } for row in rows]
 
