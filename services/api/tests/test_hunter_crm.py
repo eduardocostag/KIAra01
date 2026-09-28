@@ -13,7 +13,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from kiara_api.adapters.postgres import PostgresRepository
+from kiara_api.hunter import HunterRepository
 from kiara_api.hunter_crm import _consumer_display_name, identity_keys, sync_hunter_results
+
+
+def test_search_completion_does_not_auto_sync_results_to_crm() -> None:
+    import inspect
+
+    source = inspect.getsource(HunterRepository.finish)
+    assert "sync_hunter_results(" not in source
+    assert '"created": 0, "existing": 0, "skipped": 0' in source
 
 
 def test_consumer_display_name_uses_instagram_handle_and_cleans_index_suffixes():
@@ -169,6 +178,28 @@ def test_unverified_or_rejected_criteria_are_visible_but_not_imported(mode, stat
     assert run(conn, org, search(research_mode=mode, objective="com estacionamento"), [row])["skipped"] == 1
     assert not conn.consumers and not conn.entries
     assert row["public_data"]["crm_status"] == "skipped"
+
+
+def test_user_can_explicitly_add_unverified_result_as_lead():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(public_data={"criterion_status": "not_verified"})
+    summary = asyncio.run(sync_hunter_results(
+        conn, org, search(research_mode="focused", objective="com estacionamento"), [row], user_selected=True,
+    ))
+    assert summary == {"created": 1, "existing": 0, "skipped": 0}
+    assert len(conn.consumers) == len(conn.entries) == 1
+    assert row["public_data"]["manual_lead_selection"] is True
+    assert row["public_data"]["crm_status"] == "synced"
+
+
+def test_user_selection_does_not_turn_publication_into_contact():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(source="instagram", url="https://instagram.com/p/ABC123/",
+                 public_data={"content_kind": "publication", "criterion_status": "not_verified"})
+    summary = asyncio.run(sync_hunter_results(conn, org, search(), [row], user_selected=True))
+    assert summary["skipped"] == 1
+    assert not conn.consumers and not conn.entries
+    assert row["public_data"]["crm_skip_reason"] == "publication_not_contact"
 
 
 def test_instagram_publication_is_saved_as_research_not_crm_contact():

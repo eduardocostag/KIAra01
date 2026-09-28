@@ -66,6 +66,15 @@ class CompetitionRepository:
             )).fetchone()
         return self._analysis(row) if row else None
 
+    async def clear_analyses(self, organization_id: str) -> int:
+        """Delete every archived analysis for one tenant; prospects cascade with analyses."""
+        async with self._postgres._transaction(organization_id) as connection:
+            cursor = await connection.execute(
+                "DELETE FROM competition_analyses WHERE organization_id=%s",
+                (_uuid("organization", organization_id),),
+            )
+            return max(0, cursor.rowcount)
+
     async def upsert_prospects(
         self, organization_id: str, provider_analysis_id: str, prospects: list[dict[str, Any]]
     ) -> int:

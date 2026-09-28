@@ -332,11 +332,16 @@ class PostgresRepository:
                     "instagram_username": row["instagram_username"] or None}
         if isinstance(notes, str):
             consumer["notes"] = notes
-        for key in ("phone", "whatsapp_url", "source_url", "source", "website_status",
+        for key in ("phone", "email", "whatsapp_url", "source_url", "source", "website_status",
                     "website_url", "research_query", "search_id", "location", "address",
-                    "website_evidence", "criterion_status"):
+                    "website_evidence", "criterion_status", "enrichment", "provider"):
             if isinstance(hunter.get(key), str):
                 consumer[key] = hunter[key]
+        for key in ("match_reasons", "website_quality_signals"):
+            if isinstance(hunter.get(key), list):
+                consumer[key] = [str(item) for item in hunter[key] if isinstance(item, str)][:20]
+        if isinstance(hunter.get("website_quality_score"), (int, float)):
+            consumer["website_quality_score"] = hunter["website_quality_score"]
         return {"id": str(row["id"]), "consumer": consumer,
             "stage": row["stage"], "next_action": row["next_action"],
             "next_action_at": _iso(row.get("next_action_at")), "activities": row.get("activities") or [],

@@ -2,16 +2,15 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowUpRight, AtSign, Check, Columns3, FileText, Globe2, List, Loader2, MapPin, MessageCircle, NotebookPen, Phone, Search, Sparkles, Users } from "lucide-react"
+import { ArrowUpRight, AtSign, BadgeCheck, Check, Columns3, FileText, Globe2, List, Loader2, MessageCircle, NotebookPen, Search, Sparkles, Users } from "lucide-react"
 import { SourceMark } from "@/components/brand/source-mark"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { LeadContactActions } from "./lead-contact-actions"
 import { PipelineBoard } from "./pipeline-board"
-import { instagramProfileUrl, leadDisplayName, parsePipelineEntry, requestPipeline, sourceLabels, websiteLabel, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
+import { instagramProfileUrl, leadDisplayName, parsePipelineEntry, requestPipeline, sourceLabels, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
 import "./inbox-hub.css"
 
 export function InboxHub({ entries: initialEntries, prospectError, initialView, initialContactId }: { entries: PipelineEntry[]; prospectError: string; initialView: string; initialContactId: string }) {
@@ -102,14 +101,24 @@ function ContactDossier({ entry, onOpenNotes }: { entry: PipelineEntry; onOpenNo
   const kind = /instagram/i.test((consumer.source ?? "") + source) ? "instagram" : /maps|google/i.test((consumer.source ?? "") + source) ? "maps" : "web"
   const whatsapp = whatsappComposerUrl(consumer.phone, consumer.whatsapp_url, "")
   const instagram = instagramProfileUrl(consumer.instagram_username)
-  const info = [{ label: "Fonte", value: source, icon: Sparkles }, { label: "Telefone", value: consumer.phone || "Não informado", icon: Phone }, { label: "WhatsApp", value: consumer.whatsapp_url ? "Link público encontrado" : "Não confirmado", icon: MessageCircle }, { label: "Site", value: websiteLabel(consumer.website_status), icon: Globe2 }, { label: "Endereço", value: consumer.address || "Não informado", icon: MapPin }]
+  const hasDirectContact = Boolean(consumer.phone || consumer.email || consumer.whatsapp_url || consumer.instagram_username)
+  const hasDigitalPresence = consumer.website_status === "present" || Boolean(consumer.website_url || consumer.instagram_username)
+  const inspected = consumer.enrichment === "completed" || consumer.criterion_status === "verified" || Boolean(consumer.website_evidence)
+  const evidenceCount = [hasDirectContact, hasDigitalPresence, Boolean(consumer.address), inspected].filter(Boolean).length
+  const dataQuality = evidenceCount >= 4 ? "Completa" : evidenceCount >= 2 ? "Parcial" : "Limitada"
+  const directContact = consumer.whatsapp_url ? "WhatsApp confirmado" : consumer.phone ? "Telefone encontrado" : consumer.email ? "E-mail encontrado" : consumer.instagram_username ? "Perfil social disponível" : "Não encontrado"
+  const digitalPresence = consumer.website_status === "present" ? "Site identificado" : consumer.instagram_username ? "Perfil social identificado" : consumer.website_status === "not_listed" ? "Site não listado na fonte" : "Não identificada"
+  const evidence = [
+    { label: "Qualidade dos dados", value: dataQuality, icon: BadgeCheck },
+    { label: "Fonte principal", value: source, icon: Sparkles },
+    { label: "Contato direto", value: directContact, icon: MessageCircle },
+    { label: "Presença digital", value: digitalPresence, icon: Globe2 },
+  ]
   return <section className="kiara-contact-dossier" aria-label={`Detalhes de ${displayName}`}>
-    <header><div className="kiara-contact-identity"><span><SourceMark kind={kind} /></span><div><div><h2 title={displayName}>{displayName}</h2><span className="kiara-contact-status">Novo</span></div><p>{consumer.research_query || source}</p></div></div><div className="kiara-contact-header-actions"><LeadContactActions entry={entry} /></div></header>
-    <div className="kiara-contact-grid"><section><h3>Informações</h3><dl>{info.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon />{label}</dt><dd>{value}</dd></div>)}</dl></section><section id="contact-actions"><h3>Ações rápidas</h3><div className="kiara-contact-quick-actions">
+    <header><div className="kiara-contact-identity"><span><SourceMark kind={kind} /></span><div><div><h2 title={displayName}>{displayName}</h2><span className="kiara-contact-status">Novo</span></div><p>{consumer.research_query || source}</p></div></div></header>
+    <div className="kiara-contact-grid"><section className="kiara-evidence-panel"><h3>Qualidade e origem da evidência</h3><dl>{evidence.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon />{label}</dt><dd>{value}</dd></div>)}</dl>{consumer.match_reasons?.length ? <div className="kiara-evidence-reasons">{consumer.match_reasons.slice(0, 3).map((reason) => <span key={reason}>{reason}</span>)}</div> : null}</section><section id="contact-actions"><h3>Ações rápidas</h3><div className="kiara-contact-quick-actions">
       <DropdownMenu><DropdownMenuTrigger asChild><button type="button" disabled={!whatsapp && !instagram}><span><MessageCircle /></span><div><strong>Iniciar conversa</strong><small>{whatsapp || instagram ? "Abrir o canal sem mensagem pronta" : "Nenhum canal direto disponível"}</small></div><ArrowUpRight /></button></DropdownMenuTrigger><DropdownMenuContent align="start" className="w-64"><DropdownMenuLabel>Conversar diretamente</DropdownMenuLabel><DropdownMenuSeparator />{whatsapp ? <DropdownMenuItem asChild><a href={whatsapp.url} target="_blank" rel="noreferrer"><MessageCircle className="text-emerald-500" />Abrir WhatsApp<ArrowUpRight className="ml-auto" /></a></DropdownMenuItem> : null}{instagram ? <DropdownMenuItem asChild><a href={instagram} target="_blank" rel="noreferrer"><AtSign className="text-fuchsia-500" />Abrir Instagram<ArrowUpRight className="ml-auto" /></a></DropdownMenuItem> : null}</DropdownMenuContent></DropdownMenu>
-      <Link href={`/app/leads/${encodeURIComponent(consumer.id)}`}><span><Sparkles /></span><div><strong>Abrir ficha completa</strong><small>Consulte evidências e atividades</small></div><ArrowUpRight /></Link>
       <button type="button" onClick={onOpenNotes}><span><NotebookPen /></span><div><strong>Anotações</strong><small>{consumer.notes?.trim() ? "Consultar ou editar a anotação" : "Registrar uma anotação neste cliente"}</small></div><ArrowUpRight /></button>
     </div></section></div>
-    <section id="contact-context" className="kiara-contact-description"><h3>Descrição</h3><p>{consumer.research_query ? `Contato encontrado na pesquisa “${consumer.research_query}”.` : "Contato identificado em uma fonte pública."}{consumer.address ? ` Localização informada: ${consumer.address}.` : ""} Revise os dados antes de iniciar a abordagem.</p></section>
   </section>
 }

@@ -125,7 +125,7 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
         "research_objective": options.get("objective", ""),
         "website_status": data.get("website_status", "unknown"),
     }
-    for key in ("phone", "email", "address", "website_evidence", "criterion_status", "place_id"):
+    for key in ("phone", "email", "address", "website_evidence", "criterion_status", "place_id", "enrichment", "provider"):
         if isinstance(data.get(key), str) and data[key].strip():
             metadata[key] = data[key][:3000]
     for key in ("website_quality_score", "website_quality_signals", "match_reasons"):
@@ -176,12 +176,13 @@ async def _save_result_status(connection: Any, org: UUID, search_id: Any,
 
 
 async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict[str, Any],
-                              saved_rows: list[dict[str, Any]]) -> dict[str, int]:
-    """Upsert new accepted discoveries atomically alongside search completion.
+                              saved_rows: list[dict[str, Any]], *, user_selected: bool = False) -> dict[str, int]:
+    """Explicitly upsert selected discoveries into CRM/Pipeline.
 
-    Only successful finish invokes this; merely reading old history never imports
-    it. A per-tenant transaction lock serializes discovery aliases across searches.
-    Existing CRM rows are locked and their stage, owners and permissions preserved.
+    Search completion only persists Hunter results. ``user_selected`` allows a
+    human to promote an unverified discovery, while structural/consent safety
+    checks (valid source identity, publication-only result, blocked contact)
+    remain mandatory.
     """
     summary = {"created": 0, "existing": 0, "skipped": 0}
     if not saved_rows:
@@ -198,6 +199,9 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
     for result in saved_rows:
         keys = identity_keys(result)
         reason = _skip_reason(search_dict, result) or (None if keys else "invalid_source_url")
+        if user_selected and reason in {"criterion_not_matched", "criterion_not_verified"}:
+            reason = None
+            result.setdefault("public_data", {})["manual_lead_selection"] = True
         if reason:
             summary["skipped"] += 1
             await _save_result_status(connection, org_uuid, search_dict["id"], result,

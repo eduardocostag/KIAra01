@@ -472,20 +472,9 @@ class HunterRepository:
             saved = await (await connection.execute(
                 "SELECT * FROM hunter_results WHERE organization_id=%s AND search_id=%s ORDER BY created_at,id", (org, sid)
             )).fetchall()
+            # Hunter discoveries remain isolated until the user explicitly clicks
+            # "Adicionar lead" on a result. Search completion never writes CRM rows.
             summary = {"created": 0, "existing": 0, "skipped": 0}
-            if not error:
-                try:
-                    async with connection.transaction():
-                        summary = await sync_hunter_results(connection, org, self._search(row, []), saved)
-                except (psycopg.Error, ValueError, RuntimeError, TypeError, KeyError) as exc:
-                    logger.exception(
-                        "hunter.crm_sync_failed request_id=%s search_id=%s error_class=%s",
-                        context.correlation_id, search_id, type(exc).__name__,
-                    )
-                    outcome_warnings.append(
-                        "A pesquisa foi concluída e os resultados foram preservados, mas a sincronização com Leads/Pipeline falhou. "
-                        "Atualize a página; se os contatos não aparecerem em Leads, contate o administrador com a referência da pesquisa."
-                    )
             outcome = {"validation": validation or {}, "warnings": outcome_warnings, "sync_summary": summary}
             await connection.execute(
                 "INSERT INTO audit_events (organization_id,actor_user_id,action,resource_type,resource_id,correlation_id,metadata) VALUES (%s,%s,'hunter.search.finished','hunter_search',%s,%s,%s)",
@@ -1630,11 +1619,14 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         candidates = [row for row in candidates if row.get("source") != "facebook" or _facebook_profile_matches(row, search)]
         if any(row.get("public_data", {}).get("page_status") == "indexed_excerpt_only" for row in candidates):
             warnings.append("Algumas páginas do Facebook apareceram no índice público, mas as informações atuais não puderam ser confirmadas sem login; confira a página antes de abordar.")
-    # A known external website can never pass without_website. Avoid paying
-    # to crawl pages which this explicit constraint will discard anyway.
-    if options["website_filter"] != "without_website" or options["email_filter"] != "any" or options["website_quality_filter"] != "any":
+    # Enrich eligible public websites even in broad searches. This fills phone,
+    # WhatsApp, e-mail and technical website evidence before CRM sync. A search
+    # explicitly requesting businesses without a website remains zero-crawl:
+    # Maps details are already the bounded source of truth for that constraint.
+    enrichable = [] if options["website_filter"] == "without_website" else candidates
+    if enrichable:
         try:
-            await asyncio.wait_for(enrich_results(candidates), timeout=ENRICHMENT_TIMEOUT_SECONDS)
+            await asyncio.wait_for(enrich_results(enrichable), timeout=ENRICHMENT_TIMEOUT_SECONDS)
         except TimeoutError:
             warnings.append("O enriquecimento atingiu o limite de tempo; somente os contatos já encontrados foram mantidos.")
         except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
@@ -1743,6 +1735,46 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
     @router.get("/searches/{search_id}")
     async def get_search(search_id: str, context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008
         return await repository.get(context, search_id)
+
+    @router.post("/searches/{search_id}/results/{result_id}/add-lead")
+    async def add_result_to_leads(
+        search_id: str,
+        result_id: str,
+        context: RequestContext = Depends(authenticated_context),  # noqa: B008
+    ) -> dict[str, Any]:
+        if context.role not in {"owner", "admin", "operator"}:
+            raise ApiError(403, "insufficient_role", "Seu perfil não pode adicionar leads.")
+        org = _uuid("organization", context.organization_id)
+        sid = _uuid("hunter_search", search_id)
+        rid = _uuid("hunter_result", result_id)
+        async with repository.database._transaction(context.organization_id) as connection:
+            search_row = await (await connection.execute(
+                "SELECT * FROM hunter_searches WHERE organization_id=%s AND id=%s FOR UPDATE",
+                (org, sid),
+            )).fetchone()
+            if not search_row:
+                raise ApiError(404, "hunter_search_not_found", "A pesquisa selecionada não foi encontrada.")
+            await repository._attach_options(connection, org, search_row)
+            result_row = await (await connection.execute(
+                "SELECT * FROM hunter_results WHERE organization_id=%s AND search_id=%s AND id=%s FOR UPDATE",
+                (org, sid, rid),
+            )).fetchone()
+            if not result_row:
+                raise ApiError(404, "hunter_result_not_found", "O resultado selecionado não foi encontrado.")
+            result = repository._result(result_row)
+            summary = await sync_hunter_results(
+                connection, org, repository._search(search_row, []), [result], user_selected=True,
+            )
+            if summary["skipped"]:
+                reason = result.get("public_data", {}).get("crm_skip_reason")
+                message = (
+                    "Esta publicação não representa um contato individual." if reason == "publication_not_contact"
+                    else "A fonte deste resultado não possui uma identidade segura para criar o lead." if reason == "invalid_source_url"
+                    else "Este contato está bloqueado ou não pode ser reativado."
+                )
+                raise ApiError(422, "hunter_result_not_eligible", message, {"reason": reason})
+            pipeline_entry_id = result.get("public_data", {}).get("pipeline_entry_id")
+            return {"added": True, "already_existed": bool(summary["existing"]), "pipeline_entry_id": pipeline_entry_id}
 
     @router.delete("/searches")
     async def clear_searches(context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker

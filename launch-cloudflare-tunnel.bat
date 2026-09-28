@@ -9,8 +9,15 @@ echo   Kiara - Cloudflare Tunnel Publico
 echo ========================================================
 echo.
 echo Iniciando tunel seguro HTTPS para a API local (porta 8000)...
-echo Copie o link HTTPS exibido abaixo (ex: https://xxxx.trycloudflare.com)
-echo e configure na Vercel como KIARA_API_URL.
+echo.
+echo ATENCAO: este e um Quick Tunnel temporario e pode expirar sem aviso.
+echo Quando a URL mudar, configure na Vercel:
+echo   KIARA_COMPETITION_API_URL=https://xxxx.trycloudflare.com
+echo Depois, faca um novo deploy de producao do site.
+echo Nao altere KIARA_API_URL: ela pertence ao backend principal.
+echo.
+echo Para producao estavel, substitua este Quick Tunnel por um tunel
+ echo nomeado com dominio fixo ou hospede a API em infraestrutura permanente.
 echo.
 echo ========================================================
 echo.

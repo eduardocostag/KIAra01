@@ -1,8 +1,7 @@
 "use client"
 
-import Link from "next/link"
 import { useState } from "react"
-import { ArrowRight, AtSign, Check, CheckCheck, Copy, ExternalLink, Filter, Globe2, History, Inbox, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Radar, RefreshCw, ShieldCheck, Sparkles, Trash2, TriangleAlert, Users } from "lucide-react"
+import { ArrowRight, AtSign, Check, Filter, Globe2, ListFilter, Loader2, MapPin, Phone, Plus, Radar, RefreshCw, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -44,51 +43,57 @@ function resultDisplayName(result: HunterResult) {
     .replace(/\s+/g, " ").trim() || "Resultado sem nome"
 }
 
-function LeadRow({ result, location, historical }: { result: HunterResult; location: string | null; historical: boolean }) {
-  const [copyStatus, setCopyStatus] = useState("")
+function LeadRow({ result, searchId, location, historical }: { result: HunterResult; searchId: string; location: string | null; historical: boolean }) {
+  const [adding, setAdding] = useState(false)
+  const [added, setAdded] = useState(Boolean(result.public_data?.lead_id && result.public_data?.pipeline_entry_id))
+  const [addError, setAddError] = useState("")
   const data = result.public_data
   const whatsapp = publicWhatsappUrl(data?.whatsapp_url)
   const phone = publicPhone(data?.phone)
   const whatsappNumber = whatsapp ? new URL(whatsapp).hostname === "wa.me" ? new URL(whatsapp).pathname.replace(/\//g, "") : new URL(whatsapp).searchParams.get("phone") : null
   const contact = phone || (whatsappNumber ? `+${whatsappNumber}` : null)
-  const synced = Boolean(data?.lead_id && data?.pipeline_entry_id)
   const publication = (result.source === "instagram" || result.source === "facebook") && data?.content_kind === "publication"
-  const opportunity = data?.website_status === "not_listed" ? 100 : typeof data?.website_quality_score === "number" ? 100 - data.website_quality_score : null
+  const verified = data?.bio_status === "verified_public_profile" || data?.manual_import
   const displayName = resultDisplayName(result)
-  async function copyPhone() {
-    if (!contact) return
-    try { await navigator.clipboard.writeText(contact); setCopyStatus("Número copiado") }
-    catch { setCopyStatus("Não foi possível copiar. Selecione o número manualmente.") }
+  const category = result.summary?.split(/[.!?\n]/)[0]?.trim().slice(0, 70) || "Lead encontrado"
+  const subtitle = `${category}${location ? ` · ${location}` : ""}`
+  const resolvedLocation = result.source === "instagram" || result.source === "facebook"
+    ? data?.location_evidence ? location || "Região citada no índice" : "Localização não confirmada"
+    : data?.address || location || "Localização não informada"
+  async function addLead() {
+    if (adding || added) return
+    setAdding(true); setAddError("")
+    try {
+      const response = await fetch(`/api/hunter/searches/${encodeURIComponent(searchId)}/results/${encodeURIComponent(result.id)}/add-lead`, { method: "POST" })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body?.error?.message || "Não foi possível adicionar este lead.")
+      setAdded(true)
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : "Não foi possível adicionar este lead.")
+    } finally { setAdding(false) }
   }
-  return <article className={styles.leadCard} aria-label={displayName}>
-    <div className="flex gap-3">
-      <div className={styles.leadAvatar} aria-hidden="true">{displayName.replace(/^@/, "").slice(0, 1).toUpperCase()}</div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <h3 className={styles.leadTitle}>{displayName}</h3>
-          {publication && <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Publicação</span>}
-          {synced ? <span className="inline-flex items-center gap-1 rounded-md bg-success-subtle px-2 py-1 text-[10px] font-medium text-success"><CheckCheck className="size-3" />No Inbox</span> : <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">{historical ? "Histórico · não validado" : "Ainda não salvo"}</span>}
-        </div>
-        {data?.manual_import && <p className="mt-1 text-[11px] text-muted-foreground">@ selecionado pelo usuário · bio e observações não verificadas pela Kiara</p>}
-        {result.source === "instagram" && !data?.manual_import && <p className="mt-1 text-xs leading-5 text-muted-foreground">{publication ? "Publicação encontrada na busca pública; autor e contato não confirmados" : <><span className="font-semibold text-foreground">@{data?.profile_handle || "perfil"}</span> · {data?.bio_status === "verified_public_profile" ? "Bio pública confirmada" : "Trecho indexado; bio atual não confirmada"}</>}{data?.profile_bio && <span className="mt-1 block">{data.profile_bio}</span>}</p>}
-        {result.source === "facebook" && !data?.manual_import && <p className="mt-1 text-xs leading-5 text-muted-foreground">{publication ? "Publicação encontrada na busca pública; autor e contato não confirmados" : <><span className="font-semibold text-foreground">@{data?.profile_handle || "página"}</span> · {data?.bio_status === "verified_public_profile" ? "Página pública confirmada" : "Trecho indexado; página atual não confirmada"}</>}{data?.profile_bio && <span className="mt-1 block">{data.profile_bio}</span>}</p>}
-        <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{result.source === "instagram" || result.source === "facebook" ? data?.location_evidence ? `Região citada no índice: ${location || "não informada"}` : "Localização não confirmada" : data?.address || location || "Localização não informada"}</span></p>
-        {(opportunity !== null || data?.match_reasons?.length) && <div className={styles.intelligenceStrip}>
-          {opportunity !== null && <div className="flex items-center gap-2 pr-2"><span className="grid size-9 place-items-center rounded-full bg-primary/10 font-mono text-xs font-semibold text-primary">{opportunity}</span><div><p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Potencial digital</p><p className="text-xs font-medium">{opportunity >= 70 ? "Alta oportunidade" : opportunity >= 40 ? "Pode melhorar" : "Presença estruturada"}</p></div></div>}
-          {data?.match_reasons?.slice(0, 3).map(reason => <span key={reason} className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-[10px] text-muted-foreground"><Sparkles className="size-3 text-primary" />{reason}</span>)}
-        </div>}
-        <div className={styles.contactActions}>
-          {(result.source === "instagram" || result.source === "facebook") && <Button asChild variant="outline" className="h-10 gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer"><Users className="size-4" />{publication ? "Abrir publicação" : result.source === "facebook" ? "Abrir página" : "Abrir perfil"}<ExternalLink className="size-3" /></a></Button>}
-          {contact ? <div className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-lg border bg-background py-1 pl-3 pr-1"><Phone className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="break-all font-mono text-sm font-medium tracking-tight">{contact}</span><Button variant="ghost" size="icon" className="size-8" onClick={() => void copyPhone()} aria-label={`Copiar telefone de ${result.title}`}>{copyStatus === "Número copiado" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</Button></div> : <span className="flex min-h-10 items-center gap-2 text-xs text-muted-foreground"><Phone className="size-3.5" />Telefone não encontrado na fonte</span>}
-          {whatsapp && <Button asChild className="h-10 gap-2"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4" />Abrir WhatsApp<ExternalLink className="size-3" /><span className="sr-only">em nova aba</span></a></Button>}
-          {data?.email && <a className="inline-flex min-h-10 items-center gap-2 rounded-lg border bg-background px-3 text-xs font-medium text-foreground hover:border-primary/40" href={`mailto:${data.email}`}><Mail className="size-3.5 text-muted-foreground" />{data.email}</a>}
-        </div>
-        {copyStatus && <p role="status" className="mt-1 text-xs text-muted-foreground">{copyStatus}</p>}
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashed pt-3 text-xs">
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">{data?.website_status === "not_listed" ? <ShieldCheck className="size-3.5 text-success" /> : <Globe2 className="size-3.5" />}{data?.website_status === "not_listed" ? "Site não informado no Google Maps" : data?.website_status === "present" ? "Site identificado" : "Presença digital não verificada"}</span>
-          <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1 text-primary underline-offset-4 hover:underline">{labels[result.source]}<ExternalLink className="size-3" /><span className="sr-only">Abrir fonte em nova aba</span></a>
+  return <article className={styles.hunterResultRow} aria-label={displayName}>
+    <div className={styles.hunterResultAvatar} aria-hidden="true">{displayName.replace(/^@/, "").slice(0, 1).toUpperCase()}</div>
+    <div className={styles.hunterResultBody}>
+      <div className={styles.hunterResultTop}>
+        <div className={styles.hunterIdentity}><h3>{displayName}</h3><p>{subtitle}</p></div>
+        <div className={styles.hunterBadges}>
+          <span className={contact ? styles.badgePositive : styles.badgeMuted}>{contact ? <><Phone />Telefone encontrado</> : <>Telefone não encontrado</>}</span>
+          <span className={result.source === "instagram" ? styles.badgeInstagram : styles.badgeSource}>{labels[result.source]}</span>
+          <span className={verified ? styles.badgeSource : styles.badgeWarning}>{publication ? "Publicação" : verified ? "Perfil confirmado" : historical ? "Não verificado" : "Trecho indexado"}</span>
         </div>
       </div>
+      <div className={styles.hunterResultMeta}>
+        <span><Phone />{contact || "Telefone não encontrado"}</span>
+      </div>
+      <div className={styles.hunterResultBottom}>
+        <span><MapPin />{resolvedLocation}</span>
+        <div className={styles.hunterResultActions}>
+          <Button type="button" size="sm" variant="outline" className={styles.hunterAddButton} disabled={adding || added} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "Adicionado" : "Adicionar lead"}</Button>
+          <Button asChild size="sm" className={styles.hunterDetailsButton}><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver detalhes de ${displayName}`}>Ver detalhes<ArrowRight /></a></Button>
+        </div>
+      </div>
+      {addError ? <p role="alert" className={styles.hunterAddError}>{addError}</p> : null}
     </div>
   </article>
 }
@@ -98,38 +103,37 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, act
   activeQuery: string; activeLocation: string; activeSources: HunterSource[]
   onRefresh: () => void; onClear: () => void; onSelect: (id: string) => void; onBroaden: (job: HunterJob) => void
 }) {
-  const synced = selected?.results.filter((result) => result.public_data?.lead_id && result.public_data?.pipeline_entry_id).length ?? 0
   const historical = Boolean(selected && !selected.validation)
   const withPhone = selected?.results.filter(result => publicPhone(result.public_data?.phone)).length ?? 0
   const discoveredLocations = selected?.results.flatMap((result) => result.public_data?.address ? [result.public_data.address] : []) ?? []
   return <Card className={styles.resultsCard}>
     <CardHeader className={styles.resultsHeader}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><CardTitle className={styles.resultsTitle}>Resultados</CardTitle></div>
-        <div className="flex gap-2">{jobs.length > 0 && <Button variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-destructive" disabled={loading || busy} onClick={onClear}><Trash2 />Limpar</Button>}<Button variant="outline" className="h-9 text-xs" disabled={loading || busy} onClick={onRefresh}>{loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}Atualizar resultados</Button></div>
+      <div className={styles.hunterResultsToolbar}>
+        <CardTitle className={styles.resultsTitle}>Resultados ({selected?.results.length ?? 0})</CardTitle>
+        <div className={styles.hunterSortControls}>
+          {jobs.length > 0 && <><span>Ordenar por</span><Select disabled={busy} value={selected?.id ?? jobs[0].id} onValueChange={onSelect}><SelectTrigger id="hunter-history" aria-label="Histórico e ordenação dos resultados" className={styles.hunterSortTrigger}><SelectValue /></SelectTrigger><SelectContent position="popper" className="max-w-[calc(100vw-3rem)]">{jobs.map((job) => <SelectItem key={job.id} value={job.id}><span className="block max-w-[60vw] truncate sm:max-w-lg">{job.query} · {statuses[job.status]} · {job.results.length} resultados</span></SelectItem>)}</SelectContent></Select></>}
+          {jobs.length > 0 && <Button variant="ghost" size="icon" className={styles.hunterToolbarButton} disabled={loading || busy} onClick={onClear} aria-label="Limpar resultados"><Trash2 /></Button>}
+          <Button variant="ghost" size="icon" className={styles.hunterToolbarButton} disabled={loading || busy} onClick={onRefresh} aria-label="Atualizar resultados">{loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}</Button>
+        </div>
       </div>
-      {jobs.length > 0 && <div className="min-w-0 space-y-2">
-        <label htmlFor="hunter-history" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><History className="size-3.5" />Histórico de pesquisas</label>
-        <Select disabled={busy} value={selected?.id ?? jobs[0].id} onValueChange={onSelect}>
-          <SelectTrigger id="hunter-history" className="h-10 w-full min-w-0 bg-background"><SelectValue /></SelectTrigger>
-          <SelectContent position="popper" className="max-w-[calc(100vw-3rem)]">{jobs.map((job) => <SelectItem key={job.id} value={job.id}><span className="block max-w-[60vw] truncate sm:max-w-lg">{job.query} · {statuses[job.status]} · {job.results.length} resultados</span></SelectItem>)}</SelectContent>
-        </Select>
-      </div>}
     </CardHeader>
     <CardContent className="p-0">
       {error && <div role="alert" className="m-4 flex gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm"><TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" /><div><strong className="block">Não foi possível concluir a consulta</strong><p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>{selected?.results.length ? <p className="mt-2 text-xs">Os resultados já carregados continuam disponíveis abaixo.</p> : null}</div></div>}
       {busy ? <HunterActivity stage={stage} query={selected?.query || activeQuery} location={selected?.location || activeLocation} sources={selected?.sources || activeSources} foundCount={selected?.results.length ?? 0} discoveries={discoveredLocations} /> : loading && !selected ? <div role="status" className="grid min-h-80 place-items-center text-center text-sm text-muted-foreground"><div><Loader2 className="mx-auto mb-3 size-6 animate-spin motion-reduce:animate-none" />Carregando pesquisas salvas…</div></div> : !selected ? !error && <div className={styles.discoveryIntro}><div className={styles.discoveryScene} aria-hidden="true"><span className={styles.discoveryOrbit} /><span className={styles.discoveryOrbitAlt} /><span className={styles.discoveryOrb}><i /><i /></span><span className={`${styles.sourceBubble} ${styles.instagramBubble}`}><AtSign /></span><span className={`${styles.sourceBubble} ${styles.mapsBubble}`}><MapPin /></span><span className={`${styles.sourceBubble} ${styles.webBubble}`}><Globe2 /></span></div><h2>Defina o público e deixe que eu encontro as oportunidades para você.</h2><div className={styles.discoveryBenefits}><div><span><Globe2 /></span><strong>Múltiplas fontes</strong><small>Instagram, Maps, sites e mais</small></div><div><span><Filter /></span><strong>Filtros inteligentes</strong><small>Encontre exatamente o seu público</small></div><div><span><Radar /></span><strong>Resultados organizados</strong><small>Leads prontos para revisar</small></div></div></div> : <>
-        <div className={styles.summaryBlock}>
-          <div role="status" aria-live="polite" className="flex items-start gap-3"><div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">{selected.status === "completed" ? <Check className="size-4 text-success" /> : <Radar className="size-4 text-primary" />}</div><div className="min-w-0"><h2 className="font-semibold">{selected.status === "completed" ? `Pesquisa concluída: ${selected.results.length} resultado${selected.results.length === 1 ? "" : "s"}` : statuses[selected.status]}</h2><p className="mt-1 break-words text-xs text-muted-foreground">{selected.query}{selected.location ? ` · ${selected.location}` : ""}</p></div></div>
-          {selected.validation && <p className="mt-3 text-xs text-muted-foreground">{withPhone} com telefone · {synced} nos contatos</p>}
-          {synced > 0 && <Button asChild variant="outline" className="mt-4 h-9 text-xs"><Link href="/app/inbox?view=contacts"><Inbox className="size-3.5" />Ver contatos<ArrowRight className="size-3.5" /></Link></Button>}
+        <div className={styles.summaryBlock} role="status" aria-live="polite">
+          <div className={styles.summaryIcon}>{selected.status === "completed" ? <Check /> : <Radar />}</div>
+          <div className={styles.summaryIdentity}><h2>{selected.status === "completed" ? "Pesquisa concluída" : statuses[selected.status]}</h2><p>{selected.query}{selected.location ? ` · ${selected.location}` : ""}</p></div>
+          <div className={styles.summaryMetrics}>
+            <span><strong>{selected.results.length}</strong> resultado{selected.results.length === 1 ? "" : "s"}</span>
+            {selected.validation && <span><strong>{withPhone}</strong> com telefone</span>}
+          </div>
         </div>
         {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}
         {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa. Tente novamente e, se persistir, contate o administrador."} Código: {selected.error_code || "provider_error"}.</p>{selected.warnings?.length ? <ul className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">{selected.warnings.map((warning, index) => <li key={`${index}-${warning}`} className="rounded-md border border-destructive/15 bg-background/40 px-3 py-2">{warning}</li>)}</ul> : null}</div>}
         {selected.status === "cancelled" && <p className="p-5 text-sm">Esta pesquisa foi cancelada.</p>}
         {selected.status === "pending_confirmation" && <p className="p-5 text-sm text-muted-foreground">A pesquisa foi registrada, mas a execução ainda não foi confirmada. Prepare e confirme uma nova busca.</p>}
         {selected.status === "completed" && !selected.results.length && <div className="flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center"><ListFilter className="size-7 text-muted-foreground" /><h3 className="mt-4 font-semibold">Nenhum resultado encontrado</h3><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Nenhum contato atendeu aos filtros com evidência suficiente nas fontes consultadas. Revise a região ou os critérios; dados não confirmados não são apresentados como correspondências.</p><Button variant="outline" className="mt-5 h-10" onClick={() => onBroaden(selected)}>Ajustar pesquisa</Button></div>}
-        <div className={styles.leadsGrid}>{selected.results.map((result) => <LeadRow key={result.id} result={result} location={selected.location} historical={historical} />)}</div>
+        <div className={styles.leadsGrid}>{selected.results.map((result) => <LeadRow key={result.id} result={result} searchId={selected.id} location={selected.location} historical={historical} />)}</div>
       </>}
     </CardContent>
   </Card>

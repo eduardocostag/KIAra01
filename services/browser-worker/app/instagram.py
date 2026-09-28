@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
 import json
+import random
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -15,10 +18,26 @@ InstagramCollectionMode = Literal[
 _MOBILE_BASE = "https://i.instagram.com/api/v1"
 _WEB_BASE = "https://www.instagram.com/api/v1"
 _WEB_PROFILE = f"{_WEB_BASE}/users/web_profile_info/"
-_USER_AGENT = (
-    "Instagram 309.0.0.40.113 Android (33/13; 420dpi; 1080x1920; "
-    "Google; Pixel 6; oriole; tensor; pt_BR; 541635249)"
-)
+
+_MOBILE_USER_AGENTS = [
+    "Instagram 315.0.0.31.109 Android (33/13; 480dpi; 1080x2400; Samsung; SM-S911B; kalama; sm8550; pt_BR; 564321780)",
+    "Instagram 309.0.0.40.113 Android (33/13; 420dpi; 1080x1920; Google; Pixel 6; oriole; tensor; pt_BR; 541635249)",
+    "Instagram 302.0.0.35.115 Android (31/12; 420dpi; 1080x2340; Xiaomi; M2101K6G; mojito; qcom; pt_BR; 512948102)",
+    "Instagram 298.0.0.28.114 Android (30/11; 440dpi; 1080x2340; OnePlus; LE2115; odin; qcom; pt_BR; 498210345)",
+    "Instagram 285.0.0.21.116 iPhone14,3 (iOS/16.5; 460dpi; 1284x2778; português, Brasil; pt_BR; scale=3.0; 451098234)",
+]
+
+_WEB_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Edge/138.0.2288.52",
+]
+
+
+def _get_user_agent(web: bool) -> str:
+    return random.choice(_WEB_USER_AGENTS if web else _MOBILE_USER_AGENTS)
 
 
 @dataclass(frozen=True)
@@ -44,11 +63,7 @@ def _headers(session_id: str, *, web: bool = False) -> dict[str, str]:
         "Cookie": cookie_header,
         "Referer": "https://www.instagram.com/",
         "Origin": "https://www.instagram.com",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-            if web else _USER_AGENT
-        ),
+        "User-Agent": _get_user_agent(web=web),
         "X-ASBD-ID": "129477",
         "X-IG-App-ID": "936619743392459" if web else "567067343352427",
         "X-IG-WWW-Claim": "0",
@@ -91,6 +106,8 @@ def _json_get(
     max_bytes: int = 4_000_000,
     web: bool = False,
 ) -> dict[str, Any]:
+    # Pacing adaptativo com jitter para imitar navegação humana e evitar restrição/detecção pelo Instagram
+    time.sleep(random.uniform(0.6, 1.4))
     request = Request(url, headers=_headers(session_id, web=web))
     try:
         with urlopen(request, timeout=15) as response:
@@ -167,10 +184,34 @@ def _image_url(item: dict[str, Any]) -> str:
     return _image_url(carousel[0]) if carousel and isinstance(carousel[0], dict) else ""
 
 
+def _image_data_url(url: str, session_id: str, *, max_bytes: int = 1_000_000) -> str:
+    """Fetch an Instagram-hosted avatar server-side so the UI does not hotlink it."""
+    if not url:
+        return ""
+    host = (urlsplit(url).hostname or "").lower()
+    if not (host == "instagram.com" or host.endswith(".instagram.com") or host == "fbcdn.net" or host.endswith(".fbcdn.net")):
+        return ""
+    request = Request(url, headers=_headers(session_id, web=True))
+    try:
+        with urlopen(request, timeout=15) as response:
+            content_type = response.headers.get_content_type()
+            if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+                return ""
+            raw = response.read(max_bytes + 1)
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return ""
+    if not raw or len(raw) > max_bytes:
+        return ""
+    return f"data:{content_type};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
 def load_instagram_profile(session_id: str, username: str, *, media_limit: int = 12) -> dict[str, Any]:
     clean_username = username.removeprefix("@").strip()
     user = _profile_info(session_id, clean_username)
     user_id = str(user.get("id") or user.get("pk") or "")
+    remote_profile_pic_url = str(user.get("profile_pic_url_hd") or user.get("profile_pic_url") or "")
+    embedded_profile_pic_url = _image_data_url(remote_profile_pic_url, session_id)
+    profile_pic_url = embedded_profile_pic_url or remote_profile_pic_url
     feed = _json_get(f"{_MOBILE_BASE}/feed/user/{quote(user_id)}/?count={media_limit}", session_id)
     items = feed.get("items") if isinstance(feed.get("items"), list) else []
     publications = []
@@ -202,7 +243,8 @@ def load_instagram_profile(session_id: str, username: str, *, media_limit: int =
             "username": str(user.get("username") or clean_username),
             "full_name": str(user.get("full_name") or ""),
             "biography": str(user.get("biography") or "")[:500],
-            "profile_pic_url": str(user.get("profile_pic_url_hd") or user.get("profile_pic_url") or ""),
+            "profile_pic_url": profile_pic_url,
+            "profile_pic_data_url": embedded_profile_pic_url,
             "is_verified": bool(user.get("is_verified")),
             "is_private": bool(user.get("is_private")),
             "follower_count": int(user.get("edge_followed_by", {}).get("count") or user.get("follower_count") or 0),

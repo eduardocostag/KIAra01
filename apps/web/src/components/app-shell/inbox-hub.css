@@ -45,6 +45,12 @@
 .kiara-contact-grid dt { display: flex; align-items: center; gap: .5rem; color: #92909f; }
 .kiara-contact-grid dt svg { width: .9rem; height: .9rem; flex: none; }
 .kiara-contact-grid dd { color: #d6d2de; overflow-wrap: anywhere; }
+.kiara-evidence-panel dl > div { align-items: center; }
+.kiara-evidence-panel dd { font-weight: 650; }
+.kiara-evidence-panel dl > div:first-child dd { color: #c7adff; }
+.kiara-evidence-panel dl > div:last-child dd { color: #79d8af; }
+.kiara-evidence-reasons { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .85rem; border-top: 1px dashed var(--border); padding-top: .75rem; }
+.kiara-evidence-reasons span { border: 1px solid rgb(154 125 218 / .15); border-radius: 999px; background: rgb(100 75 157 / .09); padding: .25rem .55rem; color: #aaa5b8; font-size: .6rem; }
 .kiara-contact-quick-actions { display: grid; gap: .38rem; margin-top: .6rem; }
 .kiara-contact-quick-actions > * { display: flex; min-width: 0; align-items: center; gap: .6rem; border: 1px solid rgb(154 125 218 / .09); border-radius: .75rem; background: rgb(100 75 157 / .09); padding: .55rem .65rem; }
 .kiara-contact-quick-actions > button { width: 100%; cursor: pointer; color: inherit; text-align: left; }

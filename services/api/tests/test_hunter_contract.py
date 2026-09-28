@@ -139,6 +139,23 @@ async def test_native_enrichment_inspects_relevant_internal_pages(monkeypatch: p
 
 
 @pytest.mark.asyncio
+async def test_broad_research_enriches_public_web_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    from kiara_api.hunter import execute_research
+
+    async def public_search(_queries, _source, _limit):
+        return [{"source": "web", "url": "https://aurora.example", "title": "Aurora", "summary": "Clínica Aurora", "public_data": {}}]
+
+    async def enrich(rows):
+        rows[0]["public_data"].update({"phone": "+5511999990000", "enrichment": "completed", "provider": "test"})
+
+    monkeypatch.setattr("kiara_api.hunter.multi_public_search", public_search)
+    monkeypatch.setattr("kiara_api.hunter.enrich_results", enrich)
+    outcome = await execute_research({"query": "clínicas", "location": None, "sources": ["web"], "result_limit": 5, "market": "b2b"})
+    assert outcome["results"][0]["public_data"]["phone"] == "+5511999990000"
+    assert outcome["results"][0]["public_data"]["enrichment"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_native_enrichment_never_fetches_meta_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(_url: str):
         raise AssertionError("Meta pages must not enter generic Scrapling enrichment")

@@ -162,6 +162,11 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
             "provider": {"available": True, "name": "kiara_instagram"},
         }
 
+    @router.delete("/analyses")
+    async def clear_analyses(context: Annotated[RequestContext, Depends(authenticated_context)]):
+        deleted = await archive.clear_analyses(context.organization_id)
+        return {"deleted": deleted}
+
     @router.post("/kiara/analyses", status_code=201)
     async def create_kiara_analysis(
         payload: KiaraCompetitionInput,
@@ -170,6 +175,8 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
         normalized_target, normalized_username = _kiara_public_target(payload)
         client = BrowserWorkerClient()
         try:
+            # Pacing humanizado e seguro para evitar detecção e restrição pelo Instagram
+            await asyncio.sleep(1.2)
             result = await asyncio.to_thread(
                 client.analyse,
                 context.organization_id,
@@ -177,7 +184,7 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
                     "mode": payload.mode,
                     "username": normalized_username or normalized_target,
                     "media_id": payload.media_id,
-                    "limit": 100,
+                    "limit": min(payload.get("limit", 50) if hasattr(payload, "get") else 50, 50),
                 },
             )
             prospects = result.get("items", []) if isinstance(result.get("items"), list) else []
@@ -211,6 +218,7 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
             raise ApiError(422, "instagram_username_invalid", "Informe um @usuário válido do Instagram.")
         client = BrowserWorkerClient()
         try:
+            await asyncio.sleep(0.8)
             return await asyncio.to_thread(client.profile, context.organization_id, username)
         except BrowserWorkerError as error:
             raise _browser_error(error) from None

@@ -21,11 +21,19 @@ export type PipelineEntry = {
     display_name: string
     instagram_username: string | null
     phone?: string | null
+    email?: string | null
     whatsapp_url?: string | null
     source_url?: string | null
     source?: string | null
     website_status?: string | null
     website_url?: string | null
+    website_evidence?: string | null
+    website_quality_score?: number | null
+    website_quality_signals?: string[]
+    criterion_status?: string | null
+    enrichment?: string | null
+    provider?: string | null
+    match_reasons?: string[]
     address?: string | null
     research_query?: string | null
     search_id?: string | null
@@ -100,9 +108,13 @@ export function parsePipelineEntry(value: unknown): PipelineEntry {
     (item.consumer.instagram_username != null && typeof item.consumer.instagram_username !== "string")) {
     throw new Error("A API retornou dados incompletos do Pipeline. Tente atualizar.")
   }
-  for (const field of ["phone", "whatsapp_url", "source_url", "source", "website_status", "website_url", "address", "research_query", "search_id", "notes"] as const) {
+  for (const field of ["phone", "email", "whatsapp_url", "source_url", "source", "website_status", "website_url", "website_evidence", "criterion_status", "enrichment", "provider", "address", "research_query", "search_id", "notes"] as const) {
     if (item.consumer[field] != null && typeof item.consumer[field] !== "string") throw new Error("Contato inválido no Pipeline.")
   }
+  for (const field of ["website_quality_signals", "match_reasons"] as const) {
+    if (item.consumer[field] != null && (!Array.isArray(item.consumer[field]) || item.consumer[field]?.some((value) => typeof value !== "string"))) throw new Error("Evidências inválidas no Pipeline.")
+  }
+  if (item.consumer.website_quality_score != null && typeof item.consumer.website_quality_score !== "number") throw new Error("Qualidade digital inválida no Pipeline.")
   return { ...item, consumer: { ...item.consumer,
     source_url: safePublicUrl(item.consumer.source_url), website_url: safePublicUrl(item.consumer.website_url),
     whatsapp_url: safeWhatsAppUrl(item.consumer.whatsapp_url),

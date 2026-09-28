@@ -7,20 +7,22 @@ import {
   AtSign,
   BadgeCheck,
   CheckCircle2,
+  Clock3,
   Database,
-  Heart,
   ListChecks,
   Link2,
   Loader2,
   LogOut,
-  MessageCircle,
   MessageCircleMore,
+  MoreHorizontal,
+  Newspaper,
   Radar,
   RefreshCw,
   ScanSearch,
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import styles from "@/app/(app)/app/concorrencia/competition.module.css";
+import styles from "@/app/(app)/app/concorrencia/competition-reference.module.css";
 
 type JsonObject = Record<string, unknown>;
 type Mode = "followers" | "commenters" | "likers" | "post_audience";
@@ -183,7 +185,7 @@ export function CompetitionConsole() {
   const [trackingId, setTrackingId] = useState("");
   const [liveAnalysis, setLiveAnalysis] = useState<JsonObject | null>(null);
   const [loading, setLoading] = useState<
-    "overview" | "profile" | "create" | "start" | "prospects" | null
+    "overview" | "profile" | "create" | "start" | "prospects" | "clear" | null
   >("overview");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [connection, setConnection] = useState<InstagramConnection>({
@@ -412,6 +414,10 @@ export function CompetitionConsole() {
     () => findItems(profilePreview.publications, ["publications"]),
     [profilePreview],
   );
+  const totalArchivedLeads = useMemo(
+    () => analyses.reduce((total, item) => total + (firstNumber(item, ["prospectCount", "prospect_count"]) ?? 0), 0),
+    [analyses],
+  );
 
   useEffect(() => {
     if (!activeId) return;
@@ -567,30 +573,53 @@ export function CompetitionConsole() {
     }
   }
 
+  async function clearAnalyses() {
+    if (!analyses.length || !window.confirm("Limpar todas as análises recentes e os leads vinculados? Esta ação não pode ser desfeita.")) return;
+    setLoading("clear");
+    setNotice(null);
+    try {
+      const response = await fetch("/api/competition/overview", {
+        method: "DELETE",
+      });
+      const body = await bodyOrError(response);
+      const deleted = typeof body.deleted === "number" ? body.deleted : analyses.length;
+      setOverview((current) => ({ ...current, analyses: { items: [] } }));
+      setProspects([]);
+      setSelectedAnalysis("");
+      setTrackingId("");
+      setLiveAnalysis(null);
+      setNotice({
+        title: "Análises removidas",
+        text: `${deleted} ${deleted === 1 ? "registro foi removido" : "registros foram removidos"}.`,
+      });
+    } catch (error) {
+      setNotice({
+        title: "Não foi possível limpar as análises",
+        text: error instanceof Error ? error.message : "Tente novamente.",
+      });
+    } finally {
+      setLoading(null);
+    }
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p>Prospecção por audiência</p>
           <h1>Inteligência de concorrência</h1>
-          <span>
-            Selecione uma publicação e encontre os perfis reais que interagiram
-            com ela.
-          </span>
+          <span>Analise perfis, publicações e sinais públicos do Instagram.</span>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            connection.state === "connected"
-              ? styles.connected
-              : styles.connectionPending
-          }
-        >
-          <i />{" "}
-          {connection.state === "connected"
-            ? `Instagram conectado${connection.username ? ` · @${connection.username}` : ""}`
-            : "Conecte seu Instagram"}
-        </Badge>
+        <div className={styles.headerActions}>
+          <Badge variant="outline" className={connection.state === "connected" ? styles.connected : styles.connectionPending}>
+            <i /> {connection.state === "connected" ? "Instagram conectado" : "Instagram desconectado"}
+          </Badge>
+          {connection.state === "connected" && (
+            <Button type="button" variant="ghost" size="icon" onClick={() => void beginInstagramConnection()} aria-label="Reconectar Instagram">
+              <RefreshCw />
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="icon" aria-label="Mais opções"><MoreHorizontal /></Button>
+        </div>
       </header>
 
       {notice && (
@@ -601,6 +630,7 @@ export function CompetitionConsole() {
         </Alert>
       )}
 
+      {(connection.state !== "connected" || showConnection) && (
       <Card className={styles.connectionCard}>
         <CardContent className={styles.connectionContent}>
           <div className={styles.connectionSummary}>
@@ -744,25 +774,25 @@ export function CompetitionConsole() {
           </div>
         )}
       </Card>
+      )}
 
-      <div className={styles.workspace}>
-        <Card className={styles.builder}>
-          <CardHeader>
-            <CardTitle>Nova análise</CardTitle>
-            <CardDescription>
-              Carregue o perfil, escolha a publicação e defina quais interações
-              deseja extrair.
-            </CardDescription>
+      <div className={styles.dashboardBody}>
+        <div className={styles.mainColumn}>
+          <div className={styles.workspace}>
+        <Card className={styles.builder} id="nova-analise">
+          <CardHeader className={styles.builderHeader}>
+            <div>
+              <CardDescription>Nova análise</CardDescription>
+              <CardTitle>Carregue um concorrente</CardTitle>
+            </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={createAnalysis} className={styles.form}>
               <div className={styles.profileSearch}>
                 <div className={styles.field}>
-                  <Label htmlFor="competition-target">
-                    Perfil do concorrente
-                  </Label>
                   <Input
                     id="competition-target"
+                    aria-label="Perfil do concorrente"
                     value={target}
                     onChange={(event) => {
                       setTarget(event.target.value);
@@ -774,10 +804,6 @@ export function CompetitionConsole() {
                     minLength={2}
                     autoComplete="off"
                   />
-                  <p>
-                    Informe o @ e carregue o perfil antes de escolher a
-                    publicação.
-                  </p>
                 </div>
                 <Button
                   type="button"
@@ -804,17 +830,20 @@ export function CompetitionConsole() {
                   aria-label="Perfil carregado"
                 >
                   <div className={styles.profileIdentity}>
-                    {firstString(loadedProfile, ["profile_pic_url"]) ? (
+                    {firstString(loadedProfile, ["profile_pic_data_url", "profile_pic_url"]) ? (
                       <img
-                        src={firstString(loadedProfile, ["profile_pic_url"])}
-                        alt=""
+                        src={firstString(loadedProfile, ["profile_pic_data_url", "profile_pic_url"])}
+                        alt={`Foto do perfil @${firstString(loadedProfile, ["username"])}`}
                         referrerPolicy="no-referrer"
+                        onError={(event) => {
+                          event.currentTarget.hidden = true;
+                          event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                        }}
                       />
-                    ) : (
-                      <span>
-                        <AtSign />
-                      </span>
-                    )}
+                    ) : null}
+                    <span hidden={Boolean(firstString(loadedProfile, ["profile_pic_data_url", "profile_pic_url"]))}>
+                      <AtSign />
+                    </span>
                     <div>
                       <strong>
                         @{firstString(loadedProfile, ["username"])}
@@ -848,9 +877,12 @@ export function CompetitionConsole() {
 
               {publications.length > 0 && (
                 <div className={styles.publicationSection}>
-                  <div>
-                    <Label>Selecione uma publicação</Label>
-                    <p>As métricas abaixo vieram do perfil carregado.</p>
+                  <div className={styles.publicationHeading}>
+                    <div>
+                      <Label><Newspaper /> Publicações mais relevantes</Label>
+                      <p>Selecione a publicação que deseja analisar na próxima etapa.</p>
+                    </div>
+                    <Badge variant="outline">{selectedPublication ? "1 selecionada" : `${publications.length} disponíveis`}</Badge>
                   </div>
                   <div className={styles.publicationGrid}>
                     {publications.map((publication) => {
@@ -881,25 +913,14 @@ export function CompetitionConsole() {
                               <AtSign />
                             </span>
                           )}
-                          <span className={styles.publicationMetrics}>
-                            <small>
-                              <Heart />
-                              {firstNumber(publication, [
-                                "like_count",
-                              ])?.toLocaleString("pt-BR") ?? 0}
-                            </small>
-                            <small>
-                              <MessageCircle />
-                              {firstNumber(publication, [
-                                "comment_count",
-                              ])?.toLocaleString("pt-BR") ?? 0}
-                            </small>
-                          </span>
                           {selected && (
                             <i>
                               <CheckCircle2 />
                             </i>
                           )}
+                          <span className={styles.publicationCaption}>
+                            {firstString(publication, ["caption"]) || "Publicação do perfil"}
+                          </span>
                         </button>
                       );
                     })}
@@ -951,42 +972,54 @@ export function CompetitionConsole() {
             </form>
           </CardContent>
         </Card>
+          </div>
+        </div>
 
         <aside className={styles.summary}>
-          <Card>
-            <CardHeader>
-              <CardDescription>Motor próprio da Kiara</CardDescription>
-              <CardTitle>Coleta pública ativa</CardTitle>
-            </CardHeader>
-            <CardContent className={styles.accountStats}>
-              <span>
-                <b>{analyses.length}</b> pesquisas arquivadas
-              </span>
-              <span className={styles.serverlessStatus}>
-                <i />
-                Processamento ativo
-              </span>
+          <Card className={styles.insightsCard}>
+            <CardHeader><CardDescription>Resumo atual</CardDescription><CardTitle>Insights do concorrente</CardTitle></CardHeader>
+            <CardContent>
+              <div><span>Seguidores</span><strong>{firstNumber(loadedProfile, ["follower_count"])?.toLocaleString("pt-BR") ?? "—"}</strong></div>
+              <div><span>Publicações</span><strong>{firstNumber(loadedProfile, ["media_count"])?.toLocaleString("pt-BR") ?? "—"}</strong></div>
+              <div><span>Leads encontrados</span><strong>{totalArchivedLeads.toLocaleString("pt-BR")}</strong></div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={styles.recentCard}>
             <CardHeader className={styles.listHeader}>
               <div>
-                <CardTitle>Análises recentes</CardTitle>
+                <CardTitle><Clock3 /> Análises recentes</CardTitle>
                 <CardDescription>
                   {analyses.length} registros encontrados
                 </CardDescription>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void loadOverview()}
-                disabled={loading !== null}
-                aria-label="Atualizar análises"
-              >
-                <RefreshCw
-                  className={loading === "overview" ? "animate-spin" : ""}
-                />
-              </Button>
+              <div className={styles.listActions}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void clearAnalyses()}
+                  disabled={loading !== null || !analyses.length}
+                  aria-label="Limpar análises recentes"
+                  title="Limpar análises recentes"
+                >
+                  {loading === "clear" ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Trash2 />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void loadOverview()}
+                  disabled={loading !== null}
+                  aria-label="Atualizar análises"
+                  title="Atualizar análises"
+                >
+                  <RefreshCw
+                    className={loading === "overview" ? "animate-spin" : ""}
+                  />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className={styles.analysisList}>
               {analyses.length ? (
@@ -1022,7 +1055,7 @@ export function CompetitionConsole() {
                       <span>
                         <strong>{name}</strong>
                         <small>
-                          Kiara · {statusLabel(analysis)}
+                          {statusLabel(analysis)}
                           {typeof count === "number" ? ` · ${count} leads` : ""}
                         </small>
                       </span>
@@ -1044,12 +1077,12 @@ export function CompetitionConsole() {
       </div>
 
       {(activeId || loading === "create") && (
-        <section
-          className={styles.livePanel}
-          role="status"
-          aria-live="polite"
-          aria-label="Pesquisa de concorrência em andamento"
-        >
+      <section
+        className={styles.livePanel}
+        role="status"
+        aria-live="polite"
+        aria-label="Processamento da pesquisa de concorrência"
+      >
           <div className={styles.liveVisual} aria-hidden="true">
             <span className={styles.liveOrbitOne} />
             <span className={styles.liveOrbitTwo} />
@@ -1063,47 +1096,55 @@ export function CompetitionConsole() {
           </div>
           <div className={styles.liveContent}>
             <span className={styles.liveEyebrow}>
-              <i /> Pesquisa em andamento
+              <i /> Próxima etapa
             </span>
-            <h2>Analisando sinais públicos</h2>
-            <p>{activeId ? liveName : target}</p>
+            <h2>{activeId || loading === "create" ? "Analisando sinais públicos" : "Pronto para analisar sinais públicos"}</h2>
+            <p>
+              {activeId || loading === "create"
+                ? `Processando ${activeId ? liveName : target} para identificar padrões de engajamento e oportunidades.`
+                : "Selecione uma publicação e a Kiara identificará padrões de engajamento, temas e oportunidades."}
+            </p>
             <div
               className={styles.liveProgress}
               aria-label={
-                progressValue === null
-                  ? "Progresso em processamento"
-                  : `Progresso ${Math.round(progressValue)}%`
+                !activeId && loading !== "create"
+                  ? "Aguardando uma nova análise"
+                  : progressValue === null
+                    ? "Progresso em processamento"
+                    : `Progresso ${Math.round(progressValue)}%`
               }
             >
               <span
                 style={
-                  progressValue === null
-                    ? undefined
-                    : { width: `${progressValue}%` }
+                  !activeId && loading !== "create"
+                    ? { width: "0%" }
+                    : progressValue === null
+                      ? undefined
+                      : { width: `${progressValue}%` }
                 }
-                className={progressValue === null ? styles.indeterminate : ""}
+                className={activeId || loading === "create" ? (progressValue === null ? styles.indeterminate : "") : ""}
               />
             </div>
             <div className={styles.liveStages}>
-              <span className={styles.stageDone}>
+              <span className={activeId || selectedPublication ? styles.stageDone : ""}>
                 <Database />
-                Consulta iniciada
+                Publicação selecionada
               </span>
-              <span className={styles.stageActive}>
+              <span className={activeId || loading === "create" ? styles.stageActive : ""}>
                 <ScanSearch />
-                Coletando perfis
+                Coletando dados
               </span>
               <span>
                 <ListChecks />
-                Salvando resultados
+                Análise de padrões
               </span>
             </div>
           </div>
           <div className={styles.liveMetric}>
             <Sparkles />
-            <strong>{liveCount}</strong>
-            <span>leads encontrados</span>
-            <small>Atualização automática</small>
+            <strong>{activeId || loading === "create" ? liveCount : publications.length}</strong>
+            <span>{activeId || loading === "create" ? "leads encontrados" : "publicações disponíveis"}</span>
+            <small>{activeId || loading === "create" ? "Atualização automática" : "Aguardando início"}</small>
           </div>
         </section>
       )}
@@ -1173,10 +1214,10 @@ export function CompetitionConsole() {
                             href={instagram}
                             target="_blank"
                             rel="noreferrer"
-                            aria-label={`Abrir Instagram de ${username}`}
+                            aria-label={`Contatar ${username} pelo Instagram`}
                           >
                             <AtSign />
-                            Instagram
+                            Contatar
                           </a>
                         )}
                         {whatsapp && (
