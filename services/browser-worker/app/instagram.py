@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,25 +18,10 @@ _MOBILE_BASE = "https://i.instagram.com/api/v1"
 _WEB_BASE = "https://www.instagram.com/api/v1"
 _WEB_PROFILE = f"{_WEB_BASE}/users/web_profile_info/"
 
-_MOBILE_USER_AGENTS = [
-    "Instagram 315.0.0.31.109 Android (33/13; 480dpi; 1080x2400; Samsung; SM-S911B; kalama; sm8550; pt_BR; 564321780)",
-    "Instagram 309.0.0.40.113 Android (33/13; 420dpi; 1080x1920; Google; Pixel 6; oriole; tensor; pt_BR; 541635249)",
-    "Instagram 302.0.0.35.115 Android (31/12; 420dpi; 1080x2340; Xiaomi; M2101K6G; mojito; qcom; pt_BR; 512948102)",
-    "Instagram 298.0.0.28.114 Android (30/11; 440dpi; 1080x2340; OnePlus; LE2115; odin; qcom; pt_BR; 498210345)",
-    "Instagram 285.0.0.21.116 iPhone14,3 (iOS/16.5; 460dpi; 1284x2778; português, Brasil; pt_BR; scale=3.0; 451098234)",
-]
-
-_WEB_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Edge/138.0.2288.52",
-]
-
-
-def _get_user_agent(web: bool) -> str:
-    return random.choice(_WEB_USER_AGENTS if web else _MOBILE_USER_AGENTS)
+# Keep one consistent client identity for a persisted session. Rotating device and
+# browser fingerprints on the same cookie can itself trigger security challenges.
+_MOBILE_USER_AGENT = "Instagram 315.0.0.31.109 Android (33/13; 480dpi; 1080x2400; Samsung; SM-S911B; kalama; sm8550; pt_BR; 564321780)"
+_WEB_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
 
 @dataclass(frozen=True)
@@ -63,7 +47,7 @@ def _headers(session_id: str, *, web: bool = False) -> dict[str, str]:
         "Cookie": cookie_header,
         "Referer": "https://www.instagram.com/",
         "Origin": "https://www.instagram.com",
-        "User-Agent": _get_user_agent(web=web),
+        "User-Agent": _WEB_USER_AGENT if web else _MOBILE_USER_AGENT,
         "X-ASBD-ID": "129477",
         "X-IG-App-ID": "936619743392459" if web else "567067343352427",
         "X-IG-WWW-Claim": "0",
@@ -106,8 +90,8 @@ def _json_get(
     max_bytes: int = 4_000_000,
     web: bool = False,
 ) -> dict[str, Any]:
-    # Pacing adaptativo com jitter para imitar navegação humana e evitar restrição/detecção pelo Instagram
-    time.sleep(random.uniform(0.6, 1.4))
+    # Conservative pacing limits request bursts; it is not intended to evade detection.
+    time.sleep(2.0)
     request = Request(url, headers=_headers(session_id, web=web))
     try:
         with urlopen(request, timeout=15) as response:

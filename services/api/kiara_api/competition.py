@@ -175,8 +175,6 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
         normalized_target, normalized_username = _kiara_public_target(payload)
         client = BrowserWorkerClient()
         try:
-            # Pacing humanizado e seguro para evitar detecção e restrição pelo Instagram
-            await asyncio.sleep(1.2)
             result = await asyncio.to_thread(
                 client.analyse,
                 context.organization_id,
@@ -184,7 +182,7 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
                     "mode": payload.mode,
                     "username": normalized_username or normalized_target,
                     "media_id": payload.media_id,
-                    "limit": min(payload.get("limit", 50) if hasattr(payload, "get") else 50, 50),
+                    "limit": 25,
                 },
             )
             prospects = result.get("items", []) if isinstance(result.get("items"), list) else []

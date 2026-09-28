@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Info,
   ListChecks,
   Link2,
   Loader2,
@@ -47,7 +48,7 @@ import styles from "@/app/(app)/app/concorrencia/competition-reference.module.cs
 
 type JsonObject = Record<string, unknown>;
 type Mode = "followers" | "commenters" | "likers" | "post_audience";
-type Notice = { title: string; text: string };
+type Notice = { title: string; text: string; kind?: "error" | "safety" | "success" };
 type InstagramConnection = {
   state: "loading" | "connected" | "disconnected" | "connecting";
   username: string;
@@ -167,10 +168,20 @@ function instagramUrl(username: string) {
 }
 async function bodyOrError(response: Response) {
   const body = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(
-      body?.error?.message ?? "Não foi possível concluir a operação.",
-    );
+  if (!response.ok) {
+    const code = String(body?.error?.code ?? body?.code ?? "");
+    const upstreamMessage = String(body?.error?.message ?? body?.detail ?? "");
+    if (response.status === 429 || code.includes("cooldown") || code.includes("rate_limit")) {
+      const retryAfter = Number(response.headers.get("Retry-After") || body?.retry_after || 0);
+      const wait = retryAfter >= 3600
+        ? `${Math.ceil(retryAfter / 3600)} hora${Math.ceil(retryAfter / 3600) === 1 ? "" : "s"}`
+        : retryAfter > 0
+          ? `${Math.max(1, Math.ceil(retryAfter / 60))} minuto${Math.ceil(retryAfter / 60) === 1 ? "" : "s"}`
+          : "alguns minutos";
+      throw new Error(`Proteção da conta ativa: aguarde ${wait} antes de tentar novamente. A Kiara limita consultas para reduzir o risco de bloqueios do Instagram.`);
+    }
+    throw new Error(upstreamMessage || "Não foi possível concluir a operação.");
+  }
   return body;
 }
 
@@ -533,12 +544,12 @@ export function CompetitionConsole() {
       if (typeof body.message === "string" && body.message)
         setNotice({ title: "Consulta concluída", text: body.message });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Revise o perfil ou publicação informada.";
+      const protectedPause = message.startsWith("Proteção da conta ativa:");
       setNotice({
-        title: "Não foi possível concluir",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Revise o perfil ou publicação informada.",
+        title: protectedPause ? "Pausa preventiva do Instagram" : "Não foi possível concluir",
+        text: message,
+        kind: protectedPause ? "safety" : "error",
       });
     } finally {
       setLoading(null);
@@ -622,9 +633,18 @@ export function CompetitionConsole() {
         </div>
       </header>
 
+      <section className={styles.safetyNotice} aria-labelledby="competition-safety-title">
+        <span className={styles.safetyIcon}><ShieldCheck /></span>
+        <div>
+          <strong id="competition-safety-title">Proteção automática da conta</strong>
+          <p>A Kiara consulta em ritmo controlado: até 25 perfis por análise, com intervalo mínimo entre novas consultas. Em caso de limite ou verificação do Instagram, a coleta é pausada automaticamente.</p>
+        </div>
+        <span className={styles.safetyStatus}><i /> Limites ativos</span>
+      </section>
+
       {notice && (
-        <Alert variant="destructive">
-          <ShieldCheck />
+        <Alert variant={notice.kind === "safety" || notice.kind === "success" ? "default" : "destructive"} className={notice.kind === "safety" ? styles.safetyAlert : undefined}>
+          {notice.kind === "safety" ? <Clock3 /> : <ShieldCheck />}
           <AlertTitle>{notice.title}</AlertTitle>
           <AlertDescription>{notice.text}</AlertDescription>
         </Alert>
@@ -950,6 +970,9 @@ export function CompetitionConsole() {
                   </Select>
                   <p>{modes[mode].description}</p>
                 </div>
+              )}
+              {Object.keys(loadedProfile).length > 0 && (
+                <div className={styles.analysisSafetyHint}><Info /><span><strong>Consulta protegida</strong> A análise coleta no máximo 25 perfis. Depois de concluída, pode ser necessário aguardar antes de iniciar outra.</span></div>
               )}
               <Button
                 type="submit"

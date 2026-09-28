@@ -39,6 +39,16 @@
 .connected i,
 .connectionPending i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
 
+.safetyNotice { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 10px; border: 1px solid rgb(104 199 174 / .25); border-radius: 7px; padding: 9px 11px; background: linear-gradient(90deg, rgb(19 48 46 / .72), rgb(14 19 31 / .9)); }
+.safetyIcon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid rgb(104 199 174 / .28); border-radius: 7px; color: var(--positive); background: rgb(19 48 46 / .8); }
+.safetyIcon svg { width: 14px; }
+.safetyNotice > div { min-width: 0; }
+.safetyNotice strong { color: #dce9e5; font-size: 10px; }
+.safetyNotice p { margin-top: 2px; color: #8ea39f; font-size: 9px; line-height: 1.45; }
+.safetyStatus { display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgb(104 199 174 / .22); border-radius: 99px; padding: 4px 7px; color: var(--positive); font-size: 8px; font-weight: 650; white-space: nowrap; }
+.safetyStatus i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
+.safetyAlert { border-color: rgb(198 158 86 / .35) !important; background: rgb(53 35 13 / .45) !important; color: #e3bd76 !important; }
+
 .metricStrip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -116,6 +126,9 @@
 .field { display: grid; gap: 4px; }
 .field label { font-size: 10px; }
 .field p { color: var(--faint); font-size: 9px; }
+.analysisSafetyHint { display: flex; align-items: flex-start; gap: 7px; border: 1px solid rgb(104 199 174 / .18); border-radius: 6px; padding: 7px 8px; color: #8ea39f; background: rgb(19 48 46 / .3); font-size: 8px; line-height: 1.45; }
+.analysisSafetyHint svg { width: 12px; height: 12px; flex: none; margin-top: 1px; color: var(--positive); }
+.analysisSafetyHint strong { color: #bad8cf; }
 .profileSearch { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 7px; }
 .profileSearch input { height: 32px; min-height: 32px; border-color: var(--line); background: #090d17; font-size: 11px; }
 .profileSearch > button { height: 32px; min-height: 32px; border-color: var(--line); font-size: 10px; }
@@ -267,6 +280,8 @@
 @media (max-width: 720px) {
   .page { padding-top: 48px; }
   .header { align-items: flex-start; flex-direction: column; }
+  .safetyNotice { grid-template-columns: 30px minmax(0,1fr); }
+  .safetyStatus { grid-column: 2; justify-self: start; }
   .metricStrip { grid-template-columns: repeat(2,1fr); }
   .metricStrip article:nth-child(2) { border-right: 0; }
   .metricStrip article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }

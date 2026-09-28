@@ -18,10 +18,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from playwright.async_api import BrowserContext, Page, async_playwright
 from .instagram import InstagramSessionFailure
+from .instagram_safety import InstagramSafetyGuard, InstagramSafetyLimit
 
 
 INSTAGRAM_LOGIN = "https://www.instagram.com/accounts/login/"
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
+MAX_ANALYSIS_RESULTS = 25
+MAX_COMMENT_PAGES = 5
+COMMENT_PAGE_DELAY_SECONDS = 3.0
 
 
 class SessionCreate(BaseModel):
@@ -47,7 +51,7 @@ class AnalysisRequest(BaseModel):
     mode: Literal["followers", "commenters", "likers", "post_audience"]
     username: str = Field(min_length=1, max_length=500)
     media_id: str | None = Field(default=None, max_length=160)
-    limit: int = Field(default=100, ge=1, le=100)
+    limit: int = Field(default=MAX_ANALYSIS_RESULTS, ge=1, le=MAX_ANALYSIS_RESULTS)
 
 
 @dataclass
@@ -209,7 +213,9 @@ class BrowserSessions:
         cursor = ""
         pages = 0
         try:
-            while len(collected) < limit and pages < 20:
+            while len(collected) < limit and pages < MAX_COMMENT_PAGES:
+                if pages:
+                    await asyncio.sleep(COMMENT_PAGE_DELAY_SECONDS)
                 url = (
                     "https://www.instagram.com/api/v1/media/"
                     f"{media_id}/comments/?can_support_threading=true"
@@ -270,6 +276,7 @@ class BrowserSessions:
 
 
 sessions = BrowserSessions()
+safety = InstagramSafetyGuard(sessions.data_dir)
 app = FastAPI(title="Kiara Browser Worker", version="1.0.0")
 
 
@@ -278,6 +285,15 @@ async def instagram_failure_handler(_request: Request, error: InstagramSessionFa
     return JSONResponse(
         status_code=error.status_code,
         content={"detail": error.message, "code": error.code},
+    )
+
+
+@app.exception_handler(InstagramSafetyLimit)
+async def instagram_safety_handler(_request: Request, error: InstagramSafetyLimit):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": error.message, "code": "instagram_safety_cooldown", "retry_after": error.retry_after_seconds},
+        headers={"Retry-After": str(error.retry_after_seconds)},
     )
 
 
@@ -393,9 +409,21 @@ async def instagram_profile(payload: ProfileRequest) -> dict:
 @app.post("/v1/instagram/analyse", dependencies=[Depends(authorize)])
 async def instagram_analyse(payload: AnalysisRequest) -> dict:
     from .instagram import collect_instagram_relationships
+    await safety.reserve_analysis(payload.workspace_id)
     cookie = await instagram_cookie(payload.workspace_id)
     if not cookie:
         raise HTTPException(409, "A conexão com o Instagram expirou. Entre novamente.")
+    try:
+        return await _run_instagram_analysis(payload, cookie, collect_instagram_relationships)
+    except InstagramSessionFailure as error:
+        if error.code == "instagram_rate_limited":
+            await safety.pause(payload.workspace_id, 3_600)
+        elif error.code == "instagram_verification_required":
+            await safety.pause(payload.workspace_id, 86_400)
+        raise
+
+
+async def _run_instagram_analysis(payload: AnalysisRequest, cookie: str, collect_instagram_relationships) -> dict:
     if payload.mode == "followers":
         from .instagram import collect_instagram_followers, load_instagram_profile
 
