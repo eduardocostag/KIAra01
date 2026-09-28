@@ -22,13 +22,14 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
-Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind"]
+Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind", "postiz"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
     "instagram": {"app_id", "app_secret", "access_token", "instagram_account_id", "page_id", "verify_token"},
     "instagram_session": {"session_id", "username"},
     "hermes": {"endpoint_url", "api_key", "instance_id"},
     "mailerfind": {"endpoint_url", "access_token", "refresh_token", "client_id", "client_secret", "expires_at", "scope", "token_type"},
+    "postiz": {"endpoint_url", "api_key"},
 }
 
 
@@ -142,7 +143,8 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                     {"app_id", "app_secret", "access_token", "instagram_account_id"} if provider == "instagram" else
                     {"session_id"} if provider == "instagram_session" else
                     {"endpoint_url", "api_key", "instance_id"} if provider == "hermes" else
-                    {"endpoint_url", "access_token", "client_id"})
+                    {"endpoint_url", "access_token", "client_id"} if provider == "mailerfind" else
+                    {"endpoint_url", "api_key"})
         missing = required - set(credentials)
         if missing:
             raise ApiError(422, "missing_credentials", "Preencha os campos obrigatórios.", {"fields": sorted(missing)})
@@ -175,6 +177,15 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                 raise ApiError(422, "invalid_mailerfind_endpoint", "O endpoint oficial do MailerFind não foi reconhecido.")
             if credentials.get("token_type", "Bearer").lower() != "bearer":
                 raise ApiError(422, "invalid_mailerfind_token", "O MailerFind não retornou um token Bearer compatível.")
+        elif provider == "postiz":
+            parsed = urlsplit(credentials["endpoint_url"].rstrip("/"))
+            local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+            if (parsed.scheme != "https" and not (local and parsed.scheme == "http")) or not parsed.hostname:
+                raise ApiError(422, "invalid_postiz_endpoint", "Use uma URL HTTPS do Postiz ou HTTP somente em localhost.")
+            if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in {"", "/"}:
+                raise ApiError(422, "invalid_postiz_endpoint", "Informe somente a URL base da API Postiz.")
+            if not re.fullmatch(r"[^\s]{16,4096}", credentials["api_key"]):
+                raise ApiError(422, "invalid_postiz_api_key", "A chave da API Postiz não possui um formato válido.")
 
 
 def create_integration_router(repository: IntegrationRepository) -> APIRouter:
@@ -196,7 +207,7 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
     async def save_integration(provider: Provider, payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
         if provider != "instagram_session":
             ensure_admin(context)
-        if provider == "mailerfind":
+        if provider in {"mailerfind", "postiz"}:
             ensure_system_admin(context)
         return await repository.save(context.organization_id, provider, payload.credentials)
 
@@ -204,7 +215,7 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
     async def disconnect_integration(provider: Provider, context: Annotated[RequestContext, Depends(authenticated_context)]):
         if provider != "instagram_session":
             ensure_admin(context)
-        if provider == "mailerfind":
+        if provider in {"mailerfind", "postiz"}:
             ensure_system_admin(context)
         await repository.disconnect(context.organization_id, provider)
         return None
@@ -235,5 +246,13 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
             return await asyncio.to_thread(_hermes_capabilities, credentials)
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             raise ApiError(502, "hermes_unavailable", "A instância Hermes não respondeu ou não é compatível.") from None
+
+    @router.get("/postiz/credentials")
+    async def postiz_credentials(context: Annotated[RequestContext, Depends(authenticated_context)]):
+        ensure_system_admin(context)
+        credentials = await repository.credentials_for(context.organization_id, "postiz")
+        if not credentials:
+            raise ApiError(404, "postiz_not_configured", "Configure o Postiz na Central administrativa.")
+        return credentials
 
     return router

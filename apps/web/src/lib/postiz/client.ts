@@ -1,4 +1,5 @@
 import "server-only";
+import { kiaraApi } from "@/lib/api/server-client";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 8_000_000;
@@ -14,19 +15,34 @@ export class PostizRequestError extends Error {
   }
 }
 
-function configuration() {
-  const apiKey = process.env.POSTIZ_API_KEY?.trim();
-  const configuredUrl = process.env.POSTIZ_API_URL?.trim() || "https://api.postiz.com";
+async function configuration() {
+  let apiKey = process.env.POSTIZ_API_KEY?.trim() || "";
+  let configuredUrl = process.env.POSTIZ_API_URL?.trim() || "https://api.postiz.com";
+  try {
+    const response = await kiaraApi("/v1/integrations/postiz/credentials");
+    if (response.ok) {
+      const stored = await response.json() as { api_key?: unknown; endpoint_url?: unknown };
+      if (typeof stored.api_key === "string" && stored.api_key.trim()) apiKey = stored.api_key.trim();
+      if (typeof stored.endpoint_url === "string" && stored.endpoint_url.trim()) configuredUrl = stored.endpoint_url.trim();
+    } else if (response.status !== 404 && !apiKey) {
+      throw new PostizConfigurationError("Não foi possível acessar a configuração protegida do Postiz.");
+    }
+  } catch (error) {
+    if (!apiKey) {
+      if (error instanceof PostizConfigurationError) throw error;
+      throw new PostizConfigurationError("A integração Postiz ainda não foi configurada.");
+    }
+  }
   if (!apiKey) throw new PostizConfigurationError("A integração Postiz ainda não foi configurada.");
   let baseUrl: URL;
   try {
     baseUrl = new URL(configuredUrl);
   } catch {
-    throw new PostizConfigurationError("POSTIZ_API_URL não é uma URL válida.");
+    throw new PostizConfigurationError("A URL do Postiz não é válida.");
   }
   const local = ["localhost", "127.0.0.1", "::1"].includes(baseUrl.hostname);
   if (baseUrl.protocol !== "https:" && !(local && baseUrl.protocol === "http:")) {
-    throw new PostizConfigurationError("POSTIZ_API_URL deve usar HTTPS fora do ambiente local.");
+    throw new PostizConfigurationError("A URL do Postiz deve usar HTTPS fora do ambiente local.");
   }
   return { apiKey, baseUrl };
 }
@@ -41,7 +57,7 @@ function safeMessage(payload: unknown, fallback: string) {
 }
 
 export async function postizRequest(path: string, init: RequestInit = {}): Promise<unknown> {
-  const { apiKey, baseUrl } = configuration();
+  const { apiKey, baseUrl } = await configuration();
   const target = new URL(path.replace(/^\/+/, ""), baseUrl.href.endsWith("/") ? baseUrl : new URL(`${baseUrl.href}/`));
   if (target.origin !== baseUrl.origin) throw new PostizConfigurationError("Rota Postiz inválida.");
   const response = await fetch(target, {

@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Radar,
   SearchCheck,
+  Send,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -24,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 type Provider =
-  "google" | "instagram" | "instagram_session" | "hermes" | "mailerfind";
+  "google" | "instagram" | "instagram_session" | "hermes" | "mailerfind" | "postiz";
 type Status = {
   provider: Provider;
   configured_fields: string[];
@@ -134,6 +135,21 @@ const fields: Record<Provider, Field[]> = {
     { name: "api_key", label: "API_SERVER_KEY", secret: true, required: true },
   ],
   mailerfind: [],
+  postiz: [
+    {
+      name: "endpoint_url",
+      label: "URL da API Postiz",
+      required: true,
+      placeholder: "https://api.postiz.com",
+    },
+    {
+      name: "api_key",
+      label: "API Key da organização",
+      secret: true,
+      required: true,
+      placeholder: "Copie em Settings > Developers > Access",
+    },
+  ],
 };
 const info = {
   google: {
@@ -165,6 +181,12 @@ const info = {
     detail: "Maps, Instagram, X e enriquecimento via MCP",
     href: "https://help.mailerfind.com/pt-br/article/conecte-o-mailerfind-ao-claude-wunaig/",
     icon: SearchCheck,
+  },
+  postiz: {
+    name: "Postiz",
+    detail: "Calendário, publicação e analytics sociais",
+    href: "https://docs.postiz.com/public-api",
+    icon: Send,
   },
 };
 
@@ -222,7 +244,7 @@ export function IntegrationSettings({
       return null;
     });
   const providers: Provider[] = adminMode
-    ? ["mailerfind", "google", "instagram", "hermes"]
+    ? ["mailerfind", "postiz", "google", "instagram", "hermes"]
     : ["google", "instagram", "hermes"];
   useEffect(() => {
     fetch("/api/integrations", { cache: "no-store" })
@@ -330,7 +352,7 @@ export function IntegrationSettings({
       <div
         className={cn(
           "grid gap-4",
-          adminMode ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3",
+          adminMode ? "md:grid-cols-2 xl:grid-cols-5" : "md:grid-cols-3",
         )}
       >
         {providers.map((provider) => {
@@ -560,6 +582,11 @@ export function IntegrationSettings({
                 Uma instância exclusiva por cliente. A chave dá acesso ao agente
                 e às ferramentas dele; configure permissões na própria
                 instância. Salvar ou verificar não inicia tarefas.
+              </p>
+            )}
+            {selected === "postiz" && (
+              <p className="mt-4 text-xs leading-5 text-muted-foreground">
+                A chave fica criptografada no cofre da Kiara e é usada somente pelo servidor da aba Conteúdo. Para Postiz Cloud, use https://api.postiz.com.
               </p>
             )}
           </div>
