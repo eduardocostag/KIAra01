@@ -43,6 +43,7 @@ from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .sales import SalesRepository, create_sales_router
+from .social import SocialRepository, create_social_router
 from .workspace import PostgresWorkspaceResetRepository, create_workspace_router
 
 logger = logging.getLogger(__name__)
@@ -400,6 +401,7 @@ def create_app(
         create_conversation_router(ConversationCommands(conversation_commands_repository))
     )
     app.include_router(create_pipeline_router(pipeline_entries_repository))
+    app.include_router(create_social_router(SocialRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     if config.database_url:
         app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
         if config.integration_encryption_key:

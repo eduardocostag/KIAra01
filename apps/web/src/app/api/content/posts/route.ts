@@ -1,40 +1,20 @@
+import { kiaraApi } from "@/lib/api/server-client";
 import { requireContentAdmin } from "@/lib/postiz/admin";
-import { postizErrorResponse, postizRequest } from "@/lib/postiz/client";
-import { parseCreatePost, postizPayload } from "@/lib/postiz/validation";
+import { socialPostPayload } from "@/lib/social/validation";
 
-export async function GET(request: Request) {
+export async function GET() {
   const denied = await requireContentAdmin();
   if (denied) return denied;
-  const incoming = new URL(request.url);
-  const query = new URLSearchParams();
-  for (const key of ["startDate", "endDate", "integration", "page", "limit"]) {
-    const value = incoming.searchParams.get(key);
-    if (value && value.length <= 160) query.set(key, value);
-  }
-  try {
-    return Response.json(await postizRequest(`/public/v1/posts${query.size ? `?${query}` : ""}`), { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    return postizErrorResponse(error);
-  }
+  return kiaraApi("/v1/social/posts");
 }
 
 export async function POST(request: Request) {
   const denied = await requireContentAdmin();
   if (denied) return denied;
   try {
-    const input = parseCreatePost(await request.json());
-    return Response.json(await postizRequest("/public/v1/posts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(postizPayload(input)),
-    }), { status: 201 });
+    const payload = socialPostPayload(await request.json());
+    return kiaraApi("/v1/social/posts", { method: "POST", body: JSON.stringify(payload) });
   } catch (error) {
-    if (error instanceof SyntaxError || (error instanceof Error && ["Payload inválido.", "Canal Postiz inválido.", "Provedor Postiz inválido.", "Mídia Postiz inválida."].some((message) => error.message.includes(message)))) {
-      return Response.json({ error: { code: "content_invalid", message: error instanceof Error ? error.message : "Payload inválido." } }, { status: 422 });
-    }
-    if (error instanceof Error && !("status" in error)) {
-      return Response.json({ error: { code: "content_invalid", message: error.message } }, { status: 422 });
-    }
-    return postizErrorResponse(error);
+    return Response.json({ error: { code: "content_invalid", message: error instanceof Error ? error.message : "Payload inválido." } }, { status: 422 });
   }
 }

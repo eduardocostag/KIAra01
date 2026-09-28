@@ -162,6 +162,129 @@ paths:
         "412": { $ref: "#/components/responses/Error" }
         "428": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
+  /v1/social/dashboard:
+    get:
+      operationId: getSocialDashboard
+      responses:
+        "200": { description: Tenant-scoped social channels, posts and capabilities }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/channels:
+    get:
+      operationId: listSocialChannels
+      responses:
+        "200": { description: Tenant-scoped social channels }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createSocialChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201": { description: Simulated channel created }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/media:
+    post:
+      operationId: uploadSocialMedia
+      parameters:
+        - name: X-Kiara-Filename
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 760 }
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/gif: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+          video/mp4: { schema: { type: string, format: binary } }
+      responses:
+        "201": { description: Binary media stored privately }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/media/{media_id}/download:
+    get:
+      operationId: downloadSocialMedia
+      parameters:
+        - name: media_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Private media download }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/posts:
+    get:
+      operationId: listSocialPosts
+      responses:
+        "200": { description: Tenant-scoped social posts }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createSocialPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201": { description: Draft, schedule or simulated publication created }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/posts/{post_id}/package:
+    get:
+      operationId: getSocialPublicationPackage
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Assisted delivery package with caption and private media links }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/posts/{post_id}/publish:
+    post:
+      operationId: simulateSocialPost
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200": { description: Publication simulated without an external network request }
+        "412": { $ref: "#/components/responses/Error" }
+        "428": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/posts/{post_id}/confirm:
+    post:
+      operationId: confirmAssistedSocialPublication
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200": { description: User-confirmed publication URL recorded }
+        "412": { $ref: "#/components/responses/Error" }
+        "428": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/social/posts/{post_id}:
+    delete:
+      operationId: deleteSocialPost
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Draft deleted or publication evidence cancelled }
+        default: { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
