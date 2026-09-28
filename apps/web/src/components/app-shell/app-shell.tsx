@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
+  CalendarDays,
   House,
   Inbox,
   Menu,
@@ -29,6 +30,7 @@ const nav = [
   { href: "/app/hunter", label: "Hunter", icon: UsersRound },
   { href: "/app/inbox", label: "Leads", icon: Inbox },
   { href: "/app/concorrencia", label: "Concorrência", icon: Radar },
+  { href: "/app/conteudo", label: "Conteúdo", icon: CalendarDays },
   { href: "/app/settings", label: "Configurações", icon: Settings2 },
 ];
 
