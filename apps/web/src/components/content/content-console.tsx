@@ -27,8 +27,14 @@ function items(value: unknown, keys: string[]): unknown[] {
   for (const key of ["data", "result"]) { const nested = items(record[key], keys); if (nested.length) return nested; }
   return [];
 }
-function errorMessage(body: unknown, fallback: string) { const value = object(body); const error = object(value.error); return string(error.message) || string(value.message) || string(value.msg) || fallback; }
-async function responseBody(response: Response) { const body: unknown = await response.json().catch(() => ({})); if (!response.ok) throw new Error(errorMessage(body, "Não foi possível concluir a operação.")); return body; }
+function errorMessage(body: unknown, fallback: string) { const value = object(body); const error = object(value.error); return string(error.message) || string(value.detail) || string(value.message) || string(value.msg) || fallback; }
+async function responseBody(response: Response) {
+  const text = await response.text();
+  let body: unknown = {};
+  try { body = text ? JSON.parse(text) : {}; } catch { body = {}; }
+  if (!response.ok) throw new Error(errorMessage(body, text.trim().slice(0, 300) || `A operação falhou com HTTP ${response.status}.`));
+  return body;
+}
 function parseIntegrations(value: unknown): Integration[] {
   return items(value, ["channels", "integrations", "items"]).map((entry) => { const item = object(entry); return { id: string(item.id), name: string(item.name, string(item.profile, "Canal")), provider: string(item.providerIdentifier, string(item.provider, "social")), picture: string(item.picture) }; }).filter((item) => item.id);
 }
