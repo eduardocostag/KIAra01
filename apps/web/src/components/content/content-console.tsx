@@ -16,7 +16,17 @@ type ObjectValue = Record<string, unknown>;
 type Integration = { id: string; name: string; provider: string; picture: string };
 type Post = { id: string; content: string; date: string; state: string; provider: string; channel: string; releaseUrl: string; version: number; media: Media[] };
 type Media = { id: string; name: string; downloadUrl?: string };
+type SocialProvider = "instagram" | "facebook" | "threads" | "linkedin" | "tiktok" | "youtube";
 type PublicationPackage = { id: string; content: string; version: number; targets: Array<{ provider?: string; name?: string }>; media: Media[] };
+
+const SOCIAL_PROVIDERS: Record<SocialProvider, { label: string; url: string }> = {
+  instagram: { label: "Instagram", url: "https://www.instagram.com/" },
+  facebook: { label: "Facebook", url: "https://www.facebook.com/" },
+  threads: { label: "Threads", url: "https://www.threads.net/" },
+  linkedin: { label: "LinkedIn", url: "https://www.linkedin.com/feed/" },
+  tiktok: { label: "TikTok", url: "https://www.tiktok.com/upload" },
+  youtube: { label: "YouTube", url: "https://studio.youtube.com/" },
+};
 
 function object(value: unknown): ObjectValue { return value && typeof value === "object" && !Array.isArray(value) ? value as ObjectValue : {}; }
 function string(value: unknown, fallback = "") { return typeof value === "string" ? value : fallback; }
@@ -27,6 +37,7 @@ function items(value: unknown, keys: string[]): unknown[] {
   for (const key of ["data", "result"]) { const nested = items(record[key], keys); if (nested.length) return nested; }
   return [];
 }
+function isSocialProvider(value: string): value is SocialProvider { return value in SOCIAL_PROVIDERS; }
 function errorMessage(body: unknown, fallback: string) { const value = object(body); const error = object(value.error); return string(error.message) || string(value.detail) || string(value.message) || string(value.msg) || fallback; }
 async function responseBody(response: Response) {
   const text = await response.text();
@@ -51,11 +62,17 @@ export function ContentConsole() {
   const [publishType, setPublishType] = useState<"draft" | "schedule" | "now">("draft");
   const [date, setDate] = useState(localDateTime);
   const [media, setMedia] = useState<Media[]>([]);
+  const [channelProvider, setChannelProvider] = useState<SocialProvider>("tiktok");
+  const [channelName, setChannelName] = useState("TikTok");
+  const [channelHandle, setChannelHandle] = useState("");
+  const [showChannelForm, setShowChannelForm] = useState(false);
   const [publicationPackage, setPublicationPackage] = useState<PublicationPackage | null>(null);
   const [busy, setBusy] = useState<"load" | "save" | "upload" | "delete" | "channel" | "package" | "confirm" | null>("load");
   const [notice, setNotice] = useState<{ title: string; text: string; error?: boolean } | null>(null);
 
   const selectedIntegration = useMemo(() => integrations.find((item) => item.id === integrationId), [integrationId, integrations]);
+  const packageProvider = publicationPackage?.targets[0]?.provider;
+  const packageDestination = packageProvider && isSocialProvider(packageProvider) ? SOCIAL_PROVIDERS[packageProvider] : null;
   const load = useCallback(async () => {
     setBusy("load"); setNotice(null);
     try {
@@ -104,16 +121,24 @@ export function ContentConsole() {
     finally { setBusy(null); }
   }
 
-  async function createAssistedChannel() {
-    const name = window.prompt("Nome do canal", "Instagram")?.trim();
+  async function createAssistedChannel(event: React.FormEvent) {
+    event.preventDefault();
+    const name = channelName.trim();
+    const handle = channelHandle.trim() || null;
     if (!name) return;
-    const handle = window.prompt("Usuário ou identificação do canal", "@minhaconta")?.trim() || null;
     setBusy("channel"); setNotice(null);
     try {
-      await responseBody(await fetch("/api/content/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, handle, provider: "instagram" }) }));
-      setNotice({ title: "Canal criado", text: "O canal assistido está pronto para organizar e preparar publicações gratuitamente." });
+      await responseBody(await fetch("/api/content/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, handle, provider: channelProvider }) }));
+      setShowChannelForm(false); setChannelHandle("");
+      setNotice({ title: "Canal criado", text: `${SOCIAL_PROVIDERS[channelProvider].label} foi adicionado no modo assistido. Nenhuma senha da rede social é armazenada.` });
       await load();
     } catch (error) { setNotice({ title: "Não foi possível criar o canal", text: error instanceof Error ? error.message : "Tente novamente.", error: true }); setBusy(null); }
+  }
+
+  function changeChannelProvider(value: string) {
+    if (!isSocialProvider(value)) return;
+    setChannelProvider(value);
+    setChannelName(SOCIAL_PROVIDERS[value].label);
   }
 
   async function openPackage(post: Post) {
@@ -146,12 +171,13 @@ export function ContentConsole() {
 
   return <div className="space-y-4">
     {notice && <Alert variant={notice.error ? "destructive" : "default"}><AlertTitle>{notice.title}</AlertTitle><AlertDescription>{notice.text}</AlertDescription></Alert>}
-    {publicationPackage && <Card className="border-primary/25"><CardHeader><CardTitle>Pacote pronto para publicar</CardTitle><CardDescription>A etapa final permanece sob seu controle. A Kiara não usa cookies nem automação não oficial.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="rounded-xl border bg-muted/20 p-4 text-sm whitespace-pre-wrap">{publicationPackage.content || "Sem legenda"}</div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void copyCaption()}><Copy />Copiar legenda</Button>{publicationPackage.media.map((item) => <Button key={item.id} asChild variant="outline"><a href={item.downloadUrl || `/api/content/media/${item.id}`}><Download />{item.name}</a></Button>)}<Button asChild variant="outline"><a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer"><ExternalLink />Abrir Instagram</a></Button><Button onClick={() => void confirmPublication()} disabled={busy !== null}>{busy === "confirm" ? <Loader2 className="animate-spin" /> : <Send />}Confirmar publicação</Button></div></CardContent></Card>}
+    {publicationPackage && <Card className="border-primary/25"><CardHeader><CardTitle>Pacote pronto para publicar</CardTitle><CardDescription>A etapa final permanece sob seu controle. A Kiara não usa cookies nem automação não oficial.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="rounded-xl border bg-muted/20 p-4 text-sm whitespace-pre-wrap">{publicationPackage.content || "Sem legenda"}</div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void copyCaption()}><Copy />Copiar legenda</Button>{publicationPackage.media.map((item) => <Button key={item.id} asChild variant="outline"><a href={item.downloadUrl || `/api/content/media/${item.id}`}><Download />{item.name}</a></Button>)}{packageDestination && <Button asChild variant="outline"><a href={packageDestination.url} target="_blank" rel="noopener noreferrer"><ExternalLink />Abrir {packageDestination.label}</a></Button>}<Button onClick={() => void confirmPublication()} disabled={busy !== null}>{busy === "confirm" ? <Loader2 className="animate-spin" /> : <Send />}Confirmar publicação</Button></div></CardContent></Card>}
+    {showChannelForm && <Card className="border-primary/25"><CardHeader><CardTitle>Adicionar canal assistido</CardTitle><CardDescription>Identifique a conta para organizar o conteúdo. A publicação final será aberta no aplicativo oficial da rede.</CardDescription></CardHeader><CardContent><form className="grid gap-4" onSubmit={createAssistedChannel}><div className="grid gap-4 sm:grid-cols-3"><div className="grid gap-2"><Label htmlFor="channel-provider">Rede social</Label><Select value={channelProvider} onValueChange={changeChannelProvider}><SelectTrigger id="channel-provider"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(SOCIAL_PROVIDERS).map(([value, provider]) => <SelectItem key={value} value={value}>{provider.label}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label htmlFor="channel-name">Nome do canal</Label><Input id="channel-name" value={channelName} onChange={(event) => setChannelName(event.target.value)} maxLength={160} required /></div><div className="grid gap-2"><Label htmlFor="channel-handle">Usuário da conta</Label><Input id="channel-handle" value={channelHandle} onChange={(event) => setChannelHandle(event.target.value)} maxLength={160} placeholder="@minhaconta" /></div></div><Alert><AlertTitle>Modo assistido gratuito</AlertTitle><AlertDescription>No TikTok, a Kiara prepara o vídeo e a legenda; você revisa e conclui o envio no TikTok oficial. Não informe sua senha.</AlertDescription></Alert><div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setShowChannelForm(false)} disabled={busy !== null}>Cancelar</Button><Button type="submit" disabled={busy !== null || !channelName.trim()}>{busy === "channel" ? <Loader2 className="animate-spin" /> : <Send />}Adicionar canal</Button></div></form></CardContent></Card>}
     <Tabs defaultValue="calendar" className="space-y-4">
       <TabsList><TabsTrigger value="calendar"><CalendarDays />Calendário</TabsTrigger><TabsTrigger value="compose"><Send />Criar conteúdo</TabsTrigger><TabsTrigger value="analytics"><BarChart3 />Analytics</TabsTrigger></TabsList>
       <TabsContent value="calendar">
-        <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>Publicações</CardTitle><CardDescription>Rascunhos, agenda e entrega assistida gratuita mantidos pela Kiara Social API.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => void createAssistedChannel()} disabled={busy !== null}>{busy === "channel" ? <Loader2 className="animate-spin" /> : <Send />}Novo canal</Button><Button variant="outline" size="sm" onClick={() => void load()} disabled={busy !== null}>{busy === "load" ? <Loader2 className="animate-spin" /> : <RefreshCw />}Atualizar</Button></div></CardHeader><CardContent>
-          {posts.length ? <div className="grid gap-2">{posts.map((post) => <article key={post.id} className="flex items-center gap-3 rounded-xl border p-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{post.state}</Badge><span className="text-xs text-muted-foreground">{post.channel}</span></div><p className="mt-2 line-clamp-2 text-sm">{post.content || "Publicação com mídia"}</p><time className="mt-1 block text-[11px] text-muted-foreground">{post.date ? new Date(post.date).toLocaleString("pt-BR") : "Sem data"}</time></div>{post.state !== "draft" && <Button variant="outline" size="sm" onClick={() => void openPackage(post)} disabled={busy !== null}>{busy === "package" ? <Loader2 className="animate-spin" /> : <Send />}Preparar</Button>}{post.releaseUrl && <Button asChild variant="outline" size="sm"><a href={post.releaseUrl} target="_blank" rel="noopener noreferrer">Abrir</a></Button>}<Button variant="ghost" size="icon" aria-label="Excluir publicação" onClick={() => void remove(post.id)} disabled={busy !== null}><Trash2 /></Button></article>)}</div> : <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">{busy === "load" ? <Loader2 className="animate-spin" /> : "Nenhuma publicação encontrada."}</div>}
+        <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>Publicações</CardTitle><CardDescription>Rascunhos, agenda e entrega assistida gratuita mantidos pela Kiara Social API.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setShowChannelForm((current) => !current)} disabled={busy !== null}>{busy === "channel" ? <Loader2 className="animate-spin" /> : <Send />}Novo canal</Button><Button variant="outline" size="sm" onClick={() => void load()} disabled={busy !== null}>{busy === "load" ? <Loader2 className="animate-spin" /> : <RefreshCw />}Atualizar</Button></div></CardHeader><CardContent>
+          {posts.length ? <div className="grid gap-2">{posts.map((post) => <article key={post.id} className="flex items-center gap-3 rounded-xl border p-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{post.state}</Badge><span className="text-xs text-muted-foreground">{post.channel} · {post.provider}</span></div><p className="mt-2 line-clamp-2 text-sm">{post.content || "Publicação com mídia"}</p><time className="mt-1 block text-[11px] text-muted-foreground">{post.date ? new Date(post.date).toLocaleString("pt-BR") : "Sem data"}</time></div>{post.state !== "draft" && <Button variant="outline" size="sm" onClick={() => void openPackage(post)} disabled={busy !== null}>{busy === "package" ? <Loader2 className="animate-spin" /> : <Send />}Preparar</Button>}{post.releaseUrl && <Button asChild variant="outline" size="sm"><a href={post.releaseUrl} target="_blank" rel="noopener noreferrer">Abrir</a></Button>}<Button variant="ghost" size="icon" aria-label="Excluir publicação" onClick={() => void remove(post.id)} disabled={busy !== null}><Trash2 /></Button></article>)}</div> : <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">{busy === "load" ? <Loader2 className="animate-spin" /> : "Nenhuma publicação encontrada."}</div>}
         </CardContent></Card>
       </TabsContent>
       <TabsContent value="compose">
