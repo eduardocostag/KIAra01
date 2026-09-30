@@ -3,6 +3,8 @@ FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     KIARA_BROWSER_DATA_DIR=/data \
+    KIARA_BROWSER_ENGINE=invisible \
+    KIARA_BROWSER_ENGINE_FALLBACK=true \
     KIARA_CHROMIUM_PATH=/usr/bin/chromium
 
 RUN apt-get update \
@@ -11,7 +13,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m playwright install-deps firefox
 COPY app ./app
 
 RUN useradd --create-home --uid 10001 kiara \
@@ -19,6 +22,7 @@ RUN useradd --create-home --uid 10001 kiara \
     && chown -R kiara:kiara /data /app
 
 USER kiara
+RUN python -m invisible_playwright fetch
 EXPOSE 8787
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8787", "--proxy-headers"]
 

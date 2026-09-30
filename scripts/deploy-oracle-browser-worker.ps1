@@ -21,11 +21,13 @@ try {
     "WORKER_HOST=$workerHost"
     "KIARA_WORKER_TOKEN=$WorkerToken"
     "KIARA_PROFILE_SALT=$profileSalt"
+    "KIARA_BROWSER_ENGINE=invisible"
+    "KIARA_BROWSER_ENGINE_FALLBACK=true"
   ) | Set-Content -Encoding utf8 (Join-Path $stage ".env")
 
   ssh -i $SshPrivateKey $remote "mkdir -p /opt/kiara-browser"
   scp -i $SshPrivateKey -r "$stage/*" "${remote}:/opt/kiara-browser/"
-  ssh -i $SshPrivateKey $remote "cd /opt/kiara-browser && sudo docker compose up -d --build"
+  ssh -i $SshPrivateKey $remote "cd /opt/kiara-browser && sudo docker compose up -d --build && sudo docker compose ps"
   Write-Host "Worker publicado em https://$workerHost"
   Write-Host "Configure na API: KIARA_BROWSER_WORKER_URL=https://$workerHost"
   Write-Host "Configure na API: KIARA_BROWSER_WORKER_TOKEN=<o mesmo token informado>"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import hmac
 import json
 import os
@@ -9,17 +8,25 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from playwright.async_api import BrowserContext, Page, async_playwright
+
+from .browser_engine import (
+    BrowserEngineName,
+    BrowserRuntime,
+    configured_engine,
+    fallback_enabled,
+    launch_browser,
+    profile_path,
+    workspace_seed,
+)
 from .instagram import InstagramSessionFailure
 from .instagram_safety import InstagramSafetyGuard, InstagramSafetyLimit
-
 
 INSTAGRAM_LOGIN = "https://www.instagram.com/accounts/login/"
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
@@ -58,8 +65,9 @@ class AnalysisRequest(BaseModel):
 class LiveSession:
     id: str
     workspace_id: str
-    context: BrowserContext
-    page: Page
+    runtime: BrowserRuntime
+    context: Any
+    page: Any
     lock: asyncio.Lock
     last_activity: float
 
@@ -70,15 +78,33 @@ class BrowserSessions:
         self.profile_root = self.data_dir / "profiles"
         self.profile_root.mkdir(parents=True, exist_ok=True)
         self.executable = os.getenv("KIARA_CHROMIUM_PATH") or None
-        self._playwright = None
+        self.engine = configured_engine()
+        self.allow_fallback = fallback_enabled()
         self._sessions: dict[str, LiveSession] = {}
         self._workspace_sessions: dict[str, str] = {}
         self._guard = asyncio.Lock()
 
-    def profile_path(self, workspace_id: str) -> Path:
-        salt = os.getenv("KIARA_PROFILE_SALT") or os.getenv("KIARA_WORKER_TOKEN", "")
-        digest = hmac.new(salt.encode(), workspace_id.encode(), hashlib.sha256).hexdigest()
-        return self.profile_root / digest
+    def profile_path(self, workspace_id: str, engine: BrowserEngineName | None = None) -> Path:
+        return profile_path(self.profile_root, workspace_id, engine or self.engine)
+
+    async def _launch(self, workspace_id: str) -> BrowserRuntime:
+        seed = workspace_seed(workspace_id)
+        try:
+            return await launch_browser(
+                profile=self.profile_path(workspace_id),
+                engine=self.engine,
+                executable=self.executable,
+                seed=seed,
+            )
+        except Exception:
+            if self.engine != "invisible" or not self.allow_fallback:
+                raise
+            return await launch_browser(
+                profile=self.profile_path(workspace_id, "chromium"),
+                engine="chromium",
+                executable=self.executable,
+                seed=seed,
+            )
 
     async def start(self, workspace_id: str) -> LiveSession:
         async with self._guard:
@@ -96,31 +122,22 @@ class BrowserSessions:
             for session_id in stale:
                 session = self._sessions.pop(session_id)
                 self._workspace_sessions.pop(session.workspace_id, None)
-                await session.context.close()
+                await session.runtime.close()
             if self._sessions:
                 raise HTTPException(429, "O navegador está atendendo outra conexão. Tente novamente em instantes.")
-            if self._playwright is None:
-                self._playwright = await async_playwright().start()
-            profile = self.profile_path(workspace_id)
-            profile.mkdir(parents=True, exist_ok=True)
-            launch_args = {
-                "headless": True,
-                "viewport": {"width": 1280, "height": 800},
-                "locale": "pt-BR",
-                "timezone_id": "America/Sao_Paulo",
-                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
-            }
-            if self.executable:
-                launch_args["executable_path"] = self.executable
-            context = await self._playwright.chromium.launch_persistent_context(
-                str(profile),
-                **launch_args,
-            )
+            runtime = await self._launch(workspace_id)
+            context = runtime.context
             page = context.pages[0] if context.pages else await context.new_page()
-            await page.goto(INSTAGRAM_LOGIN, wait_until="domcontentloaded", timeout=45_000)
+            await page.set_viewport_size({"width": 1280, "height": 800})
+            try:
+                await page.goto(INSTAGRAM_LOGIN, wait_until="domcontentloaded", timeout=45_000)
+            except BaseException:
+                await runtime.close()
+                raise
             session = LiveSession(
                 uuid4().hex,
                 workspace_id,
+                runtime,
                 context,
                 page,
                 asyncio.Lock(),
@@ -143,7 +160,7 @@ class BrowserSessions:
             if not session:
                 return
             self._workspace_sessions.pop(session.workspace_id, None)
-            await session.context.close()
+            await session.runtime.close()
 
     async def cookies(self, workspace_id: str) -> list[dict]:
         current_id = self._workspace_sessions.get(workspace_id)
@@ -269,10 +286,11 @@ class BrowserSessions:
         current_id = self._workspace_sessions.get(workspace_id)
         if current_id:
             await self.close(current_id)
-        profile = self.profile_path(workspace_id)
-        if profile.exists():
-            import shutil
-            await asyncio.to_thread(shutil.rmtree, profile)
+        import shutil
+        for engine in ("chromium", "invisible"):
+            profile = self.profile_path(workspace_id, engine)
+            if profile.exists():
+                await asyncio.to_thread(shutil.rmtree, profile)
 
 
 sessions = BrowserSessions()
@@ -327,13 +345,20 @@ async def live() -> dict:
 
 @app.get("/health/ready", dependencies=[Depends(authorize)])
 async def ready() -> dict:
-    return {"status": "ready", "active_sessions": len(sessions._sessions)}
+    active_engines = sorted({session.runtime.engine for session in sessions._sessions.values()})
+    return {
+        "status": "ready",
+        "configured_engine": sessions.engine,
+        "fallback_enabled": sessions.allow_fallback,
+        "active_engines": active_engines,
+        "active_sessions": len(sessions._sessions),
+    }
 
 
 @app.post("/v1/sessions", dependencies=[Depends(authorize)])
 async def create_session(payload: SessionCreate) -> dict:
     session = await sessions.start(payload.workspace_id)
-    return {"session_id": session.id, "status": "awaiting_login"}
+    return {"session_id": session.id, "status": "awaiting_login", "engine": session.runtime.engine}
 
 
 @app.get("/v1/sessions/{session_id}", dependencies=[Depends(authorize)])

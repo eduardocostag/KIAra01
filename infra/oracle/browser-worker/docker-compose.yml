@@ -7,6 +7,8 @@ services:
       KIARA_WORKER_TOKEN: ${KIARA_WORKER_TOKEN:?required}
       KIARA_PROFILE_SALT: ${KIARA_PROFILE_SALT:?required}
       KIARA_BROWSER_DATA_DIR: /data
+      KIARA_BROWSER_ENGINE: ${KIARA_BROWSER_ENGINE:-invisible}
+      KIARA_BROWSER_ENGINE_FALLBACK: ${KIARA_BROWSER_ENGINE_FALLBACK:-true}
       KIARA_CHROMIUM_PATH: /usr/bin/chromium
     volumes:
       - browser-data:/data
