@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -199,6 +199,7 @@ export function IntegrationSettings({
   adminMode?: boolean;
   mailerFindResult?: MailerFindResult;
 }) {
+  const configurationRef = useRef<HTMLDivElement>(null);
   const [statuses, setStatuses] = useState<Status[]>([]),
     [selected, setSelected] = useState<Provider | null>(() =>
       mailerFindResult ? "mailerfind" : null,
@@ -248,6 +249,12 @@ export function IntegrationSettings({
   const providers: Provider[] = adminMode
     ? ["mailerfind", "postiz", "chatwoot", "google", "instagram", "hermes"]
     : ["postiz", "chatwoot", "google", "instagram", "hermes"];
+  useEffect(() => {
+    if (selected) {
+      configurationRef.current?.scrollIntoView({ block: "nearest" });
+      configurationRef.current?.focus({ preventScroll: true });
+    }
+  }, [selected]);
   useEffect(() => {
     fetch("/api/integrations", { cache: "no-store" })
       .then(async (response) =>
@@ -349,14 +356,47 @@ export function IntegrationSettings({
       setSaving(null);
     }
   }
+  function renderField(field: Field) {
+    return (
+      <div className="grid gap-2" key={field.name}>
+        <Label htmlFor={`${selected}-${field.name}`}>
+          {field.label}
+          {field.required ? (
+            <span className="text-primary"> *</span>
+          ) : (
+            <span className="font-normal text-muted-foreground">
+              {" "}
+              · opcional
+            </span>
+          )}
+        </Label>
+        <div className="relative">
+          <Input
+            className="bg-background pr-10"
+            id={`${selected}-${field.name}`}
+            name={field.name}
+            type={field.secret ? "password" : "text"}
+            required={field.required}
+            placeholder={
+              statuses
+                .find((item) => item.provider === selected)
+                ?.configured_fields.includes(field.name)
+                ? "Já configurado — digite para substituir"
+                : field.placeholder
+            }
+            autoComplete="new-password"
+          />
+          {field.secret && (
+            <KeyRound className="absolute right-3 top-2.5 size-4 text-muted-foreground" />
+          )}
+        </div>
+      </div>
+
+    );
+  }
   return (
-    <section className="space-y-5">
-      <div
-        className={cn(
-          "grid gap-4",
-          adminMode ? "md:grid-cols-2 xl:grid-cols-5" : "md:grid-cols-3",
-        )}
-      >
+    <section className="space-y-4" aria-label="Conexões disponíveis">
+      <div className="divide-y overflow-hidden rounded-2xl border bg-card">
         {providers.map((provider) => {
           const providerInfo = info[provider],
             Icon = providerInfo.icon,
@@ -370,16 +410,21 @@ export function IntegrationSettings({
                 setMessage(null);
               }}
               className={cn(
-                "group relative overflow-hidden rounded-[28px] border bg-card p-6 text-left shadow-[var(--shadow-1)] transition duration-200 hover:-translate-y-1 hover:border-primary/25 hover:shadow-[var(--shadow-2)]",
+                "group flex w-full flex-wrap items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:gap-4 sm:p-5",
                 selected === provider &&
-                  "border-primary/30 ring-4 ring-primary/5",
+                  "bg-primary/5",
               )}
+              aria-expanded={selected === provider}
+              aria-controls="integration-configuration"
             >
-              <div className="absolute -right-10 -top-10 size-36 rounded-full bg-primary/8 blur-3xl" />
-              <div className="relative flex items-start justify-between">
-                <span className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
-                  <Icon className="size-5" />
-                </span>
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground" aria-hidden="true">
+                <Icon className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-0">
+                <span className="block text-sm font-semibold">{providerInfo.name}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{providerInfo.detail}</span>
+              </span>
+              <span className="ml-12 flex items-center gap-3 sm:ml-auto">
                 <Badge
                   variant={status ? "secondary" : "outline"}
                   className="rounded-full"
@@ -390,31 +435,23 @@ export function IntegrationSettings({
                       ? "Configurado"
                       : "Não conectado"}
                 </Badge>
-              </div>
-              <h2 className="kiara-editorial relative mt-8 text-2xl">
-                {providerInfo.name}
-              </h2>
-              <p className="relative mt-2 text-sm text-muted-foreground">
-                {providerInfo.detail}
-              </p>
-              <span className="relative mt-7 flex items-center gap-2 text-xs font-semibold text-primary">
-                {status ? "Revisar conexão" : "Configurar conexão"}
-                <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
+                <span className="flex items-center gap-2 text-xs font-medium text-primary">
+                  {status ? "Configurar" : "Conectar"}
+                  <ArrowRight className="size-3.5" aria-hidden="true" />
+                </span>
               </span>
             </button>
           );
         })}
       </div>
       {selected && (
-        <div className="overflow-hidden rounded-[28px] border bg-card shadow-[var(--shadow-2)]">
-          <header className="flex items-center justify-between border-b p-6">
+        <div id="integration-configuration" ref={configurationRef} tabIndex={-1} role="region" aria-label={`Configurar ${info[selected].name}`} className="overflow-hidden rounded-2xl border bg-card focus-visible:outline-2 focus-visible:outline-ring">
+          <header className="flex items-center justify-between gap-3 border-b p-5">
             <div>
-              <p className="text-xs font-semibold text-primary">
-                Configuração protegida
-              </p>
-              <h2 className="kiara-editorial mt-1 text-2xl">
-                Conectar {info[selected].name}
+              <h2 className="text-base font-semibold">
+                {info[selected].name}
               </h2>
+              <p className="mt-1 text-xs text-muted-foreground">Configure os dados da conexão.</p>
             </div>
             <Button
               size="icon"
@@ -425,7 +462,7 @@ export function IntegrationSettings({
               <X />
             </Button>
           </header>
-          <div className="p-6 sm:p-8">
+          <div className="p-5">
             {message && (
               <Alert
                 variant={message.type === "error" ? "destructive" : "default"}
@@ -452,18 +489,13 @@ export function IntegrationSettings({
                       </p>
                     </div>
                   </div>
-                  <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Conecte uma única conta administrativa. Depois da
-                    autorização, o MailerFind ficará disponível para as
-                    pesquisas de todos os usuários da Kiara, sem compartilhar
-                    tokens ou exigir novos logins.
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <p className="mt-3 text-sm text-muted-foreground">Autorize uma conta administrativa para disponibilizar as pesquisas a todos os usuários.</p>
+                  <details className="mt-4 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Permissões da conexão</summary><div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="outline">Todos os usuários</Badge>
                     <Badge variant="outline">mailerfind:read</Badge>
                     <Badge variant="outline">mailerfind:write</Badge>
                     <Badge variant="outline">PKCE</Badge>
-                  </div>
+                  </div></details>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Button asChild size="lg">
@@ -495,53 +527,13 @@ export function IntegrationSettings({
                 autoComplete="off"
               >
                 <div className="grid gap-5 md:grid-cols-2">
-                  {fields[selected].map((field) => (
-                    <div className="grid gap-2" key={field.name}>
-                      <Label htmlFor={`${selected}-${field.name}`}>
-                        {field.label}
-                        {field.required ? (
-                          <span className="text-primary"> *</span>
-                        ) : (
-                          <span className="font-normal text-muted-foreground">
-                            {" "}
-                            · opcional
-                          </span>
-                        )}
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          className="h-12 rounded-xl bg-background pr-10"
-                          id={`${selected}-${field.name}`}
-                          name={field.name}
-                          type={field.secret ? "password" : "text"}
-                          required={field.required}
-                          placeholder={
-                            statuses
-                              .find((item) => item.provider === selected)
-                              ?.configured_fields.includes(field.name)
-                              ? "Já configurado — digite para substituir"
-                              : field.placeholder
-                          }
-                          autoComplete="new-password"
-                        />
-                        {field.secret && (
-                          <KeyRound className="absolute right-3 top-4 size-4 text-muted-foreground" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  {fields[selected].filter((field) => field.required).map(renderField)}
+                  {fields[selected].some((field) => !field.required) && <details className="rounded-xl border p-4 md:col-span-2">
+                    <summary className="cursor-pointer text-sm font-medium">Opções adicionais</summary>
+                    <div className="mt-4 grid gap-5 md:grid-cols-2">{fields[selected].filter((field) => !field.required).map(renderField)}</div>
+                  </details>}
                 </div>
-                <div className="mt-8 flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-between">
-                  <Button asChild variant="outline">
-                    <a
-                      href={info[selected].href}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Gerar credenciais oficiais
-                      <ExternalLink />
-                    </a>
-                  </Button>
+                <div className="mt-5 flex flex-wrap justify-end gap-3 border-t pt-5">
                   <div className="flex flex-wrap gap-2">
                     {selected === "hermes" &&
                       statuses.some((item) => item.provider === "hermes") && (
@@ -567,7 +559,7 @@ export function IntegrationSettings({
                           Testar conexão
                         </Button>
                       )}
-                    <Button type="submit" size="lg" disabled={saving !== null}>
+                    <Button type="submit" disabled={saving !== null}>
                       {saving ? (
                         <Loader2 className="animate-spin" />
                       ) : (
@@ -579,6 +571,9 @@ export function IntegrationSettings({
                 </div>
               </form>
             )}
+            <details className="mt-5 border-t pt-4 text-xs text-muted-foreground">
+              <summary className="cursor-pointer font-medium">Ajuda para conectar</summary>
+              <a href={info[selected].href} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-primary underline underline-offset-4">Gerar credenciais oficiais<ExternalLink className="size-3.5" /></a>
             {selected === "hermes" && (
               <p className="mt-4 text-xs leading-5 text-muted-foreground">
                 Uma instância exclusiva por cliente. A chave dá acesso ao agente
@@ -591,6 +586,7 @@ export function IntegrationSettings({
                 A chave fica criptografada no cofre da Kiara e é usada somente pelo servidor da aba Conteúdo. Para Postiz Cloud, use https://api.postiz.com. Para instalação própria, use https://seu-dominio/api.
               </p>
             )}
+            </details>
           </div>
         </div>
       )}

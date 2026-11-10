@@ -306,3 +306,86 @@
 @media (prefers-reduced-motion: reduce) {
   .liveSweep,.collectionProgress .indeterminate,.liveProgress .indeterminate { animation: none; }
 }
+
+/* Keep the main task visible; supporting information opens on demand. */
+.page {
+  --surface: var(--card);
+  --surface-raised: var(--muted);
+  --line: var(--border);
+  --line-soft: var(--border);
+  --text: var(--foreground);
+  --muted: var(--muted-foreground);
+  --faint: var(--muted-foreground);
+  gap: 20px;
+  font-size: 14px;
+}
+.header { min-height: 0; padding: 0; border: 0; }
+.header h1 { font-size: 24px; letter-spacing: -.025em; }
+.header > div:first-child > span { margin-top: 6px; font-size: 14px; line-height: 1.5; }
+.headerActions { flex-wrap: wrap; }
+.connected,.connectionPending { padding: 6px 10px; font-size: 12px; }
+.dashboardBody { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.summary { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.builder,.connectionCard { border-radius: 16px; }
+.builder [data-slot="card-header"] { padding: 22px 24px 12px; }
+.builder [data-slot="card-title"] { font-size: 17px; }
+.builder [data-slot="card-description"] { margin-top: 4px; font-size: 13px; }
+.builder [data-slot="card-content"] { padding: 8px 24px 24px; }
+.form { gap: 18px; }
+.field { gap: 8px; min-width: 0; }
+.field label { font-size: 13px; }
+.field p { font-size: 12px; line-height: 1.5; }
+.profileSearch { gap: 12px; }
+.profileSearch input,.profileSearch > button { height: 40px; min-height: 40px; font-size: 14px; }
+.profileSearch input { background: transparent; }
+.connectionContent { gap: 20px; padding: 20px 24px; }
+.connectionSummary { gap: 12px; }
+.connectionSummary strong { font-size: 14px; }
+.connectionSummary p { margin-top: 4px; font-size: 13px; line-height: 1.5; }
+.connectionActions button { height: 38px; font-size: 13px; }
+.limitHint { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.limitHint svg { width: 14px; height: 14px; }
+.disclosure { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.disclosure > summary { padding: 20px 24px; font-size: 14px; font-weight: 550; cursor: pointer; }
+.disclosure > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -3px; border-radius: 16px; }
+.disclosure > summary > span { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.disclosure[open] > summary { border-bottom: 1px solid var(--line); }
+.disclosure > .recentCard,.disclosure > .insightsCard { border: 0; border-radius: 0; }
+.recentCard [data-slot="card-header"],.insightsCard [data-slot="card-header"] { padding: 16px 24px 8px; }
+.recentCard [data-slot="card-content"],.insightsCard [data-slot="card-content"] { padding: 12px 24px 20px; }
+.recentCard [data-slot="card-title"],.insightsCard [data-slot="card-title"] { font-size: 14px; }
+.recentCard [data-slot="card-description"],.insightsCard [data-slot="card-description"] { font-size: 12px; }
+.helpContent { display: grid; gap: 12px; padding: 20px 24px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.profilePreview { padding: 14px; border-radius: 10px; background: transparent; }
+.profileIdentity strong { font-size: 14px; }
+.profileIdentity p { font-size: 12px; }
+.profileStats span { font-size: 11px; }
+.profileStats b { font-size: 15px; }
+.publicationHeading label { font-size: 13px; }
+.publicationHeading p { font-size: 12px; }
+.publicationCaption { padding: 8px; font-size: 12px; min-height: 44px; }
+.analysisList > button { min-height: 56px; }
+.analysisList strong { font-size: 13px; }
+.analysisList small { font-size: 12px; }
+.prospectGrid { gap: 12px; }
+.prospectGrid article { padding: 16px; border-radius: 12px; flex-wrap: wrap; }
+.prospectGrid strong { font-size: 14px; }
+.prospectGrid article span,.comment,.email { font-size: 12px; }
+.contactButton { padding: 8px 10px; font-size: 12px; }
+.livePanel { border-radius: 16px; padding: 20px 24px; }
+.liveVisual { display: none; }
+.livePanel { grid-template-columns: minmax(0,1fr) 120px; }
+.liveContent > p { font-size: 13px; line-height: 1.5; }
+.liveEyebrow,.liveMetric span { font-size: 11px; }
+.liveStages { display: none; }
+@media (max-width: 720px) {
+  .page { padding-top: 0; gap: 16px; }
+  .header { gap: 12px; }
+  .builder [data-slot="card-header"],.builder [data-slot="card-content"],.connectionContent,.helpContent { padding-left: 16px; padding-right: 16px; }
+  .disclosure > summary { padding: 18px 16px; }
+  .profileSearch > button { width: 100%; }
+  .livePanel { grid-template-columns: minmax(0,1fr); justify-items: stretch; text-align: left; padding: 18px 16px; }
+  .headerActions { max-width: 100%; }
+  .connectionSummary > div { min-width: 0; }
+  .connectionSummary p { overflow-wrap: anywhere; }
+}

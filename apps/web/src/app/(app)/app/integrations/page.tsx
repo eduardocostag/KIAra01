@@ -1,7 +1,6 @@
-import { ShieldCheck } from "lucide-react"
 import { IntegrationSettings } from "@/components/app-shell/integration-settings"
 import { PageHeader } from "@/components/app-shell/page-header"
 
 export default function IntegrationsPage() {
-  return <div className="mx-auto max-w-6xl space-y-7"><PageHeader eyebrow="Connection hub" title="Conecte a Kiara ao seu crescimento." description="Ative somente os canais necessários. Cada conexão usa credenciais oficiais, isoladas e criptografadas por workspace." /><IntegrationSettings /><div className="flex items-start gap-3 rounded-2xl bg-emerald-500/8 p-4 text-xs leading-5 text-muted-foreground"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" /><p><span className="font-medium text-foreground">Você mantém o controle.</span> Nenhuma publicação, alteração de verba ou mensagem acontece apenas por salvar credenciais.</p></div></div>
+  return <div className="mx-auto max-w-6xl space-y-6"><PageHeader title="Integrações" description="Conecte os canais e serviços da sua operação." /><IntegrationSettings /><details className="rounded-xl border p-4 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium text-foreground">Sobre as conexões</summary><p className="mt-3 max-w-2xl leading-5">As credenciais ficam criptografadas e isoladas por workspace. Salvar uma conexão não inicia publicações, mensagens ou alterações de verba.</p></details></div>
 }

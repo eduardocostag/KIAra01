@@ -16,7 +16,6 @@ import {
   Loader2,
   LogOut,
   MessageCircleMore,
-  MoreHorizontal,
   Newspaper,
   Radar,
   RefreshCw,
@@ -707,30 +706,20 @@ export function CompetitionConsole() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1>Inteligência de concorrência</h1>
-          <span>Analise perfis, publicações e sinais públicos do Instagram.</span>
+          <h1>Concorrência</h1>
+          <span>Escolha um perfil do Instagram e encontre oportunidades.</span>
         </div>
         <div className={styles.headerActions}>
           <Badge variant="outline" className={connection.state === "connected" ? styles.connected : styles.connectionPending}>
-            <i /> {connection.state === "connected" ? "Instagram conectado" : "Instagram desconectado"}
+            <i /> {connection.state === "connected" ? "Instagram conectado" : connection.state === "loading" ? "Verificando conexão…" : "Instagram desconectado"}
           </Badge>
           {connection.state === "connected" && (
             <Button type="button" variant="ghost" size="icon" onClick={() => void beginInstagramConnection()} aria-label="Reconectar Instagram">
               <RefreshCw />
             </Button>
           )}
-          <Button type="button" variant="ghost" size="icon" aria-label="Mais opções"><MoreHorizontal /></Button>
         </div>
       </header>
-
-      <section className={styles.safetyNotice} aria-labelledby="competition-safety-title">
-        <span className={styles.safetyIcon}><ShieldCheck /></span>
-        <div>
-          <strong id="competition-safety-title">Proteção automática da conta</strong>
-          <p>A Kiara consulta em ritmo controlado: até 25 perfis por análise, com intervalo mínimo entre novas consultas. Em caso de limite ou verificação do Instagram, a coleta é pausada automaticamente.</p>
-        </div>
-        <span className={styles.safetyStatus}><i /> Limites ativos</span>
-      </section>
 
       {notice && (
         <Alert variant={notice.kind === "safety" || notice.kind === "success" ? "default" : "destructive"} className={notice.kind === "safety" ? styles.safetyAlert : undefined}>
@@ -762,7 +751,7 @@ export function CompetitionConsole() {
               <p>
                 {connection.state === "connected"
                   ? `Conexão individual e protegida${connection.username ? ` para @${connection.username}` : ""}.`
-                  : "Cada usuário conecta a própria conta. Nenhuma conexão é compartilhada com o administrador ou outros usuários."}
+                  : "Use sua conta para consultar perfis e publicações."}
               </p>
             </div>
           </div>
@@ -892,8 +881,8 @@ export function CompetitionConsole() {
         <Card className={styles.builder} id="nova-analise">
           <CardHeader className={styles.builderHeader}>
             <div>
-              <CardDescription>Nova análise</CardDescription>
-              <CardTitle>Carregue um concorrente</CardTitle>
+              <CardTitle>Nova análise</CardTitle>
+              <CardDescription>Informe o perfil que deseja conhecer.</CardDescription>
             </div>
           </CardHeader>
           <CardContent>
@@ -1062,8 +1051,9 @@ export function CompetitionConsole() {
                 </div>
               )}
               {Object.keys(loadedProfile).length > 0 && (
-                <div className={styles.analysisSafetyHint}><Info /><span><strong>Consulta protegida</strong> A análise coleta no máximo 25 perfis. Depois de concluída, pode ser necessário aguardar antes de iniciar outra.</span></div>
+                <p className={styles.limitHint}><Info /> Até 25 perfis por análise.</p>
               )}
+              {Object.keys(loadedProfile).length > 0 && (
               <Button
                 type="submit"
                 size="lg"
@@ -1078,10 +1068,9 @@ export function CompetitionConsole() {
                 ) : (
                   <ScanSearch />
                 )}
-                {mode === "followers"
-                  ? "Extrair seguidores do perfil"
-                  : "Extrair interações da publicação"}
+                Analisar {mode === "followers" ? "seguidores" : "publicação"}
               </Button>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -1089,6 +1078,8 @@ export function CompetitionConsole() {
         </div>
 
         <aside className={styles.summary}>
+          {Object.keys(loadedProfile).length > 0 && <details className={styles.disclosure}>
+            <summary>Resumo do perfil</summary>
           <Card className={styles.insightsCard}>
             <CardHeader><CardDescription>Resumo atual</CardDescription><CardTitle>Insights do concorrente</CardTitle></CardHeader>
             <CardContent>
@@ -1097,6 +1088,9 @@ export function CompetitionConsole() {
               <div><span>Leads encontrados</span><strong>{totalArchivedLeads.toLocaleString("pt-BR")}</strong></div>
             </CardContent>
           </Card>
+          </details>}
+          <details className={styles.disclosure}>
+            <summary>Análises anteriores <span>{analyses.length}</span></summary>
           <Card className={styles.recentCard}>
             <CardHeader className={styles.listHeader}>
               <div>
@@ -1186,8 +1180,18 @@ export function CompetitionConsole() {
               )}
             </CardContent>
           </Card>
+          </details>
         </aside>
       </div>
+
+      <details className={styles.disclosure}>
+        <summary>Como funciona a análise</summary>
+        <div className={styles.helpContent}>
+          <p>Carregue um perfil, escolha seguidores ou uma publicação e inicie a análise. Os resultados ficam disponíveis abaixo e no histórico.</p>
+          <p>A coleta usa sinais públicos e consulta até 25 perfis por análise. Limites ou verificações do Instagram pausam a coleta automaticamente. Pode ser necessário aguardar antes de iniciar outra consulta.</p>
+          <p>Nome, telefone e e-mail só aparecem quando disponibilizados pela origem. Conectar a conta não envia mensagens nem publica conteúdo.</p>
+        </div>
+      </details>
 
       {(activeId || loading === "create") && (
       <section

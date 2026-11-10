@@ -3,7 +3,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True)
+    browser=p.chromium.launch(channel="chrome",headless=True)
     page=browser.new_page(viewport={"width":1440,"height":1000})
     errors=[]
     page.on("pageerror",lambda e:errors.append(str(e)))
@@ -18,7 +18,8 @@ with sync_playwright() as p:
             route.fulfill(json={"items":[{"id":"1","username":"ana","email":"ana@example.test","profile_url":"https://www.instagram.com/ana/"},{"id":"2","username":"bia"}]})
         else:route.fulfill(status=500,json={"error":{"message":"Unexpected test request"}})
     page.route("**/api/competition/**",api)
-    page.goto("http://localhost:3100/ui-verification?view=competition")
+    page.goto("http://127.0.0.1:3100/ui-verification?view=competition")
+    page.locator("summary").filter(has_text="Análises anteriores").click()
     page.get_by_role("button",name="Análise de teste",exact=False).click()
     expect(page.get_by_text("ana@example.test",exact=True)).to_be_visible()
     page.get_by_label("Somente com contato público").check()
