@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type ObjectValue = Record<string, unknown>;
 type Integration = { id: string; name: string; provider: string; picture: string };
-type Post = { id: string; content: string; date: string; state: string; provider: string; channel: string; releaseUrl: string; version: number; media: Media[] };
+type Post = { channelId: string; id: string; content: string; date: string; state: string; provider: string; channel: string; releaseUrl: string; version: number; media: Media[] };
 type Media = { id: string; name: string; downloadUrl?: string };
 type SocialProvider = "instagram" | "facebook" | "threads" | "linkedin" | "tiktok" | "youtube";
 type PublicationPackage = { id: string; content: string; version: number; targets: Array<{ provider?: string; name?: string }>; media: Media[] };
@@ -32,6 +32,7 @@ function object(value: unknown): ObjectValue { return value && typeof value === 
 function string(value: unknown, fallback = "") { return typeof value === "string" ? value : fallback; }
 function items(value: unknown, keys: string[]): unknown[] {
   if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
   const record = object(value);
   for (const key of keys) if (Array.isArray(record[key])) return record[key] as unknown[];
   for (const key of ["data", "result"]) { const nested = items(record[key], keys); if (nested.length) return nested; }
@@ -50,11 +51,13 @@ function parseIntegrations(value: unknown): Integration[] {
   return items(value, ["channels", "integrations", "items"]).map((entry) => { const item = object(entry); return { id: string(item.id), name: string(item.name, string(item.profile, "Canal")), provider: string(item.providerIdentifier, string(item.provider, "social")), picture: string(item.picture) }; }).filter((item) => item.id);
 }
 function parsePosts(value: unknown): Post[] {
-  return items(value, ["posts", "items"]).map((entry) => { const item = object(entry); const targets = items(item.targets, ["items"]); const firstTarget = object(targets[0]); const integration = object(item.integration); const media = items(item.media, ["items"]).map((entry) => { const value = object(entry); return { id: string(value.id), name: string(value.name, "Mídia"), downloadUrl: string(value.download_url) }; }); return { id: string(item.id), content: string(item.content, string(item.message)), date: string(item.scheduled_at, string(item.published_at, string(item.created_at, string(item.publishDate, string(item.date))))), state: string(item.status, string(item.state, "UNKNOWN")), provider: string(firstTarget.provider, string(integration.providerIdentifier)), channel: string(firstTarget.channel_name, string(integration.name, "Canal")), releaseUrl: string(firstTarget.release_url, string(item.releaseURL)), version: typeof item.version === "number" ? item.version : 1, media }; }).filter((item) => item.id);
+  return items(value, ["posts", "items"]).map((entry) => { const item = object(entry); const targets = items(item.targets, ["items"]); const firstTarget = object(targets[0]); const integration = object(item.integration); const media = items(item.media, ["items"]).map((entry) => { const value = object(entry); return { id: string(value.id), name: string(value.name, string(value.original_name, "Mídia")), downloadUrl: string(value.download_url) || (string(value.id) ? `/api/content/media/${string(value.id)}` : "") }; }); return { channelId: string(firstTarget.channel_id), id: string(item.id), content: string(item.content, string(item.message)), date: string(item.scheduled_at, string(item.published_at, string(item.created_at, string(item.publishDate, string(item.date))))), state: string(item.status, string(item.state, "UNKNOWN")), provider: string(firstTarget.provider, string(integration.providerIdentifier)), channel: string(firstTarget.channel_name, string(integration.name, "Canal")), releaseUrl: string(firstTarget.release_url, string(item.releaseURL)), version: typeof item.version === "number" ? item.version : 1, media }; }).filter((item) => item.id);
 }
 function localDateTime() { const date = new Date(Date.now() + 60 * 60 * 1000); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 16); }
 
 export function ContentConsole() {
+  const [tab, setTab] = useState("calendar");
+  const [editing, setEditing] = useState<Post | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [integrationId, setIntegrationId] = useState("");
@@ -102,21 +105,39 @@ export function ContentConsole() {
     finally { setBusy(null); }
   }
 
+  function resetEditor() {
+    setEditing(null); setContent(""); setMedia([]); setPublishType("draft"); setDate(localDateTime());
+  }
+
+  function editPost(post: Post) {
+    setEditing(post); setContent(post.content); setMedia(post.media); setIntegrationId(post.channelId);
+    setPublishType(post.state === "scheduled" ? "schedule" : post.state === "ready_to_publish" ? "now" : "draft");
+    const scheduled = new Date(post.date);
+    scheduled.setMinutes(scheduled.getMinutes() - scheduled.getTimezoneOffset());
+    setDate(post.state === "scheduled" ? scheduled.toISOString().slice(0, 16) : localDateTime());
+    setPublicationPackage(null); setNotice(null); setTab("compose");
+  }
+
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!selectedIntegration) return;
     setBusy("save"); setNotice(null);
     try {
-      await responseBody(await fetch("/api/content/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: publishType, date: new Date(date).toISOString(), integrationId: selectedIntegration.id, provider: selectedIntegration.provider, content, media, settings: { post_type: "post" } }) }));
-      setContent(""); setMedia([]); setNotice({ title: publishType === "draft" ? "Rascunho salvo" : publishType === "now" ? "Pacote pronto" : "Publicação agendada", text: publishType === "now" ? "Baixe a mídia, copie a legenda e conclua a publicação no aplicativo da rede." : "O conteúdo foi salvo na Kiara Social API." });
+      const saved = object(await responseBody(await fetch(editing ? `/api/content/posts/${encodeURIComponent(editing.id)}` : "/api/content/posts", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json", ...(editing ? { "If-Match": `"${editing.version}"` } : {}) }, body: JSON.stringify({ type: publishType, date: publishType === "schedule" ? new Date(date).toISOString() : undefined, integrationId: selectedIntegration.id, provider: selectedIntegration.provider, content, media, settings: { post_type: "post" } }) })));
+      const savedId = string(saved.id);
+      const savedVersion = typeof saved.version === "number" ? saved.version : 1;
+      resetEditor(); setTab("calendar");
       await load();
-    } catch (error) { setNotice({ title: "Não foi possível salvar", text: error instanceof Error ? error.message : "Revise o conteúdo.", error: true }); setBusy(null); }
+      if (publishType === "now") await openPackage({ id: savedId, version: savedVersion });
+      setNotice({ title: publishType === "draft" ? "Rascunho salvo" : publishType === "now" ? "Pacote pronto" : "Lembrete agendado", text: publishType === "now" ? "Baixe a mídia, copie a legenda e conclua a publicação no aplicativo da rede." : "O conteúdo foi salvo na Kiara." });
+    } catch (error) { setNotice({ title: "Não foi possível salvar", text: error instanceof Error ? error.message : "Revise o conteúdo.", error: true }); }
+    finally { setBusy(null); }
   }
 
   async function remove(postId: string) {
     if (!window.confirm("Excluir este conteúdo da Kiara?")) return;
     setBusy("delete"); setNotice(null);
-    try { await responseBody(await fetch(`/api/content/posts/${encodeURIComponent(postId)}`, { method: "DELETE" })); setPosts((current) => current.filter((post) => post.id !== postId)); setNotice({ title: "Publicação excluída", text: "O item foi removido do calendário." }); }
+    try { await responseBody(await fetch(`/api/content/posts/${encodeURIComponent(postId)}`, { method: "DELETE" })); setPosts((current) => current.filter((post) => post.id !== postId)); if (editing?.id === postId) resetEditor(); if (publicationPackage?.id === postId) setPublicationPackage(null); setNotice({ title: "Publicação excluída", text: "O item foi removido do calendário." }); }
     catch (error) { setNotice({ title: "Não foi possível excluir", text: error instanceof Error ? error.message : "Tente novamente.", error: true }); }
     finally { setBusy(null); }
   }
@@ -141,7 +162,7 @@ export function ContentConsole() {
     setChannelName(SOCIAL_PROVIDERS[value].label);
   }
 
-  async function openPackage(post: Post) {
+  async function openPackage(post: Pick<Post, "id" | "version">) {
     setBusy("package"); setNotice(null);
     try {
       const body = object(await responseBody(await fetch(`/api/content/posts/${encodeURIComponent(post.id)}/package`, { cache: "no-store" })));
@@ -154,8 +175,12 @@ export function ContentConsole() {
 
   async function copyCaption() {
     if (!publicationPackage) return;
-    await navigator.clipboard.writeText(publicationPackage.content);
-    setNotice({ title: "Legenda copiada", text: "Cole a legenda no aplicativo da rede social." });
+    try {
+      await navigator.clipboard.writeText(publicationPackage.content);
+      setNotice({ title: "Legenda copiada", text: "Cole a legenda no aplicativo da rede social." });
+    } catch {
+      setNotice({ title: "Não foi possível copiar", text: "Selecione e copie a legenda exibida no pacote.", error: true });
+    }
   }
 
   async function confirmPublication() {
@@ -173,19 +198,19 @@ export function ContentConsole() {
     {notice && <Alert variant={notice.error ? "destructive" : "default"}><AlertTitle>{notice.title}</AlertTitle><AlertDescription>{notice.text}</AlertDescription></Alert>}
     {publicationPackage && <Card className="border-primary/25"><CardHeader><CardTitle>Pacote pronto para publicar</CardTitle><CardDescription>A etapa final permanece sob seu controle. A Kiara não usa cookies nem automação não oficial.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="rounded-xl border bg-muted/20 p-4 text-sm whitespace-pre-wrap">{publicationPackage.content || "Sem legenda"}</div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void copyCaption()}><Copy />Copiar legenda</Button>{publicationPackage.media.map((item) => <Button key={item.id} asChild variant="outline"><a href={item.downloadUrl || `/api/content/media/${item.id}`}><Download />{item.name}</a></Button>)}{packageDestination && <Button asChild variant="outline"><a href={packageDestination.url} target="_blank" rel="noopener noreferrer"><ExternalLink />Abrir {packageDestination.label}</a></Button>}<Button onClick={() => void confirmPublication()} disabled={busy !== null}>{busy === "confirm" ? <Loader2 className="animate-spin" /> : <Send />}Confirmar publicação</Button></div></CardContent></Card>}
     {showChannelForm && <Card className="border-primary/25"><CardHeader><CardTitle>Adicionar canal assistido</CardTitle><CardDescription>Identifique a conta para organizar o conteúdo. A publicação final será aberta no aplicativo oficial da rede.</CardDescription></CardHeader><CardContent><form className="grid gap-4" onSubmit={createAssistedChannel}><div className="grid gap-4 sm:grid-cols-3"><div className="grid gap-2"><Label htmlFor="channel-provider">Rede social</Label><Select value={channelProvider} onValueChange={changeChannelProvider}><SelectTrigger id="channel-provider"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(SOCIAL_PROVIDERS).map(([value, provider]) => <SelectItem key={value} value={value}>{provider.label}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label htmlFor="channel-name">Nome do canal</Label><Input id="channel-name" value={channelName} onChange={(event) => setChannelName(event.target.value)} maxLength={160} required /></div><div className="grid gap-2"><Label htmlFor="channel-handle">Usuário da conta</Label><Input id="channel-handle" value={channelHandle} onChange={(event) => setChannelHandle(event.target.value)} maxLength={160} placeholder="@minhaconta" /></div></div><Alert><AlertTitle>Modo assistido gratuito</AlertTitle><AlertDescription>No TikTok, a Kiara prepara o vídeo e a legenda; você revisa e conclui o envio no TikTok oficial. Não informe sua senha.</AlertDescription></Alert><div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setShowChannelForm(false)} disabled={busy !== null}>Cancelar</Button><Button type="submit" disabled={busy !== null || !channelName.trim()}>{busy === "channel" ? <Loader2 className="animate-spin" /> : <Send />}Adicionar canal</Button></div></form></CardContent></Card>}
-    <Tabs defaultValue="calendar" className="space-y-4">
+    <Tabs value={tab} onValueChange={setTab} className="space-y-4">
       <TabsList><TabsTrigger value="calendar"><CalendarDays />Calendário</TabsTrigger><TabsTrigger value="compose"><Send />Criar conteúdo</TabsTrigger><TabsTrigger value="analytics"><BarChart3 />Analytics</TabsTrigger></TabsList>
       <TabsContent value="calendar">
         <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>Publicações</CardTitle><CardDescription>Rascunhos, agenda e entrega assistida gratuita mantidos pela Kiara Social API.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setShowChannelForm((current) => !current)} disabled={busy !== null}>{busy === "channel" ? <Loader2 className="animate-spin" /> : <Send />}Novo canal</Button><Button variant="outline" size="sm" onClick={() => void load()} disabled={busy !== null}>{busy === "load" ? <Loader2 className="animate-spin" /> : <RefreshCw />}Atualizar</Button></div></CardHeader><CardContent>
-          {posts.length ? <div className="grid gap-2">{posts.map((post) => <article key={post.id} className="flex items-center gap-3 rounded-xl border p-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{post.state}</Badge><span className="text-xs text-muted-foreground">{post.channel} · {post.provider}</span></div><p className="mt-2 line-clamp-2 text-sm">{post.content || "Publicação com mídia"}</p><time className="mt-1 block text-[11px] text-muted-foreground">{post.date ? new Date(post.date).toLocaleString("pt-BR") : "Sem data"}</time></div>{post.state !== "draft" && <Button variant="outline" size="sm" onClick={() => void openPackage(post)} disabled={busy !== null}>{busy === "package" ? <Loader2 className="animate-spin" /> : <Send />}Preparar</Button>}{post.releaseUrl && <Button asChild variant="outline" size="sm"><a href={post.releaseUrl} target="_blank" rel="noopener noreferrer">Abrir</a></Button>}<Button variant="ghost" size="icon" aria-label="Excluir publicação" onClick={() => void remove(post.id)} disabled={busy !== null}><Trash2 /></Button></article>)}</div> : <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">{busy === "load" ? <Loader2 className="animate-spin" /> : "Nenhuma publicação encontrada."}</div>}
+          {posts.length ? <div className="grid gap-2">{posts.map((post) => <article key={post.id} className="flex items-center gap-3 rounded-xl border p-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{post.state}</Badge><span className="text-xs text-muted-foreground">{post.channel} · {post.provider}</span></div><p className="mt-2 line-clamp-2 text-sm">{post.content || "Publicação com mídia"}</p><time className="mt-1 block text-[11px] text-muted-foreground">{post.date ? new Date(post.date).toLocaleString("pt-BR") : "Sem data"}</time></div>{["draft", "scheduled", "ready_to_publish"].includes(post.state) && <Button variant="outline" size="sm" onClick={() => editPost(post)} disabled={busy !== null}>Editar</Button>}{["scheduled", "ready_to_publish", "simulated"].includes(post.state) && <Button variant="outline" size="sm" onClick={() => void openPackage(post)} disabled={busy !== null}>{busy === "package" ? <Loader2 className="animate-spin" /> : <Send />}Preparar</Button>}{post.releaseUrl && <Button asChild variant="outline" size="sm"><a href={post.releaseUrl} target="_blank" rel="noopener noreferrer">Abrir</a></Button>}<Button variant="ghost" size="icon" aria-label="Excluir publicação" onClick={() => void remove(post.id)} disabled={busy !== null}><Trash2 /></Button></article>)}</div> : <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">{busy === "load" ? <Loader2 className="animate-spin" /> : "Nenhuma publicação encontrada."}</div>}
         </CardContent></Card>
       </TabsContent>
       <TabsContent value="compose">
-        <Card><CardHeader><CardTitle>Novo conteúdo</CardTitle><CardDescription>Salve como rascunho, agende ou publique nos canais conectados.</CardDescription></CardHeader><CardContent><form className="grid gap-4" onSubmit={save}>
+        <Card><CardHeader><CardTitle>{editing ? "Editar conteúdo" : "Novo conteúdo"}</CardTitle><CardDescription>Salve um rascunho, agende um lembrete ou prepare o pacote para concluir na rede social.</CardDescription>{editing && <Button type="button" variant="ghost" onClick={resetEditor} disabled={busy !== null}>Cancelar edição</Button>}</CardHeader><CardContent><form className="grid gap-4" onSubmit={save}>
           <div className="grid gap-2"><Label htmlFor="content-channel">Canal</Label><Select value={integrationId} onValueChange={setIntegrationId}><SelectTrigger id="content-channel"><SelectValue placeholder="Selecione um canal" /></SelectTrigger><SelectContent>{integrations.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} · {item.provider}</SelectItem>)}</SelectContent></Select></div>
           <div className="grid gap-2"><Label htmlFor="content-copy">Legenda</Label><Textarea id="content-copy" value={content} onChange={(event) => setContent(event.target.value)} maxLength={10000} className="min-h-36" placeholder="Escreva o conteúdo da publicação…" /><span className="text-right text-[11px] text-muted-foreground">{content.length}/10.000</span></div>
-          <div className="grid gap-2"><Label htmlFor="content-file">Mídia</Label><Input id="content-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4" onChange={(event) => { void upload(event.target.files?.[0]); event.currentTarget.value = ""; }} disabled={busy !== null} />{media.length > 0 && <div className="flex flex-wrap gap-2">{media.map((item) => <Badge key={item.id} variant="outline"><ImagePlus />{item.name}</Badge>)}</div>}</div>
-          <div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="content-type">Ação</Label><Select value={publishType} onValueChange={(value) => setPublishType(value as typeof publishType)}><SelectTrigger id="content-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="draft">Salvar rascunho</SelectItem><SelectItem value="schedule">Agendar lembrete</SelectItem><SelectItem value="now">Preparar para publicar</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label htmlFor="content-date">Data e hora</Label><Input id="content-date" type="datetime-local" value={date} onChange={(event) => setDate(event.target.value)} disabled={publishType === "now"} /></div></div>
+          <div className="grid gap-2"><Label htmlFor="content-file">Mídia</Label><Input id="content-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4" onChange={(event) => { void upload(event.target.files?.[0]); event.currentTarget.value = ""; }} disabled={busy !== null} />{media.length > 0 && <div className="flex flex-wrap gap-2">{media.map((item) => <Badge key={item.id} variant="outline"><ImagePlus />{item.name}<button type="button" aria-label={`Remover ${item.name}`} disabled={busy !== null} onClick={() => setMedia((current) => current.filter((entry) => entry.id !== item.id))}><Trash2 className="size-3" /></button></Badge>)}</div>}</div>
+          <div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="content-type">Ação</Label><Select value={publishType} onValueChange={(value) => setPublishType(value as typeof publishType)}><SelectTrigger id="content-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="draft">Salvar rascunho</SelectItem><SelectItem value="schedule">Agendar lembrete</SelectItem><SelectItem value="now">Preparar para publicar</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label htmlFor="content-date">Data e hora</Label><Input id="content-date" type="datetime-local" value={date} onChange={(event) => setDate(event.target.value)} disabled={publishType !== "schedule"} required={publishType === "schedule"} /></div></div>
           <Button type="submit" disabled={busy !== null || !selectedIntegration || (!content.trim() && !media.length)}>{busy === "save" ? <Loader2 className="animate-spin" /> : <Send />}{publishType === "draft" ? "Salvar rascunho" : publishType === "schedule" ? "Agendar lembrete" : "Preparar pacote"}</Button>
         </form></CardContent></Card>
       </TabsContent>

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import json
 import re
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from .browser_worker import BrowserWorkerClient, BrowserWorkerError
@@ -16,10 +18,8 @@ from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
-
 KiaraCompetitionMode = Literal["followers", "commenters", "likers", "post_audience"]
-
-
+_IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._~-]{16,128}$")
 class KiaraCompetitionInput(BaseModel):
     mode: KiaraCompetitionMode
     target: str = Field(min_length=1, max_length=500)
@@ -42,7 +42,7 @@ class BrowserInputCommand(BaseModel):
 
 
 def _browser_error(error: BrowserWorkerError) -> ApiError:
-    return ApiError(error.status_code, error.code, error.message)
+    return ApiError(error.status_code, error.code, error.message, {"retry_after": error.retry_after} if error.retry_after else None)
 
 
 class InstagramProfilePreviewInput(BaseModel):
@@ -167,44 +167,87 @@ def create_competition_router(archive: CompetitionRepository) -> APIRouter:
         deleted = await archive.clear_analyses(context.organization_id)
         return {"deleted": deleted}
 
-    @router.post("/kiara/analyses", status_code=201)
+    @router.post("/kiara/analyses")
     async def create_kiara_analysis(
         payload: KiaraCompetitionInput,
         context: Annotated[RequestContext, Depends(authenticated_context)],
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     ):
-        normalized_target, normalized_username = _kiara_public_target(payload)
-        client = BrowserWorkerClient()
-        try:
-            result = await asyncio.to_thread(
-                client.analyse,
-                context.organization_id,
-                {
-                    "mode": payload.mode,
-                    "username": normalized_username or normalized_target,
-                    "media_id": payload.media_id,
-                    "limit": 25,
-                },
+        if idempotency_key is None or _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            raise ApiError(
+                400,
+                "idempotency_key_required",
+                "Envie uma Idempotency-Key válida para iniciar a pesquisa.",
             )
-            prospects = result.get("items", []) if isinstance(result.get("items"), list) else []
-            snapshot = result.get("snapshot", {}) if isinstance(result.get("snapshot"), dict) else {}
-        except BrowserWorkerError as error:
-            raise _browser_error(error) from None
-        analysis_id = f"kiara_{uuid4().hex}"
-        name = payload.name or f"Kiara · {payload.mode} · {payload.target}"
-        analysis = await archive.upsert_analysis(
+        normalized_target, _ = _kiara_public_target(payload)
+        name = (payload.name or f"Kiara · {payload.mode} · {payload.target}")[:120]
+        fingerprint_payload = {
+            "mode": payload.mode,
+            "target": payload.target,
+            "normalized_target": normalized_target,
+            "media_id": payload.media_id,
+            "name": name,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(fingerprint_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        job = await archive.begin_kiara_job(
             context.organization_id,
-            analysis_id,
-            {**snapshot, "collected": len(prospects)},
+            idempotency_key,
+            fingerprint,
             mode=payload.mode,
             target=payload.target,
+            normalized_target=normalized_target,
+            media_id=payload.media_id,
             name=name,
-            status="completed",
-            prospect_count=len(prospects),
-            provider="kiara_instagram",
         )
-        saved = await archive.upsert_prospects(context.organization_id, analysis_id, prospects)
-        message = None if prospects else "Nenhum comentário ou curtida acessível foi encontrado nas publicações consultadas."
-        return {"analysis": analysis, "saved": saved, "items": prospects, "message": message}
+        if job["state"] == "completed":
+            analysis = await archive.get_analysis(
+                context.organization_id, job["provider_analysis_id"]
+            )
+            if analysis is None:
+                raise RuntimeError("Completed competition job has no archived analysis.")
+            items = await archive.list_prospects(
+                context.organization_id, job["provider_analysis_id"], 100
+            )
+            return {
+                "job": job,
+                "analysis": analysis,
+                "saved": len(items),
+                "items": items,
+                "message": None
+                if items
+                else "Nenhum comentário ou curtida acessível foi encontrado nas publicações consultadas.",
+                "replayed": True,
+            }
+        return JSONResponse(
+            status_code=202,
+            content={"job": job, "message": "Pesquisa salva e aguardando processamento."},
+            headers={"Retry-After": "2"},
+        )
+
+    @router.get("/kiara/jobs/{job_id}")
+    async def get_kiara_job(
+        job_id: str,
+        context: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        if not re.fullmatch(r"[0-9a-fA-F-]{36}", job_id):
+            raise ApiError(422, "competition_job_id_invalid", "O identificador da pesquisa é inválido.")
+        job = await archive.get_kiara_job(context.organization_id, job_id)
+        if job is None:
+            raise ApiError(404, "competition_job_not_found", "A pesquisa não foi encontrada.")
+        response: dict[str, Any] = {"job": job}
+        if job["state"] == "completed":
+            analysis = await archive.get_analysis(
+                context.organization_id, job["provider_analysis_id"]
+            )
+            if analysis is None:
+                raise RuntimeError("Completed competition job has no archived analysis.")
+            response["analysis"] = analysis
+            response["items"] = await archive.list_prospects(
+                context.organization_id, job["provider_analysis_id"], 100
+            )
+        return response
 
     @router.post("/kiara/profile-preview")
     async def preview_instagram_profile(

@@ -8,6 +8,7 @@ import {
   House,
   Inbox,
   Menu,
+  MessageCircle,
   Radar,
   Settings2,
   ShieldCheck,
@@ -28,9 +29,12 @@ import { cn } from "@/lib/utils";
 const nav = [
   { href: "/app", label: "Visão geral", icon: House },
   { href: "/app/hunter", label: "Hunter", icon: UsersRound },
-  { href: "/app/inbox", label: "Leads", icon: Inbox },
+  { href: "/app/inbox", label: "Caixa de entrada", icon: Inbox },
+  { href: "/app/pipeline", label: "Leads e CRM", icon: Inbox },
+  { href: "/app/followups", label: "WhatsApp", icon: MessageCircle },
   { href: "/app/concorrencia", label: "Concorrência", icon: Radar },
   { href: "/app/conteudo", label: "Conteúdo", icon: CalendarDays },
+  { href: "/app/integrations", label: "Integrações", icon: Settings2 },
   { href: "/app/settings", label: "Configurações", icon: Settings2 },
 ];
 

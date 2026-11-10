@@ -105,7 +105,8 @@ llm:
   ollama_base_url: http://127.0.0.1:11434
   routing:
     enabled: true
-    mode: hybrid
+    # Operação sem cobrança de inferência externa: usa somente os modelos locais.
+    mode: local
     # Mantém conversas comuns leves e reserva o modelo maior para análise e diagnóstico.
     fast_model: kiara-stable:latest
     reasoning_model: kiara-fast:latest
@@ -188,6 +189,16 @@ personal:
     - C:/Users/EduardoGonçalves/Documents
     - C:/Users/EduardoGonçalves/Desktop
 integrations:
+  chatwoot:
+    # Requer CHATWOOT_API_ACCESS_TOKEN; sem token nenhuma ferramenta e ativada.
+    enabled: true
+    base_url: http://127.0.0.1:3005
+    account_id: 1
+    timeout_seconds: 15
+  maps_scraper:
+    enabled: true
+    executable: data/tools/google-maps-scraper/google-maps-scraper.exe
+    timeout_seconds: 600
   obsidian:
     enabled: false
     # Caminho absoluto do vault. A integração é somente leitura.

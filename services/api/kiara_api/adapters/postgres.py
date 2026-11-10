@@ -84,10 +84,10 @@ class PostgresRepository:
     async def list_threads(self, organization_id: str) -> list[dict[str, Any]]:
         async with self._transaction(organization_id) as connection:
             rows = await (await connection.execute(
-                """SELECT t.id, t.channel, t.status, t.updated_at, c.id consumer_id,
-                          c.display_name, c.instagram_username,
+                """SELECT t.id, t.channel, t.status, t.updated_at, t.automation_enabled,t.handoff,
+                          c.id consumer_id,c.attributes,c.display_name, c.instagram_username,
                           (SELECT count(*) FROM messages m WHERE m.organization_id=t.organization_id
-                           AND m.thread_id=t.id AND m.direction='inbound') unread_count
+                           AND m.thread_id=t.id AND m.direction='inbound' AND (t.last_read_at IS NULL OR m.sent_at>t.last_read_at)) unread_count
                    FROM conversation_threads t JOIN consumers c
                      ON c.organization_id=t.organization_id AND c.id=t.consumer_id
                    WHERE t.organization_id=%s ORDER BY t.updated_at DESC LIMIT 100""",
@@ -99,10 +99,10 @@ class PostgresRepository:
         organization_uuid, thread_uuid = _uuid("organization", organization_id), _uuid("thread", thread_id)
         async with self._transaction(organization_id) as connection:
             row = await (await connection.execute(
-                """SELECT t.id, t.channel, t.status, t.updated_at, c.id consumer_id,
-                          c.display_name, c.instagram_username,
+                """SELECT t.id, t.channel, t.status, t.updated_at,t.automation_enabled,t.handoff,
+                          c.id consumer_id,c.attributes,c.display_name, c.instagram_username,
                           (SELECT count(*) FROM messages m WHERE m.organization_id=t.organization_id
-                           AND m.thread_id=t.id AND m.direction='inbound') unread_count
+                           AND m.thread_id=t.id AND m.direction='inbound' AND (t.last_read_at IS NULL OR m.sent_at>t.last_read_at)) unread_count
                    FROM conversation_threads t JOIN consumers c
                      ON c.organization_id=t.organization_id AND c.id=t.consumer_id
                    WHERE t.organization_id=%s AND t.id=%s""",
@@ -111,15 +111,20 @@ class PostgresRepository:
             if row is None:
                 return None
             messages = await (await connection.execute(
-                "SELECT id, direction, body text, sent_at created_at FROM messages WHERE organization_id=%s AND thread_id=%s ORDER BY sent_at, id",
+                "SELECT * FROM (SELECT id,direction,body text,sent_at created_at,'sent'::text status FROM messages WHERE organization_id=%s AND thread_id=%s ORDER BY sent_at DESC,id DESC LIMIT 100) recent ORDER BY created_at,id",
                 (organization_uuid, thread_uuid),
             )).fetchall()
+            pending = await (await connection.execute(
+                "SELECT 'outbox:'||id::text id,'outbound'::text direction,body text,status,created_at FROM commercial_outbox WHERE organization_id=%s AND thread_id=%s AND status!='sent' ORDER BY created_at DESC,id DESC LIMIT 100",
+                (organization_uuid, thread_uuid),
+            )).fetchall()
+            messages = sorted([*messages, *pending], key=lambda item: (item["created_at"], str(item["id"])))
             drafts = await (await connection.execute(
                 "SELECT id, thread_id, body text, status, version, content_hash, created_at, updated_at FROM message_drafts WHERE organization_id=%s AND thread_id=%s ORDER BY created_at, id",
                 (organization_uuid, thread_uuid),
             )).fetchall()
             qualification = await (await connection.execute(
-                "SELECT id, thread_id, score, temperature, recommendation, created_at FROM qualifications WHERE organization_id=%s AND thread_id=%s ORDER BY created_at DESC LIMIT 1",
+                "SELECT id, thread_id, score, temperature, recommendation,reasons,confidence, created_at FROM qualifications WHERE organization_id=%s AND thread_id=%s ORDER BY created_at DESC LIMIT 1",
                 (organization_uuid, thread_uuid),
             )).fetchone()
         result = self._thread_summary(row)
@@ -206,15 +211,21 @@ class PostgresRepository:
             if replay is not None:
                 return replay
             row = None if force_refresh else await (await connection.execute(
-                "SELECT id,thread_id,score,temperature,recommendation,created_at FROM qualifications WHERE organization_id=%s AND thread_id=%s ORDER BY created_at DESC LIMIT 1",
+                "SELECT id,thread_id,score,temperature,recommendation,reasons,confidence,created_at FROM qualifications WHERE organization_id=%s AND thread_id=%s ORDER BY created_at DESC LIMIT 1",
                 (organization_uuid, thread_uuid),
             )).fetchone()
+            if row is not None and not row.get("reasons"):
+                row = None
             if row is None:
+                exists = await (await connection.execute("SELECT consumer_id FROM conversation_threads WHERE organization_id=%s AND id=%s", (organization_uuid, thread_uuid))).fetchone()
+                if not exists:
+                    raise ApiError(404, "thread_not_found", "Conversa não encontrada.")
+                from ..unified_inbox import refresh_qualification
+                await refresh_qualification(connection, organization_uuid, thread_uuid, exists["consumer_id"])
                 try:
                     row = await (await connection.execute(
-                        """INSERT INTO qualifications (organization_id,thread_id,score,temperature,recommendation)
-                           VALUES (%s,%s,50,'warm','Revisar a conversa e preparar uma resposta')
-                           RETURNING id,thread_id,score,temperature,recommendation,created_at""",
+                        """SELECT id,thread_id,score,temperature,recommendation,reasons,confidence,created_at
+                           FROM qualifications WHERE organization_id=%s AND thread_id=%s ORDER BY created_at DESC LIMIT 1""",
                         (organization_uuid, thread_uuid),
                     )).fetchone()
                 except psycopg.errors.ForeignKeyViolation as exc:
@@ -318,11 +329,16 @@ class PostgresRepository:
         return {key: (_iso(value) if hasattr(value, "isoformat") else str(value) if isinstance(value, UUID) else value) for key, value in row.items()}
 
     def _thread_summary(self, row: dict[str, Any]) -> dict[str, Any]:
+        attributes = row.get("attributes") or {}
+        qualification = attributes.get("qualification")
         return {"id": str(row["id"]), "channel": row["channel"], "consumer": {
-            "id": str(row["consumer_id"]), "display_name": row["display_name"] or "Lead do Instagram",
-            "instagram_username": row["instagram_username"] or "instagram"
+            "id": str(row["consumer_id"]), "display_name": row["display_name"] or "Contato",
+            "instagram_username": row["instagram_username"] or "",
+            "phone": attributes.get("phone") or (attributes.get("whatsapp") or {}).get("phone")
         }, "status": row["status"], "unread_count": row["unread_count"],
-            "updated_at": _iso(row["updated_at"]), "version": 1}
+            "updated_at": _iso(row["updated_at"]), "version": 1,
+            "automation_enabled": row.get("automation_enabled", False), "handoff": row.get("handoff", False),
+            "qualification": qualification}
 
     def _pipeline(self, row: dict[str, Any]) -> dict[str, Any]:
         hunter = (row.get("attributes") or {}).get("hunter") or {}
@@ -343,6 +359,7 @@ class PostgresRepository:
         if isinstance(hunter.get("website_quality_score"), (int, float)):
             consumer["website_quality_score"] = hunter["website_quality_score"]
         return {"id": str(row["id"]), "consumer": consumer,
+            "qualification": (row.get("attributes") or {}).get("qualification"),
             "stage": row["stage"], "next_action": row["next_action"],
             "next_action_at": _iso(row.get("next_action_at")), "activities": row.get("activities") or [],
             "version": row["version"], "updated_at": _iso(row["updated_at"])}

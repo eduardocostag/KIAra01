@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
+from app.integrations.operational_skills import OperationalSkills
 from app.knowledge import KnowledgeStore
 from app.memory import MemoryEngine, MemoryKind
 from app.models import ScreenContext
@@ -85,10 +86,12 @@ class ContextManager:
         conversation: ConversationSession | None = None,
         knowledge_max_chars: int = 6_000,
         clock: Callable[[], datetime] | None = None,
+        operational_skills: OperationalSkills | None = None,
     ) -> None:
         self._screen_reader = screen_reader
         self._memory = memory
         self._knowledge = knowledge
+        self._operational_skills = operational_skills
         self._conversation = conversation or ConversationSession()
         self._knowledge_max_chars = max(500, knowledge_max_chars)
         self._clock = clock or (lambda: datetime.now().astimezone())
@@ -159,6 +162,8 @@ class ContextManager:
 
     def assemble(self, user_message: str) -> dict[str, Any]:
         current_screen = self.screen()
+        if current_screen is None:
+            current_screen = ScreenContext()
         relevant = []
         if self._memory is not None:
             relevant = [asdict(item) for item in self._memory.search(user_message)]
@@ -186,6 +191,8 @@ class ContextManager:
             "relevant_knowledge": knowledge,
         }
         conversation = self._conversation.snapshot()
+        if self._operational_skills is not None:
+            assembled["operational_skills"] = self._operational_skills.relevant(user_message)
         assembled["conversation_history"] = conversation["recent_turns"]
         if conversation["summary"]:
             assembled["conversation_summary"] = conversation["summary"]
@@ -195,7 +202,9 @@ class ContextManager:
         return assembled
 
     @staticmethod
-    def _matches_current_screen(understanding: dict[str, Any], screen: ScreenContext) -> bool:
+    def _matches_current_screen(understanding: dict[str, Any], screen: ScreenContext | None) -> bool:
+        if screen is None:
+            return False
         return (
             understanding.get("application") == screen.active_application
             and understanding.get("window_title") == screen.window_title

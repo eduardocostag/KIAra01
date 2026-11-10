@@ -114,6 +114,7 @@ class OpenAICompatibleProvider(LLMProvider):
         transport: OllamaTransport | None = None,
         vision_enabled: bool = True,
         max_output_tokens: int = 2048,
+        follow_redirects: bool = True,
     ) -> None:
         if not api_key:
             raise ProviderConfigurationError("A chave do provedor remoto não foi definida.")
@@ -125,7 +126,10 @@ class OpenAICompatibleProvider(LLMProvider):
         self.timeout_seconds = timeout_seconds
         self.vision_enabled = vision_enabled
         self.max_output_tokens = max(1, int(max_output_tokens))
-        self._transport = transport or partial(_post_authenticated_json, api_key=self.api_key)
+        self.follow_redirects = follow_redirects
+        self._transport = transport or partial(
+            _post_authenticated_json, api_key=self.api_key, follow_redirects=follow_redirects,
+        )
         self._native_streaming = transport is None
 
     @property
@@ -152,6 +156,7 @@ class OpenAICompatibleProvider(LLMProvider):
             self.timeout_seconds,
             api_key=self.api_key,
             sse=True,
+            follow_redirects=self.follow_redirects,
         ):
             choices = event.get("choices", [])
             if not choices or not isinstance(choices[0], dict):
@@ -241,8 +246,20 @@ def _post_json(url: str, payload: dict[str, Any], timeout: float) -> dict[str, A
         raise RuntimeError(f"Ollama HTTP {exc.code}: {detail}") from exc
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_provider_request(request, *, timeout: float, follow_redirects: bool):
+    if follow_redirects:
+        return urllib.request.urlopen(request, timeout=timeout)
+    return urllib.request.build_opener(_RejectRedirects()).open(request, timeout=timeout)
+
+
 def _post_authenticated_json(
-    url: str, payload: dict[str, Any], timeout: float, api_key: str | None = None
+    url: str, payload: dict[str, Any], timeout: float, api_key: str | None = None,
+    *, follow_redirects: bool = True,
 ) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
@@ -254,7 +271,9 @@ def _post_authenticated_json(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _open_provider_request(
+            request, timeout=timeout, follow_redirects=follow_redirects,
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:1000]
@@ -268,6 +287,7 @@ async def _stream_http_json(
     *,
     api_key: str | None = None,
     sse: bool = False,
+    follow_redirects: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Bridge a blocking urllib byte stream to asyncio without buffering the response."""
     loop = asyncio.get_running_loop()
@@ -284,7 +304,9 @@ async def _stream_http_json(
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _open_provider_request(
+                request, timeout=timeout, follow_redirects=follow_redirects,
+            ) as response:
                 for raw_line in response:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line:

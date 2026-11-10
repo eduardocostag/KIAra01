@@ -31,3 +31,16 @@ def test_ollama_embedding_provider_batches_locally(monkeypatch) -> None:
     assert body == {"model": "embedding-model", "input": ["rede", "impressora"]}
     assert calls[0][0].full_url == "http://127.0.0.1:11434/api/embed"
     assert calls[0][1] == 12
+
+
+def test_ollama_embedding_provider_falls_back_to_local_hash(monkeypatch) -> None:
+    def fake_urlopen(*_args, **_kwargs):
+        raise TimeoutError("Ollama off")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = OllamaEmbeddingProvider("embedding-model", timeout_seconds=12)
+
+    vectors = provider.embed(["rede", "impressora"])
+    assert len(vectors) == 2
+    assert len(vectors[0]) == 384
+    assert len(vectors[1]) == 384

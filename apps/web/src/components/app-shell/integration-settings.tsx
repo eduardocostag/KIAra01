@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 type Provider =
-  "google" | "instagram" | "instagram_session" | "hermes" | "mailerfind" | "postiz";
+  "google" | "instagram" | "instagram_session" | "hermes" | "mailerfind" | "postiz" | "chatwoot";
 type Status = {
   provider: Provider;
   configured_fields: string[];
@@ -135,6 +135,7 @@ const fields: Record<Provider, Field[]> = {
     { name: "api_key", label: "API_SERVER_KEY", secret: true, required: true },
   ],
   mailerfind: [],
+  chatwoot: [{ name: "endpoint_url", label: "URL HTTPS do Chatwoot", required: true, placeholder: "https://atendimento.suaempresa.com" }, { name: "account_id", label: "ID da conta", required: true }, { name: "api_access_token", label: "Token de acesso", secret: true, required: true }, { name: "webhook_secret", label: "Segredo do webhook (receber mensagens)", secret: true }],
   postiz: [
     {
       name: "endpoint_url",
@@ -182,6 +183,7 @@ const info = {
     href: "https://help.mailerfind.com/pt-br/article/conecte-o-mailerfind-ao-claude-wunaig/",
     icon: SearchCheck,
   },
+  chatwoot: { name: "Chatwoot", detail: "Central de atendimento multicanal", href: "https://www.chatwoot.com", icon: MessageCircle },
   postiz: {
     name: "Postiz",
     detail: "Calendário, publicação e analytics sociais",
@@ -244,8 +246,8 @@ export function IntegrationSettings({
       return null;
     });
   const providers: Provider[] = adminMode
-    ? ["mailerfind", "postiz", "google", "instagram", "hermes"]
-    : ["google", "instagram", "hermes"];
+    ? ["mailerfind", "postiz", "chatwoot", "google", "instagram", "hermes"]
+    : ["postiz", "chatwoot", "google", "instagram", "hermes"];
   useEffect(() => {
     fetch("/api/integrations", { cache: "no-store" })
       .then(async (response) =>
@@ -586,7 +588,7 @@ export function IntegrationSettings({
             )}
             {selected === "postiz" && (
               <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                A chave fica criptografada no cofre da Kiara e é usada somente pelo servidor da aba Conteúdo. Para Postiz Cloud, use https://api.postiz.com.
+                A chave fica criptografada no cofre da Kiara e é usada somente pelo servidor da aba Conteúdo. Para Postiz Cloud, use https://api.postiz.com. Para instalação própria, use https://seu-dominio/api.
               </p>
             )}
           </div>

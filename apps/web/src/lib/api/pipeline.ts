@@ -10,6 +10,7 @@ export const pipelineStages = [
 export type PipelineStage = typeof pipelineStages[number]["id"]
 export type PipelineEntry = {
   id: string
+  qualification?: { score: number; temperature: "cold" | "warm" | "hot" | "unknown"; reasons?: string[]; confidence?: number; recommendation?: string } | null
   stage: PipelineStage
   next_action: string | null
   next_action_at?: string | null
@@ -101,6 +102,7 @@ export function instagramProfileUrl(username: string | null | undefined): string
 export function parsePipelineEntry(value: unknown): PipelineEntry {
   if (!value || typeof value !== "object") throw new Error("Resposta inválida do Pipeline.")
   const item = value as PipelineEntry
+  if (item.qualification != null && (!Number.isFinite(item.qualification.score) || item.qualification.score < 0 || item.qualification.score > 100 || !["cold", "warm", "hot", "unknown"].includes(item.qualification.temperature))) throw new Error("Qualificação inválida no CRM.")
   if (typeof item.id !== "string" || !item.id || !pipelineStages.some((stage) => stage.id === item.stage) ||
     !Number.isInteger(item.version) || item.version < 1 || typeof item.updated_at !== "string" || Number.isNaN(Date.parse(item.updated_at)) ||
     (item.next_action != null && typeof item.next_action !== "string") || !item.consumer || typeof item.consumer.id !== "string" ||
@@ -126,7 +128,7 @@ export function parsePipeline(value: unknown): PipelineEntry[] {
   return (value as { items: unknown[] }).items.map(parsePipelineEntry)
 }
 
-export const sourceLabels: Record<string, string> = { google_maps: "Google Maps", web: "Web pública", instagram: "Instagram", facebook: "Facebook", hunter: "Hunter" }
+export const sourceLabels: Record<string, string> = { google_maps: "Google Maps", web: "Web pública", instagram: "Instagram", facebook: "Facebook", hunter: "Hunter", whatsapp_web: "WhatsApp Web" }
 
 export function leadDisplayName(consumer: PipelineEntry["consumer"]): string {
   const username = consumer.instagram_username?.trim().replace(/^@/, "")

@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/gosom/google-maps-scraper",
+  "commit": "e0c1d501e49cdcd5c6b2cecd2a032831f6ee9ba8",
+  "path": "skills/google-maps-scraper",
+  "license": "MIT",
+  "native_cli_version": "v1.18.2",
+  "native_cli_embedded_version": "v1.18.3-0.20261108092509-146aefe83844-146aefe",
+  "windows_amd64_sha256": "6609e9638ee303b6d419a329f629efcd9ed5d083f86ad6b93f92a21d59c2aca5"
+}

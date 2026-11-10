@@ -42,6 +42,7 @@ class OllamaEmbeddingProvider:
 
     The adapter is deliberately synchronous because the memory and knowledge stores are
     synchronous. Network access is restricted to the explicitly configured Ollama endpoint.
+    A local hash fallback keeps the system usable even when the Ollama daemon is not running.
     """
 
     def __init__(
@@ -49,12 +50,14 @@ class OllamaEmbeddingProvider:
         model: str = "embeddinggemma",
         base_url: str = "http://127.0.0.1:11434",
         timeout_seconds: float = 30.0,
+        fallback: LocalHashEmbeddingProvider | None = None,
     ) -> None:
         if not model.strip():
             raise ValueError("O modelo de embeddings do Ollama deve ser informado.")
         self.model = model.strip()
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = max(1.0, timeout_seconds)
+        self._fallback = fallback or LocalHashEmbeddingProvider()
 
     def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
         if not texts:
@@ -71,11 +74,11 @@ class OllamaEmbeddingProvider:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 result = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Falha ao gerar embeddings locais com Ollama: {exc}") from exc
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            return self._fallback.embed(texts)
         embeddings = result.get("embeddings")
         if not isinstance(embeddings, list) or len(embeddings) != len(texts):
-            raise RuntimeError("Ollama retornou embeddings em formato inesperado.")
+            return self._fallback.embed(texts)
         return embeddings
 
 

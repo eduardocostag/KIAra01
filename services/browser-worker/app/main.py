@@ -25,7 +25,7 @@ from .browser_engine import (
     profile_path,
     workspace_seed,
 )
-from .instagram import InstagramSessionFailure
+from .instagram import InstagramSessionFailure, _failure_for_payload
 from .instagram_safety import InstagramSafetyGuard, InstagramSafetyLimit
 
 INSTAGRAM_LOGIN = "https://www.instagram.com/accounts/login/"
@@ -185,30 +185,46 @@ class BrowserSessions:
                         }
                     });
                     const text = await response.text();
-                    return { status: response.status, text };
+                    return { status: response.status, text, url: response.url };
                 }""",
                 url,
             )
-        if not isinstance(result, dict) or int(result.get("status", 500)) >= 400:
-            raise InstagramSessionFailure(
-                502,
-                "instagram_collection_failed",
-                "O Instagram recusou a consulta autenticada.",
-            )
+        if not isinstance(result, dict):
+            raise InstagramSessionFailure(502, "instagram_invalid_response", "O Instagram respondeu em formato incompatível.")
+        status = int(result.get("status", 500))
+        default = InstagramSessionFailure(502, "instagram_collection_failed", "O Instagram recusou a consulta autenticada.")
+        if status == 429:
+            raise _failure_for_payload({"message": "rate limited"}, default)
+        response_url = str(result.get("url") or "")
+        if "/challenge/" in response_url or "/checkpoint/" in response_url:
+            raise _failure_for_payload({"message": "challenge required"}, default)
+        if "/accounts/login" in response_url:
+            raise _failure_for_payload({"message": "login_required"}, default)
         try:
             parsed = json.loads(str(result.get("text") or "{}"))
-        except json.JSONDecodeError as error:
-            raise InstagramSessionFailure(
-                502,
-                "instagram_invalid_response",
-                "O Instagram respondeu em formato incompatível.",
-            ) from error
+        except json.JSONDecodeError:
+            parsed = None
+        # Inspect structured platform failures even when HTTP is 200 or 403.
+        if isinstance(parsed, dict) and (
+            parsed.get("status") == "fail" or status >= 400
+            or parsed.get("challenge") or parsed.get("checkpoint_url")
+        ):
+            failure_payload = parsed
+            if parsed.get("challenge") or parsed.get("checkpoint_url"):
+                failure_payload = {**parsed, "message": "challenge required"}
+            failure = _failure_for_payload(failure_payload, default)
+            if failure.code != "instagram_collection_failed":
+                raise failure
+            if status not in {401, 403, 404}:
+                raise failure
+        if status in {401, 403}:
+            raise _failure_for_payload({"message": "login_required"}, default)
+        if status == 404:
+            raise InstagramSessionFailure(404, "instagram_target_not_found", "O perfil ou a publicação não foi encontrado.")
+        if status >= 400:
+            raise default
         if not isinstance(parsed, dict):
-            raise InstagramSessionFailure(
-                502,
-                "instagram_invalid_response",
-                "O Instagram respondeu em formato incompatível.",
-            )
+            raise InstagramSessionFailure(502, "instagram_invalid_response", "O Instagram respondeu em formato incompatível.")
         return parsed
 
     async def fetch_instagram_json(self, workspace_id: str, url: str) -> dict:
@@ -302,7 +318,8 @@ app = FastAPI(title="Kiara Browser Worker", version="1.0.0")
 async def instagram_failure_handler(_request: Request, error: InstagramSessionFailure):
     return JSONResponse(
         status_code=error.status_code,
-        content={"detail": error.message, "code": error.code},
+        content={"detail": error.message, "code": error.code, **({"retry_after": error.retry_after_seconds} if error.retry_after_seconds else {})},
+        headers={"Retry-After": str(error.retry_after_seconds)} if error.retry_after_seconds else None,
     )
 
 
@@ -441,10 +458,10 @@ async def instagram_analyse(payload: AnalysisRequest) -> dict:
     try:
         return await _run_instagram_analysis(payload, cookie, collect_instagram_relationships)
     except InstagramSessionFailure as error:
-        if error.code == "instagram_rate_limited":
-            await safety.pause(payload.workspace_id, 3_600)
-        elif error.code == "instagram_verification_required":
-            await safety.pause(payload.workspace_id, 86_400)
+        retry_after = {"instagram_rate_limited": 3_600, "instagram_verification_required": 86_400}.get(error.code)
+        if retry_after:
+            await safety.pause(payload.workspace_id, retry_after)
+            raise InstagramSessionFailure(error.status_code, error.code, error.message, retry_after) from error
         raise
 
 
@@ -485,7 +502,11 @@ async def _run_instagram_analysis(payload: AnalysisRequest, cookie: str, collect
                 payload.media_id,
                 payload.limit,
             )
-        except InstagramSessionFailure:
+        except InstagramSessionFailure as error:
+            if error.code in {
+                "instagram_rate_limited", "instagram_verification_required", "instagram_session_expired"
+            }:
+                raise
             comments_override = None
     items, snapshot = await asyncio.to_thread(
         collect_instagram_relationships,

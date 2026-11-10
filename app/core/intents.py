@@ -170,8 +170,11 @@ class IntentRouter:
 
 
 def default_matchers() -> list[IntentMatcher]:
+    from app.core.chatwoot_intents import ChatwootMatcher
+
     flags = re.IGNORECASE
     return [
+        ChatwootMatcher(),
         OrganicConsumerResearchMatcher(),
         LocalLeadResearchMatcher(),
         PatternMatcher(

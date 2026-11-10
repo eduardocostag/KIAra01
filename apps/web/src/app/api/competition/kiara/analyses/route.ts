@@ -5,5 +5,8 @@ export async function POST(request: Request) {
   return kiaraApi("/v1/competition/kiara/analyses", {
     method: "POST",
     body: await request.text(),
+    headers: {
+      "Idempotency-Key": request.headers.get("Idempotency-Key") ?? "",
+    },
   });
 }

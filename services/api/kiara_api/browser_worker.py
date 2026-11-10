@@ -14,6 +14,7 @@ class BrowserWorkerError(Exception):
     status_code: int
     code: str
     message: str
+    retry_after: int | None = None
 
     def __str__(self) -> str:
         return self.message
@@ -59,8 +60,11 @@ class BrowserWorkerClient:
                 raw = response.read(8_000_001)
         except HTTPError as error:
             raw = error.read(100_001)
+            body = {}
             try:
                 body = json.loads(raw)
+                if not isinstance(body, dict):
+                    body = {}
                 message = str(body.get("detail") or body.get("message") or "")
             except (UnicodeDecodeError, json.JSONDecodeError):
                 message = ""
@@ -70,10 +74,18 @@ class BrowserWorkerClient:
                 409: "instagram_connection_required",
                 429: "browser_worker_busy",
             }.get(error.code, "browser_worker_failed")
+            worker_code = body.get("code")
+            if isinstance(worker_code, str) and worker_code.startswith("instagram_"):
+                code = worker_code
+            try:
+                retry_after = max(0, int(body.get("retry_after") or error.headers.get("Retry-After") or 0)) or None
+            except (ValueError, TypeError):
+                retry_after = None
             raise BrowserWorkerError(
                 error.code if 400 <= error.code < 500 else 502,
                 code,
                 message or f"O navegador Oracle respondeu com HTTP {error.code}.",
+                retry_after,
             ) from None
         except (URLError, TimeoutError, OSError):
             raise BrowserWorkerError(

@@ -22,7 +22,7 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
-Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind", "postiz"]
+Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind", "postiz", "chatwoot"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
     "instagram": {"app_id", "app_secret", "access_token", "instagram_account_id", "page_id", "verify_token"},
@@ -30,6 +30,7 @@ ALLOWED_FIELDS = {
     "hermes": {"endpoint_url", "api_key", "instance_id"},
     "mailerfind": {"endpoint_url", "access_token", "refresh_token", "client_id", "client_secret", "expires_at", "scope", "token_type"},
     "postiz": {"endpoint_url", "api_key"},
+    "chatwoot": {"endpoint_url", "api_access_token", "account_id", "webhook_secret"},
 }
 
 
@@ -101,7 +102,8 @@ class IntegrationRepository:
         async with self._postgres._transaction(organization_id) as connection:
             row = await (await connection.execute(
                 """SELECT encrypted_credentials FROM integration_credentials
-                   WHERE provider=%s AND status!='disabled' AND (organization_id=%s OR is_global=true)
+                   WHERE provider=%s AND status!='disabled'
+                     AND (organization_id=%s OR (is_global=true AND provider NOT IN ('chatwoot','postiz')))
                    ORDER BY (organization_id=%s) DESC, is_global DESC LIMIT 1""",
                 (provider, _uuid("organization", organization_id), _uuid("organization", organization_id)),
             )).fetchone()
@@ -144,6 +146,7 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                     {"session_id"} if provider == "instagram_session" else
                     {"endpoint_url", "api_key", "instance_id"} if provider == "hermes" else
                     {"endpoint_url", "access_token", "client_id"} if provider == "mailerfind" else
+                    {"endpoint_url", "api_access_token", "account_id"} if provider == "chatwoot" else
                     {"endpoint_url", "api_key"})
         missing = required - set(credentials)
         if missing:
@@ -177,12 +180,38 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                 raise ApiError(422, "invalid_mailerfind_endpoint", "O endpoint oficial do MailerFind não foi reconhecido.")
             if credentials.get("token_type", "Bearer").lower() != "bearer":
                 raise ApiError(422, "invalid_mailerfind_token", "O MailerFind não retornou um token Bearer compatível.")
+        elif provider == "chatwoot":
+            if credentials.get("webhook_secret") and not 16 <= len(credentials["webhook_secret"]) <= 512:
+                raise ApiError(422, "invalid_chatwoot_webhook_secret", "Segredo de webhook inválido.")
+            if len(credentials["endpoint_url"]) > 2048 or any(ord(c) < 33 for c in credentials["endpoint_url"]):
+                raise ApiError(422, "invalid_chatwoot_endpoint", "Informe uma URL HTTPS publica base do Chatwoot.")
+            try:
+                parsed = urlsplit(credentials["endpoint_url"])
+                port = parsed.port
+            except ValueError:
+                raise ApiError(422, "invalid_chatwoot_endpoint", "Informe uma URL HTTPS publica base do Chatwoot.") from None
+            if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.path not in {"", "/"}
+                    or (port is not None and port < 1)):
+                raise ApiError(422, "invalid_chatwoot_endpoint", "Informe uma URL HTTPS publica base do Chatwoot.")
+            try:
+                address = ipaddress.ip_address(parsed.hostname)
+            except ValueError:
+                if parsed.hostname.lower().rstrip(".") in {"localhost", "localhost.localdomain"}:
+                    raise ApiError(422, "invalid_chatwoot_endpoint", "Use uma instancia Chatwoot publica no backend.") from None
+            else:
+                if not address.is_global:
+                    raise ApiError(422, "invalid_chatwoot_endpoint", "Use uma instancia Chatwoot publica no backend.")
+            if not re.fullmatch(r"[1-9]\d{0,9}", credentials["account_id"]):
+                raise ApiError(422, "invalid_chatwoot_account", "Account ID Chatwoot invalido.")
+            if not re.fullmatch(r"[!-~]{8,4096}", credentials["api_access_token"]):
+                raise ApiError(422, "invalid_chatwoot_token", "Token Chatwoot invalido.")
         elif provider == "postiz":
             parsed = urlsplit(credentials["endpoint_url"].rstrip("/"))
             local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
             if (parsed.scheme != "https" and not (local and parsed.scheme == "http")) or not parsed.hostname:
                 raise ApiError(422, "invalid_postiz_endpoint", "Use uma URL HTTPS do Postiz ou HTTP somente em localhost.")
-            if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in {"", "/"}:
+            if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in {"", "/", "/api"}:
                 raise ApiError(422, "invalid_postiz_endpoint", "Informe somente a URL base da API Postiz.")
             if not re.fullmatch(r"[^\s]{16,4096}", credentials["api_key"]):
                 raise ApiError(422, "invalid_postiz_api_key", "A chave da API Postiz não possui um formato válido.")
@@ -197,7 +226,7 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
 
     def ensure_system_admin(context: RequestContext) -> None:
         if context.email != SYSTEM_ADMIN_EMAIL:
-            raise ApiError(403, "system_admin_required", "Somente o administrador geral pode configurar o MailerFind global.")
+            raise ApiError(403, "system_admin_required", "Somente o administrador geral pode configurar esta integração global.")
 
     @router.get("")
     async def list_integrations(context: Annotated[RequestContext, Depends(authenticated_context)]):
@@ -207,7 +236,7 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
     async def save_integration(provider: Provider, payload: IntegrationInput, context: Annotated[RequestContext, Depends(authenticated_context)]):
         if provider != "instagram_session":
             ensure_admin(context)
-        if provider in {"mailerfind", "postiz"}:
+        if provider == "mailerfind":
             ensure_system_admin(context)
         return await repository.save(context.organization_id, provider, payload.credentials)
 
@@ -215,7 +244,7 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
     async def disconnect_integration(provider: Provider, context: Annotated[RequestContext, Depends(authenticated_context)]):
         if provider != "instagram_session":
             ensure_admin(context)
-        if provider in {"mailerfind", "postiz"}:
+        if provider == "mailerfind":
             ensure_system_admin(context)
         await repository.disconnect(context.organization_id, provider)
         return None
@@ -249,7 +278,8 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
 
     @router.get("/postiz/credentials")
     async def postiz_credentials(context: Annotated[RequestContext, Depends(authenticated_context)]):
-        ensure_system_admin(context)
+        if context.role not in {"owner", "admin", "operator"}:
+            raise ApiError(403, "postiz_forbidden", "Seu perfil não pode publicar conteúdo.")
         credentials = await repository.credentials_for(context.organization_id, "postiz")
         if not credentials:
             raise ApiError(404, "postiz_not_configured", "Configure o Postiz na Central administrativa.")

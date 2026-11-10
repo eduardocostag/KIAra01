@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ class InstagramSessionFailure(Exception):
     status_code: int
     code: str
     message: str
+    retry_after_seconds: int | None = None
 
     def __str__(self) -> str:
         return self.message
@@ -275,6 +277,33 @@ def _comment_intent(text: str) -> tuple[str, int, str]:
     return "comentario_relevante", 55, "Comentário textual com potencial de abordagem"
 
 
+def _public_contacts(user: Any, profile_url: str) -> dict[str, Any]:
+    # Only consume explicitly public fields already returned by Instagram.
+    # No enrichment request, inferred address, or private-profile contact is used.
+    if _value(user, "is_private"):
+        return {}
+    contacts: dict[str, Any] = {}
+    evidence: dict[str, Any] = {}
+    email_pattern = r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+"
+    email = str(_value(user, "public_email") or "").strip()
+    source_field = "public_email"
+    if not re.fullmatch(email_pattern, email) or len(email) > 320:
+        biography = str(_value(user, "biography") or "")
+        match = re.search(email_pattern, biography)
+        email = match.group(0) if match else ""
+        source_field = "biography"
+    if email and len(email) <= 320:
+        contacts["email"] = email
+        evidence["email"] = {"source": "instagram_public_profile", "field": source_field, "profile_url": profile_url, "value": email}
+    phone = str(_value(user, "public_phone_number") or "").strip()
+    if phone and len(phone) <= 80 and re.fullmatch(r"[+()0-9 .-]+", phone) and 7 <= sum(char.isdigit() for char in phone) <= 15:
+        contacts["phone_number"] = phone
+        evidence["phone_number"] = {"source": "instagram_public_profile", "field": "public_phone_number", "profile_url": profile_url, "value": phone}
+    if evidence:
+        contacts["contact_evidence"] = evidence
+    return contacts
+
+
 def _profile(user: Any, *, relationship: str, media: Any = None, comment: Any = None) -> dict[str, Any] | None:
     username = str(_value(user, "username") or "").strip().lower()
     user_id = str(_value(user, "pk") or _value(user, "id") or "").strip()
@@ -292,6 +321,7 @@ def _profile(user: Any, *, relationship: str, media: Any = None, comment: Any = 
         "source_media_url": f"https://www.instagram.com/p/{media_code}/" if media_code else "",
         "source": "kiara_instagram_authenticated",
     }
+    profile.update(_public_contacts(user, profile["profile_url"]))
     if comment is not None:
         comment_text = str(_value(comment, "text") or "")[:500]
         intent, score, reason = _comment_intent(comment_text)

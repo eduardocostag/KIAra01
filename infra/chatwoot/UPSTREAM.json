@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/chatwoot/chatwoot",
+  "release": "v4.19.1",
+  "commit": "caab07a8f00032d5205b5a5d7e2eb0ba2f3d2d82",
+  "edition": "ce",
+  "chatwoot_image": "chatwoot/chatwoot:v4.19.1-ce@sha256:04895c7bd0550d9e74b45b7202787b56f7ee4e891ebbde0c429c8c32901b97cf",
+  "registry_digest_verified_on": "2026-11-09",
+  "source_compose": "docker-compose.production.yaml",
+  "license": "Core MIT Expat; enterprise/ excluded from the CE image and subject to enterprise/LICENSE in the source checkout"
+}

@@ -2,13 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
   BadgeCheck,
   CheckCircle2,
   Clock3,
   Database,
+  Download,
   Info,
   ListChecks,
   Link2,
@@ -45,6 +46,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import styles from "@/app/(app)/app/concorrencia/competition-reference.module.css";
+
+import { filterProspects, prospectsCsv } from "@/lib/competition/export";
 
 type JsonObject = Record<string, unknown>;
 type Mode = "followers" | "commenters" | "likers" | "post_audience";
@@ -150,7 +153,7 @@ function statusLabel(value: unknown) {
     DONE: "Concluída",
     FAILED: "Não concluída",
     FINISHED: "Concluída",
-    PAUSED: "Concluída",
+    PAUSED: "Pausada por proteção",
   };
   return isRunning(value)
     ? "Pesquisa em andamento"
@@ -172,7 +175,7 @@ async function bodyOrError(response: Response) {
     const code = String(body?.error?.code ?? body?.code ?? "");
     const upstreamMessage = String(body?.error?.message ?? body?.detail ?? "");
     if (response.status === 429 || code.includes("cooldown") || code.includes("rate_limit")) {
-      const retryAfter = Number(response.headers.get("Retry-After") || body?.retry_after || 0);
+      const retryAfter = Number(response.headers.get("Retry-After") || body?.error?.details?.retry_after || body?.retry_after || 0);
       const wait = retryAfter >= 3600
         ? `${Math.ceil(retryAfter / 3600)} hora${Math.ceil(retryAfter / 3600) === 1 ? "" : "s"}`
         : retryAfter > 0
@@ -186,12 +189,23 @@ async function bodyOrError(response: Response) {
 }
 
 export function CompetitionConsole() {
+  const analysisRequest = useRef<{ fingerprint: string; key: string } | null>(null);
   const [mode, setMode] = useState<Mode>("post_audience");
   const [target, setTarget] = useState("");
   const [profilePreview, setProfilePreview] = useState<JsonObject>({});
   const [selectedPublication, setSelectedPublication] = useState("");
   const [overview, setOverview] = useState<JsonObject>({});
   const [prospects, setProspects] = useState<JsonObject[]>([]);
+  const [prospectQuery, setProspectQuery] = useState("");
+  const [contactsOnly, setContactsOnly] = useState(false);
+  const visibleProspects = useMemo(() => filterProspects(prospects, prospectQuery, contactsOnly), [prospects, prospectQuery, contactsOnly]);
+  function exportProspects() {
+    const url = URL.createObjectURL(new Blob([prospectsCsv(visibleProspects)], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = "kiara-concorrencia.csv";
+    document.body.appendChild(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   const [selectedAnalysis, setSelectedAnalysis] = useState("");
   const [trackingId, setTrackingId] = useState("");
   const [liveAnalysis, setLiveAnalysis] = useState<JsonObject | null>(null);
@@ -426,7 +440,7 @@ export function CompetitionConsole() {
     [profilePreview],
   );
   const totalArchivedLeads = useMemo(
-    () => analyses.reduce((total, item) => total + (firstNumber(item, ["prospectCount", "prospect_count"]) ?? 0), 0),
+    () => analyses.reduce((total, item) => total + (firstNumber(item, ["prospectCount", "prospectsCount", "prospect_count", "totalProspects"]) ?? 0), 0),
     [analyses],
   );
 
@@ -523,24 +537,100 @@ export function CompetitionConsole() {
         throw new Error("Selecione uma publicação antes de iniciar a análise.");
       if (!profileUsername)
         throw new Error("Carregue um perfil antes de iniciar a análise.");
-      const response = await fetch("/api/competition/kiara/analyses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          target: mode === "followers" ? profileUsername : publicationUrl,
-          media_id: mode === "followers" ? null : selectedPublication,
-          name: `Kiara · ${modes[mode].label} · @${profileUsername}`,
-        }),
+      const requestBody = JSON.stringify({
+        mode,
+        target: mode === "followers" ? profileUsername : publicationUrl,
+        media_id: mode === "followers" ? null : selectedPublication,
+        name: `Kiara · ${modes[mode].label} · @${profileUsername}`,
       });
-      const body = await bodyOrError(response);
+      if (analysisRequest.current?.fingerprint !== requestBody) {
+        const stored = sessionStorage.getItem("kiara.competition.pending-job");
+        let recovered: { fingerprint: string; key: string } | null = null;
+        if (stored) {
+          try {
+            const parsed: unknown = JSON.parse(stored);
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              "fingerprint" in parsed &&
+              "key" in parsed &&
+              parsed.fingerprint === requestBody &&
+              typeof parsed.key === "string"
+            )
+              recovered = { fingerprint: requestBody, key: parsed.key };
+          } catch {
+            sessionStorage.removeItem("kiara.competition.pending-job");
+          }
+        }
+        analysisRequest.current = recovered ?? {
+          fingerprint: requestBody,
+          key: crypto.randomUUID(),
+        };
+        sessionStorage.setItem(
+          "kiara.competition.pending-job",
+          JSON.stringify(analysisRequest.current),
+        );
+      }
+      const idempotencyKey = analysisRequest.current?.key;
+      if (!idempotencyKey)
+        throw new Error("Não foi possível preparar uma chave segura para esta pesquisa.");
+      const submitRequest = () =>
+        fetch("/api/competition/kiara/analyses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: requestBody,
+        });
+      let response = await submitRequest();
+      let body = await bodyOrError(response);
+      if (response.status === 202) {
+        const jobId = firstString(asObject(body.job), ["id"]);
+        if (!jobId)
+          throw new Error("A pesquisa já está em andamento, mas não devolveu um identificador de acompanhamento.");
+        let completed = false;
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          const statusResponse = await fetch(
+            `/api/competition/kiara/jobs/${encodeURIComponent(jobId)}`,
+            { cache: "no-store" },
+          );
+          const statusBody = await bodyOrError(statusResponse);
+          const job = asObject(statusBody.job);
+          const state = firstString(job, ["state"]);
+          if (state === "completed") {
+            response = await submitRequest();
+            body = await bodyOrError(response);
+            completed = response.status !== 202;
+            break;
+          }
+          if (state === "failed")
+            throw new Error(
+              firstString(job, ["error_message"]) ||
+                "A pesquisa falhou. Tente novamente; a mesma chave permitirá uma retomada segura.",
+            );
+        }
+        if (!completed) {
+          setNotice({
+            title: "Pesquisa ainda em andamento",
+            text: `A pesquisa ${jobId} continua salva no servidor. Reenvie a mesma solicitação para acompanhar sem duplicar a execução.`,
+          });
+          return;
+        }
+      }
       const id = findIdentifier(asObject(body.analysis));
       if (!id)
         throw new Error(
           "A pesquisa terminou, mas não foi possível abrir o arquivo criado.",
         );
+      analysisRequest.current = null;
+      sessionStorage.removeItem("kiara.competition.pending-job");
+      const returnedProspects = findItems(body, ["items", "prospects"]);
       await loadOverview();
-      await loadProspects(id);
+      setProspects(returnedProspects);
+      setSelectedAnalysis(id);
+      if (!returnedProspects.length) await loadProspects(id, false);
       if (typeof body.message === "string" && body.message)
         setNotice({ title: "Consulta concluída", text: body.message });
     } catch (error) {
@@ -556,10 +646,10 @@ export function CompetitionConsole() {
     }
   }
 
-  async function loadProspects(analysisId: string) {
+  async function loadProspects(analysisId: string, replaceExisting = true) {
     setSelectedAnalysis(analysisId);
     setLoading("prospects");
-    setProspects([]);
+    if (replaceExisting) setProspects([]);
     setNotice(null);
     try {
       const query = new URLSearchParams({
@@ -1176,15 +1266,21 @@ export function CompetitionConsole() {
         <Card>
           <CardHeader>
             <CardTitle>Prospectos da análise</CardTitle>
+            <CardDescription>{visibleProspects.length} de {prospects.length} perfis. Contatos aparecem somente quando publicados e disponibilizados pela origem.</CardDescription>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="grid gap-2"><Label htmlFor="prospect-search">Buscar nesta análise</Label><Input id="prospect-search" value={prospectQuery} onChange={(event) => setProspectQuery(event.target.value)} placeholder="Nome, usuário, contato ou comentário" /></div>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={contactsOnly} onChange={(event) => setContactsOnly(event.target.checked)} />Somente com contato público</label>
+              <Button variant="outline" onClick={exportProspects} disabled={!visibleProspects.length || loading === "prospects"}><Download />Exportar CSV</Button>
+            </div>
           </CardHeader>
           <CardContent>
             {loading === "prospects" ? (
               <div className={styles.loading}>
                 <Loader2 className="animate-spin" /> Consultando prospectos…
               </div>
-            ) : prospects.length ? (
+            ) : visibleProspects.length ? (
               <div className={styles.prospectGrid}>
-                {prospects.map((item, index) => {
+                {visibleProspects.map((item, index) => {
                   const rawUsername = firstString(item, [
                     "username",
                     "userName",

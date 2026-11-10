@@ -28,7 +28,7 @@ voice = [
   "edge-tts>=7.2,<8",
 ]
 openai = ["openai>=1.60"]
-browser = ["playwright>=1.49"]
+browser = ["playwright>=1.49", "tzdata>=2024.1"]
 web = [
   "fastapi>=0.115,<1",
   "psycopg[binary]>=3.2,<4",

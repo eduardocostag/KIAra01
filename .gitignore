@@ -39,3 +39,19 @@ Thumbs.db
 .DS_Store
 .vercel
 .env*
+
+# Sessão WhatsApp Web e histórico privado do executor local
+data/whatsapp-web/
+
+# External runtimes, dependencies and local credentials
+services/freellmapi/
+services/chatwoot/
+data/chatwoot/
+data/tools/
+data/maps-scraper/
+data/freellmapi/
+data/operational-services/
+data/instagram/
+.cache/npm-freellmapi/
+.cache/npm-deploy/
+.release/

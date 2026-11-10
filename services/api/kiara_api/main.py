@@ -28,15 +28,18 @@ from .adapters.demo import (
 )
 from .adapters.pipeline_memory import InMemoryPipelineRepository
 from .application.conversations import ConversationCommands
-from .config import ApiSettings
+from .channel_webhooks import create_channel_webhook_router
+from .chatwoot import create_chatwoot_router
 from .competition import create_competition_router
 from .competition_store import CompetitionRepository
+from .config import ApiSettings
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 from .http.routes.conversations import create_conversation_router
 from .http.routes.pipeline import create_pipeline_router
 from .hunter import HunterRepository, create_hunter_router
+from .instagram_content import create_instagram_content_router
 from .integrations import IntegrationRepository, create_integration_router
 from .ports.conversations import ConversationCommandRepository
 from .ports.identity import IdentityVerifier
@@ -44,6 +47,8 @@ from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .sales import SalesRepository, create_sales_router
 from .social import SocialRepository, create_social_router
+from .unified_inbox import UnifiedInboxRepository, create_unified_inbox_router
+from .whatsapp_web import WhatsAppWebRepository, create_whatsapp_web_router
 from .workspace import PostgresWorkspaceResetRepository, create_workspace_router
 
 logger = logging.getLogger(__name__)
@@ -401,12 +406,17 @@ def create_app(
         create_conversation_router(ConversationCommands(conversation_commands_repository))
     )
     app.include_router(create_pipeline_router(pipeline_entries_repository))
+    app.include_router(create_instagram_content_router())
+    app.include_router(create_whatsapp_web_router(WhatsAppWebRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_social_router(SocialRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     if config.database_url:
+        app.include_router(create_unified_inbox_router(UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None)))
         app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
         if config.integration_encryption_key:
             integration_repository = IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key)
             app.include_router(create_integration_router(integration_repository))
+            app.include_router(create_chatwoot_router(integration_repository))
+            app.include_router(create_channel_webhook_router(integration_repository))
             app.include_router(create_competition_router(
                 CompetitionRepository(PostgresRepository(config.database_url)),
             ))

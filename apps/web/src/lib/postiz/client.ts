@@ -1,5 +1,6 @@
 import "server-only";
 import { kiaraApi } from "@/lib/api/server-client";
+import { postizTransport } from "./transport";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 8_000_000;
@@ -16,23 +17,13 @@ export class PostizRequestError extends Error {
 }
 
 async function configuration() {
-  let apiKey = process.env.POSTIZ_API_KEY?.trim() || "";
-  let configuredUrl = process.env.POSTIZ_API_URL?.trim() || "https://api.postiz.com";
-  try {
-    const response = await kiaraApi("/v1/integrations/postiz/credentials");
-    if (response.ok) {
-      const stored = await response.json() as { api_key?: unknown; endpoint_url?: unknown };
-      if (typeof stored.api_key === "string" && stored.api_key.trim()) apiKey = stored.api_key.trim();
-      if (typeof stored.endpoint_url === "string" && stored.endpoint_url.trim()) configuredUrl = stored.endpoint_url.trim();
-    } else if (response.status !== 404 && !apiKey) {
-      throw new PostizConfigurationError("Não foi possível acessar a configuração protegida do Postiz.");
-    }
-  } catch (error) {
-    if (!apiKey) {
-      if (error instanceof PostizConfigurationError) throw error;
-      throw new PostizConfigurationError("A integração Postiz ainda não foi configurada.");
-    }
-  }
+  let apiKey = "";
+  let configuredUrl = "";
+  const response = await kiaraApi("/v1/integrations/postiz/credentials");
+  if (!response.ok) throw new PostizConfigurationError("Conecte o Postiz deste workspace em Configurações > Integrações.");
+  const stored = await response.json() as { api_key?: unknown; endpoint_url?: unknown };
+  if (typeof stored.api_key === "string") apiKey = stored.api_key.trim();
+  if (typeof stored.endpoint_url === "string") configuredUrl = stored.endpoint_url.trim();
   if (!apiKey) throw new PostizConfigurationError("A integração Postiz ainda não foi configurada.");
   let baseUrl: URL;
   try {
@@ -47,29 +38,15 @@ async function configuration() {
   return { apiKey, baseUrl };
 }
 
-function safeMessage(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const value = payload as Record<string, unknown>;
-  for (const candidate of [value.message, value.msg, value.error]) {
-    if (typeof candidate === "string" && candidate.trim()) return candidate.slice(0, 300);
-  }
-  return fallback;
-}
-
 export async function postizRequest(path: string, init: RequestInit = {}): Promise<unknown> {
   const { apiKey, baseUrl } = await configuration();
   const target = new URL(path.replace(/^\/+/, ""), baseUrl.href.endsWith("/") ? baseUrl : new URL(`${baseUrl.href}/`));
   if (target.origin !== baseUrl.origin) throw new PostizConfigurationError("Rota Postiz inválida.");
-  const response = await fetch(target, {
-    ...init,
-    cache: "no-store",
-    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-    headers: {
+  const response = await postizTransport(target, init, new Headers({
       Accept: "application/json",
       Authorization: apiKey,
       ...init.headers,
-    },
-  });
+  }), DEFAULT_TIMEOUT_MS);
   const text = await response.text();
   if (text.length > MAX_RESPONSE_BYTES) throw new PostizRequestError("A resposta do Postiz excedeu o limite seguro.", 502, "postiz_response_too_large");
   let payload: unknown = {};
@@ -79,7 +56,7 @@ export async function postizRequest(path: string, init: RequestInit = {}): Promi
   }
   if (!response.ok) {
     const code = response.status === 401 ? "postiz_auth_failed" : response.status === 429 ? "postiz_rate_limited" : "postiz_request_failed";
-    throw new PostizRequestError(safeMessage(payload, `O Postiz respondeu com HTTP ${response.status}.`), response.status, code);
+    throw new PostizRequestError(`O Postiz respondeu com HTTP ${response.status}. Revise a conexão e os dados da publicação.`, response.status, code);
   }
   return payload;
 }

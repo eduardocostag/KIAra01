@@ -6,14 +6,20 @@ from kiara_api.http.errors import ApiError
 from kiara_api.integrations import _validate_credentials
 
 
-def test_postiz_accepts_cloud_and_local_endpoints() -> None:
+@pytest.mark.parametrize("endpoint", [
+    "https://api.postiz.com",
+    "https://api.postiz.com/",
+    "https://postiz.example.com/api",
+    "https://postiz.example.com/api/",
+    "http://localhost:4007",
+    "http://localhost:4007/api",
+    "http://127.0.0.1:4007/api",
+    "http://[::1]:4007/api",
+])
+def test_postiz_accepts_cloud_and_self_hosted_endpoints(endpoint: str) -> None:
     _validate_credentials("postiz", {
-        "endpoint_url": "https://api.postiz.com",
+        "endpoint_url": endpoint,
         "api_key": "postiz-test-api-key-123456",
-    })
-    _validate_credentials("postiz", {
-        "endpoint_url": "http://localhost:4007",
-        "api_key": "postiz-local-api-key-1234",
     })
 
 
@@ -22,6 +28,12 @@ def test_postiz_accepts_cloud_and_local_endpoints() -> None:
     "https://user:secret@postiz.example.com",
     "https://postiz.example.com/public/v1",
     "https://postiz.example.com?key=value",
+    "https://postiz.example.com/api?key=value",
+    "https://postiz.example.com/api#fragment",
+    "https://user:secret@postiz.example.com/api",
+    "https://postiz.example.com/api/public/v1",
+    "https://postiz.example.com/arbitrary",
+    "http://postiz.example.com/api",
 ])
 def test_postiz_rejects_unsafe_or_non_base_endpoint(endpoint: str) -> None:
     with pytest.raises(ApiError) as error:

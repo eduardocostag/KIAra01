@@ -9,14 +9,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { LeadQualification } from "./lead-qualification"
 import { PipelineBoard } from "./pipeline-board"
+import { LeadOperationsWorkspace } from "./lead-operations-workspace"
 import { instagramProfileUrl, leadDisplayName, parsePipelineEntry, requestPipeline, sourceLabels, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
 import "./inbox-hub.css"
 
 export function InboxHub({ entries: initialEntries, prospectError, initialView, initialContactId }: { entries: PipelineEntry[]; prospectError: string; initialView: string; initialContactId: string }) {
   const [entries, setEntries] = useState(initialEntries)
   const [query, setQuery] = useState("")
-  const normalizedView = initialView === "pipeline" || initialView === "notes" || initialView === "conversations" ? (initialView === "conversations" ? "notes" : initialView) : "contacts"
+  const normalizedView = initialView === "pipeline" || initialView === "notes" || initialView === "conversations" ? initialView : "contacts"
   const requestedContact = initialEntries.find((entry) => entry.id === initialContactId || entry.consumer.id === initialContactId)
   const [view, setView] = useState(normalizedView)
   const [selectedContactId, setSelectedContactId] = useState(requestedContact?.id ?? entries[0]?.id ?? "")
@@ -29,10 +31,11 @@ export function InboxHub({ entries: initialEntries, prospectError, initialView, 
   const annotatedCount = annotatedContacts.length
 
   return <Tabs value={view} onValueChange={setView} className="inbox-premium gap-3 sm:gap-5">
-    <TabsList aria-label="Visualização dos leads" className="grid h-auto w-full grid-cols-3 rounded-xl border bg-card/70 p-1 sm:w-fit sm:min-w-[430px]">
+    <TabsList aria-label="Visualização dos leads" className="grid h-auto w-full grid-cols-4 rounded-xl border bg-card/70 p-1 sm:w-fit sm:min-w-[520px]">
       <TabsTrigger value="contacts" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><List aria-hidden="true" />Lista <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">{contacts.length}</span></TabsTrigger>
       <TabsTrigger value="pipeline" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><Columns3 aria-hidden="true" />Pipeline</TabsTrigger>
       <TabsTrigger value="notes" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><NotebookPen aria-hidden="true" />Anotações <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">{annotatedCount}</span></TabsTrigger>
+      <TabsTrigger value="conversations" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><MessageCircle aria-hidden="true" />Operação</TabsTrigger>
     </TabsList>
     {view === "contacts" ? <div className="kiara-inbox-toolbar"><div className="kiara-inbox-search"><Search aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-10" placeholder="Buscar um contato" aria-label="Buscar prospectados" /></div></div> : null}
     <TabsContent value="notes">
@@ -44,6 +47,9 @@ export function InboxHub({ entries: initialEntries, prospectError, initialView, 
     </TabsContent>
     <TabsContent value="pipeline">
       {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <PipelineBoard initialEntries={entries} />}
+    </TabsContent>
+    <TabsContent value="conversations">
+      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <LeadOperationsWorkspace entries={entries} />}
     </TabsContent>
   </Tabs>
 }
@@ -116,7 +122,7 @@ function ContactDossier({ entry, onOpenNotes }: { entry: PipelineEntry; onOpenNo
   ]
   return <section className="kiara-contact-dossier" aria-label={`Detalhes de ${displayName}`}>
     <header><div className="kiara-contact-identity"><span><SourceMark kind={kind} /></span><div><div><h2 title={displayName}>{displayName}</h2><span className="kiara-contact-status">Novo</span></div><p>{consumer.research_query || source}</p></div></div></header>
-    <div className="kiara-contact-grid"><section className="kiara-evidence-panel"><h3>Qualidade e origem da evidência</h3><dl>{evidence.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon />{label}</dt><dd>{value}</dd></div>)}</dl>{consumer.match_reasons?.length ? <div className="kiara-evidence-reasons">{consumer.match_reasons.slice(0, 3).map((reason) => <span key={reason}>{reason}</span>)}</div> : null}</section><section id="contact-actions"><h3>Ações rápidas</h3><div className="kiara-contact-quick-actions">
+    <LeadQualification qualification={entry.qualification} /><div className="kiara-contact-grid"><section className="kiara-evidence-panel"><h3>Qualidade e origem da evidência</h3><dl>{evidence.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon />{label}</dt><dd>{value}</dd></div>)}</dl>{consumer.match_reasons?.length ? <div className="kiara-evidence-reasons">{consumer.match_reasons.slice(0, 3).map((reason) => <span key={reason}>{reason}</span>)}</div> : null}</section><section id="contact-actions"><h3>Ações rápidas</h3><div className="kiara-contact-quick-actions">
       <DropdownMenu><DropdownMenuTrigger asChild><button type="button" disabled={!whatsapp && !instagram}><span><MessageCircle /></span><div><strong>Iniciar conversa</strong><small>{whatsapp || instagram ? "Abrir o canal sem mensagem pronta" : "Nenhum canal direto disponível"}</small></div><ArrowUpRight /></button></DropdownMenuTrigger><DropdownMenuContent align="start" className="w-64"><DropdownMenuLabel>Conversar diretamente</DropdownMenuLabel><DropdownMenuSeparator />{whatsapp ? <DropdownMenuItem asChild><a href={whatsapp.url} target="_blank" rel="noreferrer"><MessageCircle className="text-emerald-500" />Abrir WhatsApp<ArrowUpRight className="ml-auto" /></a></DropdownMenuItem> : null}{instagram ? <DropdownMenuItem asChild><a href={instagram} target="_blank" rel="noreferrer"><AtSign className="text-fuchsia-500" />Abrir Instagram<ArrowUpRight className="ml-auto" /></a></DropdownMenuItem> : null}</DropdownMenuContent></DropdownMenu>
       <button type="button" onClick={onOpenNotes}><span><NotebookPen /></span><div><strong>Anotações</strong><small>{consumer.notes?.trim() ? "Consultar ou editar a anotação" : "Registrar uma anotação neste cliente"}</small></div><ArrowUpRight /></button>
     </div></section></div>

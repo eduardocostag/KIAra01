@@ -1,13 +1,8 @@
-import { InboxHub } from "@/components/app-shell/inbox-hub"
+import { UnifiedInbox } from "@/components/app-shell/unified-inbox"
 import { PageHeader } from "@/components/app-shell/page-header"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
-import { getPipelineDTO } from "@/lib/api/pipeline-server"
-
-export default async function InboxPage({ searchParams }: { searchParams: Promise<{ view?: string; contact?: string }> }) {
-  const [params, pipeline] = await Promise.all([
-    searchParams,
-    getPipelineDTO().then((entries) => ({ entries, error: "" })).catch(() => ({ entries: [], error: "Não foi possível carregar os contatos prospectados. Use Atualizar para tentar novamente." })),
-  ])
-  const initialView = params.view ?? "contacts"
-  return <div className="space-y-4"><PageHeader compact mobileMinimal eyebrow="Relacionamento" title="Leads" description="Encontre, organize e acompanhe todos os seus contatos em um só lugar." actions={<RefreshWorkspace />} /><InboxHub entries={pipeline.entries} prospectError={pipeline.error} initialView={initialView} initialContactId={params.contact ?? ""} /></div>
+import { getInboxDTO } from "@/lib/api/inbox"
+export default async function InboxPage() {
+  const inbox = await getInboxDTO().then(data => ({ ...data, error: "" })).catch(() => ({ conversations: [], canSend: false, error: "Não foi possível sincronizar a caixa de entrada. Atualize para tentar novamente." }))
+  return <div className="space-y-4"><PageHeader compact mobileMinimal eyebrow="Atendimento" title="Caixa de entrada" description="WhatsApp, Instagram e outros canais conectados em um só lugar." actions={<RefreshWorkspace />} />{inbox.error && <p role="alert" className="rounded-xl border border-destructive/30 p-4 text-sm text-destructive">{inbox.error}</p>}<UnifiedInbox conversations={inbox.conversations} canSend={inbox.canSend} /></div>
 }

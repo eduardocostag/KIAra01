@@ -231,6 +231,12 @@ class BrowserSession:
             return unquote(target)
         return url
 
+    async def verify_whatsapp_number(self, phone: str) -> bool:
+        """Verify an explicitly requested business contact in the isolated browser."""
+        async with self._lock:
+            await self.start()
+            return await self._whatsapp_number_is_valid(phone)
+
     async def _whatsapp_number_is_valid(self, phone: str) -> bool:
         digits = "".join(character for character in phone if character.isdigit())
         if len(digits) in {10, 11}:

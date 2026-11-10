@@ -52,6 +52,8 @@ class PostCreate(BaseModel):
         clean = [item.strip() for item in value if item.strip()]
         if len(clean) != len(set(clean)):
             raise ValueError("Identificadores duplicados não são permitidos.")
+        if value and not clean:
+            raise ValueError("Identificadores vazios não são permitidos.")
         return clean
 
 
@@ -108,7 +110,7 @@ class SocialRepository:
                 """SELECT p.id,p.content,p.status,p.scheduled_at,p.approved_at,p.published_at,p.version,p.created_at,p.updated_at,
                           COALESCE((SELECT jsonb_agg(jsonb_build_object('id',t.id,'status',t.status,'channel_id',t.channel_id,'channel_name',c.name,'provider',c.provider,'release_url',t.release_url,'provider_post_id',t.provider_post_id) ORDER BY t.created_at) FROM social_post_targets t JOIN social_channels c ON c.organization_id=t.organization_id AND c.id=t.channel_id WHERE t.organization_id=p.organization_id AND t.post_id=p.id),'[]'::jsonb) targets,
                           COALESCE((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.original_name,'content_type',m.content_type,'byte_size',m.byte_size,'status',m.status) ORDER BY pm.position) FROM social_post_media pm JOIN social_media m ON m.organization_id=pm.organization_id AND m.id=pm.media_id WHERE pm.organization_id=p.organization_id AND pm.post_id=p.id),'[]'::jsonb) media
-                   FROM social_posts p WHERE p.organization_id=%s ORDER BY p.created_at DESC LIMIT 200""",
+                   FROM social_posts p WHERE p.organization_id=%s AND p.status <> 'cancelled' ORDER BY p.created_at DESC LIMIT 200""",
                 (organization_uuid,),
             )).fetchall()
         return {"channels": [self._channel(row) for row in channels], "posts": [self._post(row) for row in posts], "capabilities": {"drafts": True, "scheduling": True, "publishing": "assisted", "analytics": "manual", "media_storage": "local"}}
@@ -159,16 +161,25 @@ class SocialRepository:
             raise ApiError(404, "social_media_not_found", "O arquivo de mídia não está disponível.")
         return path, row["content_type"], row["original_name"]
 
-    async def create_post(self, context: RequestContext, payload: PostCreate) -> dict[str, Any]:
+    async def create_post(self, context: RequestContext, payload: PostCreate, *, post_id: str | None = None, expected_version: int | None = None) -> dict[str, Any]:
         if not payload.content.strip() and not payload.media_ids:
             raise ApiError(422, "social_content_required", "Adicione texto ou mídia ao conteúdo.")
         scheduled = payload.scheduled_at
-        if payload.action == "schedule" and (scheduled is None or scheduled.astimezone(UTC) <= datetime.now(UTC)):
+        if payload.action == "schedule" and (scheduled is None or scheduled.tzinfo is None or scheduled.astimezone(UTC) <= datetime.now(UTC)):
             raise ApiError(422, "social_schedule_invalid", "O agendamento precisa estar no futuro.")
         organization_uuid, user_uuid = _uuid("organization", context.organization_id), _uuid("user", context.user_id)
         channel_uuids = [_uuid("social-channel", item) for item in payload.channel_ids]
         media_uuids = [_uuid("social-media", item) for item in payload.media_ids]
         async with self._store()._transaction(context.organization_id) as connection:
+            post_uuid = _uuid("social-post", post_id) if post_id else uuid4()
+            if post_id:
+                current = await (await connection.execute("SELECT status,version FROM social_posts WHERE organization_id=%s AND id=%s FOR UPDATE", (organization_uuid, post_uuid))).fetchone()
+                if not current:
+                    raise ApiError(404, "social_post_not_found", "Conteúdo não encontrado.")
+                if current["version"] != expected_version:
+                    raise ApiError(412, "version_conflict", "O conteúdo foi alterado. Atualize a lista e abra novamente antes de salvar.")
+                if current["status"] not in {"draft", "scheduled", "ready_to_publish"}:
+                    raise ApiError(409, "social_post_not_editable", "Este conteúdo não pode mais ser editado.")
             channels = await (await connection.execute("SELECT id FROM social_channels WHERE organization_id=%s AND id=ANY(%s) AND status='active'", (organization_uuid, channel_uuids))).fetchall()
             if len(channels) != len(channel_uuids):
                 raise ApiError(422, "social_channel_invalid", "Um ou mais canais não estão disponíveis.")
@@ -177,17 +188,25 @@ class SocialRepository:
                 if len(media) != len(media_uuids):
                     raise ApiError(422, "social_media_invalid", "Uma ou mais mídias não pertencem ao workspace.")
             status = "draft" if payload.action == "draft" else "scheduled" if payload.action == "schedule" else "ready_to_publish"
-            post_id = uuid4()
-            row = await (await connection.execute(
-                """INSERT INTO social_posts(organization_id,id,content,status,scheduled_at,approved_by,approved_at,created_by)
-                   VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id,content,status,scheduled_at,approved_at,published_at,version,created_at,updated_at""",
-                (organization_uuid, post_id, payload.content.strip(), status, scheduled if payload.action == "schedule" else None, user_uuid if payload.action == "prepare" else None, datetime.now(UTC) if payload.action == "prepare" else None, user_uuid),
-            )).fetchone()
+            if post_id:
+                row = await (await connection.execute(
+                    """UPDATE social_posts SET content=%s,status=%s,scheduled_at=%s,approved_by=%s,approved_at=%s,version=version+1,updated_at=now()
+                       WHERE organization_id=%s AND id=%s RETURNING id,content,status,scheduled_at,approved_at,published_at,version,created_at,updated_at""",
+                    (payload.content.strip(), status, scheduled if payload.action == "schedule" else None, user_uuid if payload.action == "prepare" else None, datetime.now(UTC) if payload.action == "prepare" else None, organization_uuid, post_uuid),
+                )).fetchone()
+                await connection.execute("DELETE FROM social_post_targets WHERE organization_id=%s AND post_id=%s", (organization_uuid, post_uuid))
+                await connection.execute("DELETE FROM social_post_media WHERE organization_id=%s AND post_id=%s", (organization_uuid, post_uuid))
+            else:
+                row = await (await connection.execute(
+                    """INSERT INTO social_posts(organization_id,id,content,status,scheduled_at,approved_by,approved_at,created_by)
+                       VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id,content,status,scheduled_at,approved_at,published_at,version,created_at,updated_at""",
+                    (organization_uuid, post_uuid, payload.content.strip(), status, scheduled if payload.action == "schedule" else None, user_uuid if payload.action == "prepare" else None, datetime.now(UTC) if payload.action == "prepare" else None, user_uuid),
+                )).fetchone()
             for channel_id in channel_uuids:
                 target_status = "scheduled" if payload.action == "schedule" else "ready_to_publish" if payload.action == "prepare" else "draft"
-                await connection.execute("INSERT INTO social_post_targets(organization_id,id,post_id,channel_id,status) VALUES(%s,%s,%s,%s,%s)", (organization_uuid, uuid4(), post_id, channel_id, target_status))
+                await connection.execute("INSERT INTO social_post_targets(organization_id,id,post_id,channel_id,status) VALUES(%s,%s,%s,%s,%s)", (organization_uuid, uuid4(), post_uuid, channel_id, target_status))
             for position, media_id in enumerate(media_uuids):
-                await connection.execute("INSERT INTO social_post_media(organization_id,post_id,media_id,position) VALUES(%s,%s,%s,%s)", (organization_uuid, post_id, media_id, position))
+                await connection.execute("INSERT INTO social_post_media(organization_id,post_id,media_id,position) VALUES(%s,%s,%s,%s)", (organization_uuid, post_uuid, media_id, position))
         return self._post(row)
 
     async def publication_package(self, organization_id: str, post_id: str) -> dict[str, Any]:
@@ -292,6 +311,19 @@ def create_social_router(repository: SocialRepository) -> APIRouter:
     async def create_post(payload: PostCreate, context: Annotated[RequestContext, Depends(authenticated_context)]):
         can_write(context)
         return await repository.create_post(context, payload)
+
+    @router.put("/posts/{post_id}")
+    async def update_post(post_id: str, payload: PostCreate, context: Annotated[RequestContext, Depends(authenticated_context)], if_match: Annotated[str | None, Header(alias="If-Match")] = None):
+        can_write(context)
+        if not if_match:
+            raise ApiError(428, "precondition_required", "Envie If-Match com a versão atual.")
+        try:
+            version = int(if_match.strip('"'))
+            if version < 1:
+                raise ValueError
+        except ValueError:
+            raise ApiError(422, "invalid_version", "Versão inválida.") from None
+        return await repository.create_post(context, payload, post_id=post_id, expected_version=version)
 
     @router.get("/posts/{post_id}/package")
     async def publication_package(post_id: str, context: Annotated[RequestContext, Depends(authenticated_context)]):

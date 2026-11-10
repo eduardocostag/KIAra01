@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/chatwoot/chatwoot",
+  "release": "v4.19.1",
+  "commit": "caab07a8f00032d5205b5a5d7e2eb0ba2f3d2d82",
+  "kind": "Kiara-authored operational skill and Application API adapter",
+  "upstream_skill_copied": false,
+  "license_note": "Community code is MIT; enterprise and other restricted directories follow upstream LICENSE. No enterprise feature was incorporated."
+}

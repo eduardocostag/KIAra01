@@ -84,6 +84,10 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
         ...init.headers,
       },
     })
+    if (response.status === 204 || response.status === 205) {
+      log("info", "kiara_api.request_completed", { upstream_status: response.status })
+      return new Response(null, { status: response.status, headers: { "Cache-Control": "no-store", "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId } })
+    }
     const text = await response.text()
     const contentType = response.headers.get("content-type") ?? ""
     let payload: unknown
@@ -95,7 +99,10 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
     }
     const level = response.ok ? "info" : response.status < 500 ? "warn" : "error"
     log(level, response.ok ? "kiara_api.request_completed" : "kiara_api.upstream_response", { upstream_status: response.status })
-    return Response.json(payload, { status: response.status, headers: { "Cache-Control": "no-store", "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId } })
+    const headers = new Headers({ "Cache-Control": "no-store", "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId })
+    const retryAfter = response.headers.get("retry-after")
+    if (retryAfter) headers.set("Retry-After", retryAfter)
+    return Response.json(payload, { status: response.status, headers })
   } catch (error) {
     const timedOut = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")
     const cause = error instanceof Error ? error.message : String(error)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.core.context import ContextManager
 from app.core.event_bus import EventBus
 from app.feedback import CorrectionInbox
 from app.helpdesk import SystemDiagnosticsTool
+from app.integrations.chatwoot import ChatwootClient
 from app.integrations.communications import MicrosoftGraphCommunications
 from app.integrations.credentials import (
     ChainedCredentials,
@@ -37,8 +39,10 @@ from app.integrations.email import (
     EmailService,
     GmailEmailProvider,
 )
+from app.integrations.maps_scraper import MapsScraperClient
 from app.integrations.mcp import McpHub, McpServerConfig
 from app.integrations.obsidian import ObsidianLearningStore, ObsidianVaultIndex
+from app.integrations.operational_skills import OperationalSkills
 from app.knowledge import KnowledgeStore
 from app.leads import LeadStore, ProspectingPolicy, ProspectingPolicyEngine
 from app.memory import MemoryEngine, MemoryKind
@@ -62,6 +66,7 @@ from app.tools.browser import (
     GoogleMapsBusinessSearchTool,
     OrganicConsumerSearchTool,
 )
+from app.tools.chatwoot import ChatwootReadTool, ChatwootSendMessageTool
 from app.tools.communications import (
     CreateCalendarEventTool,
     PreviewCalendarEventTool,
@@ -71,6 +76,8 @@ from app.tools.communications import (
     SendMessageTool,
 )
 from app.tools.email import DraftEmailTool, ReadEmailTool, SendEmailTool
+from app.tools.instagram_content import InstagramContentCheckTool
+from app.tools.maps_scraper import GoogleMapsScraperTool
 from app.tools.mcp import CallMcpTool, DiscoverMcpToolsTool, ListMcpServersTool
 from app.tools.obsidian import (
     OpenObsidianNoteTool,
@@ -78,6 +85,7 @@ from app.tools.obsidian import (
     SearchObsidianTool,
     SyncObsidianTool,
 )
+from app.tools.operational_skills import OperationalSkillTool
 from app.tools.personal import (
     AddPersonalEventTool,
     AddPersonalTaskTool,
@@ -183,6 +191,9 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
     gate = PermissionGate(mode, confirm=confirm)
     audit = AuditLog(settings.root / settings.get("security.audit_log", "data/audit.jsonl"))
     registry = ToolRegistry(gate, audit, kill_switch)
+    operational_skills = OperationalSkills()
+    registry.register(OperationalSkillTool(operational_skills))
+    registry.register(InstagramContentCheckTool())
     personal_store = None
     if settings.get("personal.enabled", True):
         personal_store = PersonalOrganizerStore(
@@ -225,7 +236,22 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
     registry.register(BrowserFillTool(browser))
     registry.register(BrowserClickTool(browser))
     registry.register(BrowserReadTool(browser))
-    registry.register(GoogleMapsBusinessSearchTool(browser))
+    scraper_executable = os.environ.get("KIARA_MAPS_SCRAPER_EXECUTABLE", "").strip()
+    if not scraper_executable and settings.get("integrations.maps_scraper.enabled", False):
+        scraper_executable = str(settings.root / str(settings.get(
+            "integrations.maps_scraper.executable",
+            "data/tools/google-maps-scraper/google-maps-scraper.exe",
+        )))
+    if scraper_executable and Path(scraper_executable).is_file():
+        registry.register(GoogleMapsScraperTool(
+            MapsScraperClient(
+                scraper_executable, settings.root / "data/maps-scraper", kill_switch,
+                timeout=int(settings.get("integrations.maps_scraper.timeout_seconds", 600)),
+            ),
+            verify_whatsapp=browser.verify_whatsapp_number,
+        ))
+    else:
+        registry.register(GoogleMapsBusinessSearchTool(browser))
     registry.register(OrganicConsumerSearchTool(browser))
     prospecting_policy_engine = ProspectingPolicyEngine(
         settings.root / "data" / "prospecting-policy.db",
@@ -235,6 +261,21 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
     )
     registry.register(SendSocialMessageTool(browser, prospecting_policy_engine))
     credentials = ChainedCredentials(EnvironmentCredentials(), WindowsCredentialManager())
+    chatwoot_token = os.environ.get("CHATWOOT_API_ACCESS_TOKEN")
+    if chatwoot_token and settings.get("integrations.chatwoot.enabled", True):
+        chatwoot = ChatwootClient(
+            os.environ.get("CHATWOOT_BASE_URL") or str(settings.get(
+                "integrations.chatwoot.base_url", "http://127.0.0.1:3005",
+            )),
+            chatwoot_token,
+            int(os.environ.get("CHATWOOT_ACCOUNT_ID") or settings.get(
+                "integrations.chatwoot.account_id", 1,
+            )),
+            allow_private_hosts=True,
+            timeout_seconds=float(settings.get("integrations.chatwoot.timeout_seconds", 15)),
+        )
+        registry.register(ChatwootReadTool(chatwoot))
+        registry.register(ChatwootSendMessageTool(chatwoot))
     email_provider_name = str(settings.get("integrations.email.provider", "none")).casefold()
     email_provider = None
     if email_provider_name == "graph":
@@ -334,6 +375,7 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         memory,
         knowledge,
         knowledge_max_chars=int(settings.get("knowledge.context_max_chars", 6_000)),
+        operational_skills=operational_skills,
     )
     provider = build_llm_provider(settings)
     site_generator = None

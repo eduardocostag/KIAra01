@@ -203,6 +203,7 @@ class TaskPlanner:
                     "recent_actions",
                     "relevant_memories",
                     "relevant_knowledge",
+                    "operational_skills",
                     "recovery_evidence",
                 )
                 if key in context

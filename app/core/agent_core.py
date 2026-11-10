@@ -18,6 +18,7 @@ from app.core.intents import Intent, IntentRouter
 from app.helpdesk import compare_snapshots
 from app.leads import LeadScoringPolicy, LeadStore
 from app.leads.intelligence import CommercialIntelligenceService
+from app.models import ScreenContext
 from app.perception import ScreenPerception
 from app.perception.analysis import (
     parse_screen_analysis,
@@ -81,6 +82,7 @@ class AgentCore:
         self._pending_local_lead_research: str | None = None
         self._diagnostic_baselines: dict[str, dict[str, Any]] = {}
         self._handlers: dict[str, IntentHandler] = {
+            "chatwoot_operation": self._chatwoot_operation,
             "active_window": self._active_window,
             "open_application": self._open_application,
             "powershell": self._powershell,
@@ -151,6 +153,13 @@ class AgentCore:
         self._pending_feedback = None
         intent = self.router.route(message)
         response = await self._handlers.get(intent.name, self._conversation)(intent, message)
+        if intent.name == "chatwoot_operation":
+            # Customer messages stay out of model context and feedback-learning exports.
+            self.context.remember_exchange(
+                "Operação Chatwoot solicitada.",
+                "Resultado Chatwoot apresentado diretamente ao usuário.",
+            )
+            return response
         if intent.name == "start_workflow_design" and self.workflow_builder is not None:
             self.context.remember_exchange(message, response)
             return response
@@ -189,6 +198,13 @@ class AgentCore:
         intent = self.router.route(message)
         if intent.name != "conversation":
             response = await self._handlers.get(intent.name, self._conversation)(intent, message)
+            if intent.name == "chatwoot_operation":
+                self.context.remember_exchange(
+                    "Operação Chatwoot solicitada.",
+                    "Resultado Chatwoot apresentado diretamente ao usuário.",
+                )
+                yield response
+                return
             if intent.name == "start_workflow_design" and self.workflow_builder is not None:
                 self.context.remember_exchange(message, response)
                 yield response
@@ -1635,7 +1651,7 @@ class AgentCore:
         return bool(screen_reference or asks_what_is_visible)
 
     async def _screen_conversation_context(self, message: str) -> dict[str, Any]:
-        screen = self.context.screen()
+        screen = self.context.screen() or ScreenContext()
         payload: dict[str, Any] = {
             "screen_question": message,
             "screen_context_summary": {
@@ -1723,6 +1739,22 @@ class AgentCore:
             f"Risco: {risk}\n\n"
             f"Próximos passos: {next_steps}"
         )
+
+    async def _chatwoot_operation(self, intent: Intent, _message: str) -> str:
+        parameters = dict(intent.parameters)
+        action = parameters.pop("action")
+        if action == "help":
+            return (
+                "Use: liste as caixas do Chatwoot; liste conversas abertas no Chatwoot; "
+                "leia mensagens da conversa 42 no Chatwoot; ou "
+                "responda no Chatwoot na conversa 42 dizendo Olá, posso ajudar?"
+            )
+        tool = "chatwoot_send_message" if action == "send" else "chatwoot_read"
+        if tool not in self.tools.names():
+            return "Configure a URL, conta e token do Chatwoot antes de consultar ou responder."
+        if action != "send":
+            parameters["action"] = action
+        return await self._run_tool(tool, **parameters)
 
     async def _run_tool(self, name: str, **parameters: object) -> str:
         result = await self.tools.execute(name, **parameters)

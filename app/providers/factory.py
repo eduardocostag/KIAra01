@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 from app.config import Settings
+from app.providers.freellmapi import FreeLLMAPIProvider
 from app.providers.guarded import GuardedRemoteProvider
 from app.providers.llm import FallbackProvider, LLMProvider, LocalFallbackProvider
 from app.providers.remote import (
@@ -76,6 +77,25 @@ def _build_provider(
 ) -> LLMProvider:
     if provider == "local":
         return LocalFallbackProvider()
+    if provider == "freellmapi":
+        remote = FreeLLMAPIProvider(
+            api_key=env.get("FREELLMAPI_API_KEY", ""),
+            model=model or "auto",
+            base_url=env.get("FREELLMAPI_BASE_URL", "http://127.0.0.1:3001/v1"),
+            timeout_seconds=timeout,
+            max_output_tokens=int(settings.get("llm.max_output_tokens", 4096)),
+        )
+        # Loopback refers to the router, not the ultimate model provider.
+        return GuardedRemoteProvider(
+            remote,
+            name=f"freellmapi:{model or 'auto'}",
+            ledger_path=settings.root / str(
+                settings.get("llm.routing.usage_ledger", "data/cloud-usage.json")
+            ),
+            daily_request_limit=int(settings.get("llm.routing.daily_cloud_request_limit", 500)),
+            failure_threshold=int(settings.get("llm.routing.failure_threshold", 3)),
+            cooldown_seconds=float(settings.get("llm.routing.cooldown_seconds", 60)),
+        )
     if provider == "openai":
         if not model:
             raise ProviderConfigurationError("Configure llm.model para usar OpenAI.")
@@ -226,6 +246,11 @@ def _build_hybrid_router(
             ):
                 continue
             if not set(required).issubset(remote.capabilities):
+                continue
+            if isinstance(remote, GuardedRemoteProvider):
+                # FreeLLMAPI is guarded even outside hybrid routing; count once.
+                remote.daily_request_limit = int(candidate.get("daily_request_limit", daily_limit))
+                providers.append(remote)
                 continue
             providers.append(
                 GuardedRemoteProvider(

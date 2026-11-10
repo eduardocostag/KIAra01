@@ -86,6 +86,10 @@ como prova de resolução, até que exista um teste funcional específico.
 
 ## Providers de IA
 
+As integrações Google Maps Scraper, FreeLLMAPI e Instagram Agent Skill estão descritas em
+[`docs/operational-integrations.md`](docs/operational-integrations.md), com setup reproduzível,
+skills do runtime e limites de disponibilidade no backend do site.
+
 Para a cadeia gratuita com NVIDIA Nemotron, Ling, Vercel AI Gateway e Ox Alpha, consulte
 [`docs/FREE_AI_PROVIDERS.md`](docs/FREE_AI_PROVIDERS.md). Provedores sem chave são ignorados e o
 Ollama permanece como fallback local; contexto visual e dados privados locais não são enviados.

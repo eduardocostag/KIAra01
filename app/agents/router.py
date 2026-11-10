@@ -82,13 +82,27 @@ class AgentRouter:
         )
         results = tuple(result for result in outcomes if result is not None)
         if not results:
+            return await self._fallback_response(message, context)
+        if len(results) == 1:
+            return results[0].content
+        return await self._compose(message, results)
+
+    async def _fallback_response(self, message: str, context: dict[str, Any]) -> str:
+        prompt = self.generalist.build_prompt(message, context)
+        payload = json.dumps(prompt, ensure_ascii=False, default=str)
+        try:
+            generate_profile = getattr(self.provider, "generate_for_profile", None)
+            if callable(generate_profile):
+                return await asyncio.wait_for(
+                    generate_profile("fast", payload),
+                    timeout=60,
+                )
+            return await asyncio.wait_for(self.provider.generate(payload), timeout=60)
+        except Exception:  # noqa: BLE001 - preserve a helpful fallback even when routing fails
             return (
                 "Não consegui consultar um especialista agora. Posso tentar novamente "
                 "ou responder de forma mais simples se você reformular o pedido."
             )
-        if len(results) == 1:
-            return results[0].content
-        return await self._compose(message, results)
 
     async def stream_respond(self, message: str, context: dict[str, Any]) -> AsyncIterator[str]:
         selected = self.select(message)

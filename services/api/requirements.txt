@@ -1,4 +1,5 @@
 fastapi>=0.115,<1
+PyYAML>=6.0.2
 psycopg[binary]>=3.2,<4
 PyJWT[crypto]>=2.10,<3
 browserbase>=1,<2

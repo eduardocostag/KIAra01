@@ -1205,6 +1205,16 @@ async def google_places_search(query: str, limit: int) -> list[dict[str, Any]]:
 
 
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
+    if os.getenv("KIARA_MAPS_SCRAPER_EXECUTABLE", "").strip():
+        try:
+            from .maps_scraper import native_maps_search
+
+            native_rows = await native_maps_search(query, limit)
+            if native_rows:
+                return native_rows
+        except Exception as exc:  # noqa: BLE001 - existing providers remain independent fallbacks
+            logger.warning("hunter.maps.native_scraper_unavailable", extra={"error_class": type(exc).__name__})
+
     async def supplement(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(rows) >= limit:
             return rows[:limit]

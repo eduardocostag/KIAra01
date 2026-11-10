@@ -126,6 +126,29 @@ def test_dominant_specialist_avoids_redundant_local_model_contention() -> None:
     assert [item.name for item in selected] == ["dados_e_bancos"]
 
 
+class FailingThenWorkingProvider(RecordingProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def generate(self, prompt: str) -> str:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("specialist failed")
+        return "fallback-resposta"
+
+
+@pytest.mark.asyncio
+async def test_router_falls_back_to_direct_generation_when_specialists_fail() -> None:
+    provider = FailingThenWorkingProvider()
+    router = AgentRouter(provider, specialists=(SoftwareSpecialist(),))
+
+    answer = await router.respond("Construa um DAG causal textual para o efeito de pair programming", {})
+
+    assert answer == "fallback-resposta"
+    assert provider.calls == 2
+
+
 @pytest.mark.asyncio
 async def test_helpdesk_receives_live_screen_understanding() -> None:
     provider = RecordingProvider()

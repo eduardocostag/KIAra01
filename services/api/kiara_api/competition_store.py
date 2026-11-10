@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any
+from uuid import uuid4
 
-from .adapters.postgres import PostgresRepository, _uuid
+from .adapters.postgres import PostgresRepository, _iso, _uuid
+from .http.errors import ApiError
 
 
 class CompetitionRepository:
@@ -12,6 +14,299 @@ class CompetitionRepository:
 
     def __init__(self, postgres: PostgresRepository) -> None:
         self._postgres = postgres
+
+    async def begin_kiara_job(
+        self,
+        organization_id: str,
+        idempotency_key: str,
+        request_fingerprint: str,
+        *,
+        mode: str,
+        target: str,
+        normalized_target: str,
+        media_id: str | None,
+        name: str,
+    ) -> dict[str, Any]:
+        organization_uuid = _uuid("organization", organization_id)
+        job_id = uuid4()
+        provider_analysis_id = f"kiara_{job_id.hex}"
+        async with self._postgres._transaction(organization_id) as connection:
+            await connection.execute(
+                """INSERT INTO competition_analysis_jobs
+                   (organization_id,id,idempotency_key,request_fingerprint,provider_analysis_id,
+                    mode,target,normalized_target,media_id,name)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (organization_id,idempotency_key) DO NOTHING""",
+                (
+                    organization_uuid,
+                    job_id,
+                    idempotency_key,
+                    request_fingerprint,
+                    provider_analysis_id,
+                    mode,
+                    target,
+                    normalized_target,
+                    media_id,
+                    name,
+                ),
+            )
+            row = await (
+                await connection.execute(
+                    """SELECT id,idempotency_key,request_fingerprint,provider_analysis_id,mode,
+                              target,normalized_target,media_id,name,state,attempt_count,checkpoint,
+                              error_code,error_message,available_at,lease_expires_at,created_at,
+                              updated_at,completed_at,lease_owner
+                       FROM competition_analysis_jobs
+                       WHERE organization_id=%s AND idempotency_key=%s FOR UPDATE""",
+                    (organization_uuid, idempotency_key),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Competition job insert did not produce a row.")
+            if row["request_fingerprint"] != request_fingerprint:
+                raise ApiError(
+                    409,
+                    "idempotency_conflict",
+                    "A Idempotency-Key já foi usada com outra pesquisa.",
+                )
+            if row["state"] == "completed":
+                return self._job(row)
+            if row["state"] == "failed":
+                row = await (
+                    await connection.execute(
+                        """UPDATE competition_analysis_jobs
+                           SET state='queued',error_code=NULL,error_message=NULL,available_at=now(),
+                               completed_at=NULL,updated_at=now()
+                           WHERE organization_id=%s AND id=%s
+                           RETURNING id,idempotency_key,request_fingerprint,provider_analysis_id,mode,
+                                     target,normalized_target,media_id,name,state,attempt_count,checkpoint,
+                                     error_code,error_message,available_at,lease_expires_at,created_at,
+                                     updated_at,completed_at""",
+                        (organization_uuid, row["id"]),
+                    )
+                ).fetchone()
+            await connection.execute(
+                """INSERT INTO competition_analysis_work_queue (organization_id,job_id,available_at)
+                   VALUES (%s,%s,%s)
+                   ON CONFLICT (organization_id,job_id) DO UPDATE
+                     SET available_at=LEAST(competition_analysis_work_queue.available_at,EXCLUDED.available_at),
+                         lease_owner=NULL,lease_expires_at=NULL,updated_at=now()
+                   WHERE competition_analysis_work_queue.lease_expires_at IS NULL
+                      OR competition_analysis_work_queue.lease_expires_at < now()""",
+                (organization_uuid, row["id"], row["available_at"]),
+            )
+        return self._job(row)
+
+    async def claim_next_kiara_job(self, worker_id: str) -> dict[str, Any] | None:
+        """Claim a queue identifier globally, then access its payload under tenant RLS."""
+        async with await self._postgres._connect() as connection, connection.transaction():
+            row = await (
+                await connection.execute(
+                    """WITH candidate AS (
+                         SELECT organization_id,job_id
+                         FROM competition_analysis_work_queue
+                         WHERE available_at<=now()
+                           AND (lease_owner IS NULL OR lease_expires_at<now())
+                         ORDER BY available_at,created_at
+                         FOR UPDATE SKIP LOCKED LIMIT 1
+                       )
+                       UPDATE competition_analysis_work_queue queue
+                       SET lease_owner=%s,lease_expires_at=now()+interval '3 minutes',updated_at=now()
+                       FROM candidate
+                       WHERE queue.organization_id=candidate.organization_id
+                         AND queue.job_id=candidate.job_id
+                       RETURNING queue.organization_id,queue.job_id""",
+                    (worker_id[:200],),
+                )
+            ).fetchone()
+        if row is None:
+            return None
+        organization_id = str(row["organization_id"])
+        async with self._postgres._transaction(organization_id) as connection:
+            job = await (
+                await connection.execute(
+                    """UPDATE competition_analysis_jobs
+                       SET state='running',attempt_count=attempt_count+1,error_code=NULL,
+                           error_message=NULL,lease_expires_at=now()+interval '3 minutes',
+                           lease_owner=%s,updated_at=now()
+                       WHERE organization_id=%s AND id=%s AND
+                         ((state IN ('queued','paused') AND available_at<=now()) OR
+                          (state='running' AND lease_expires_at<now()))
+                       RETURNING id,provider_analysis_id,mode,target,normalized_target,media_id,name,
+                                 state,attempt_count,checkpoint,lease_owner""",
+                    (worker_id[:200], _uuid("organization", organization_id), str(row["job_id"])),
+                )
+            ).fetchone()
+        if job is None:
+            await self._release_kiara_queue_lease(organization_id, str(row["job_id"]), worker_id)
+            return None
+        return {
+            "organization_id": organization_id,
+            **dict(job),
+            "id": str(job["id"]),
+        }
+
+    async def _release_kiara_queue_lease(
+        self, organization_id: str, job_id: str, worker_id: str
+    ) -> None:
+        async with await self._postgres._connect() as connection, connection.transaction():
+            await connection.execute(
+                """UPDATE competition_analysis_work_queue SET lease_owner=NULL,
+                           lease_expires_at=NULL,updated_at=now()
+                   WHERE organization_id=%s AND job_id=%s AND lease_owner=%s""",
+                (_uuid("organization", organization_id), _uuid("competition_job", job_id), worker_id[:200]),
+            )
+
+    async def get_kiara_job(
+        self, organization_id: str, job_id: str
+    ) -> dict[str, Any] | None:
+        async with self._postgres._transaction(organization_id) as connection:
+            row = await (
+                await connection.execute(
+                    """SELECT id,idempotency_key,provider_analysis_id,mode,target,name,state,
+                              attempt_count,checkpoint,error_code,error_message,available_at,
+                              lease_expires_at,created_at,updated_at,completed_at,lease_owner
+                       FROM competition_analysis_jobs
+                       WHERE organization_id=%s AND id=%s""",
+                    (_uuid("organization", organization_id), _uuid("competition_job", job_id)),
+                )
+            ).fetchone()
+        return self._job(row) if row else None
+
+    async def checkpoint_kiara_job(
+        self,
+        organization_id: str,
+        job_id: str,
+        worker_id: str,
+        checkpoint: dict[str, Any],
+    ) -> None:
+        async with self._postgres._transaction(organization_id) as connection:
+            cursor = await connection.execute(
+                """UPDATE competition_analysis_jobs
+                   SET checkpoint=%s::jsonb,lease_expires_at=now()+interval '3 minutes',updated_at=now()
+                   WHERE organization_id=%s AND id=%s AND state='running' AND lease_owner=%s""",
+                (
+                    json.dumps(checkpoint, ensure_ascii=False, default=str),
+                    _uuid("organization", organization_id),
+                    _uuid("competition_job", str(job_id)),
+                    worker_id[:200],
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ApiError(409, "competition_job_not_running", "A pesquisa não está mais em execução.")
+
+    async def _assert_kiara_job_lease(
+        self,
+        connection: Any,
+        organization_id: str,
+        job_id: str,
+        worker_id: str,
+    ) -> None:
+        row = await (
+            await connection.execute(
+                """SELECT id FROM competition_analysis_jobs
+                   WHERE organization_id=%s AND id=%s AND state='running'
+                     AND lease_owner=%s AND lease_expires_at>now()
+                   FOR UPDATE""",
+                (
+                    _uuid("organization", organization_id),
+                    _uuid("competition_job", str(job_id)),
+                    worker_id[:200],
+                ),
+            )
+        ).fetchone()
+        if row is None:
+            raise ApiError(409, "competition_job_not_running", "A pesquisa não está mais em execução.")
+
+    async def finish_kiara_job(
+        self,
+        organization_id: str,
+        job_id: str,
+        *,
+        worker_id: str,
+        state: str,
+        checkpoint: dict[str, Any],
+        error_code: str | None = None,
+        error_message: str | None = None,
+        retry_after: int = 0,
+    ) -> None:
+        if state not in {"queued", "paused", "completed", "failed"}:
+            raise ValueError("Invalid competition job transition target.")
+        async with self._postgres._transaction(organization_id) as connection:
+            cursor = await connection.execute(
+                """UPDATE competition_analysis_jobs
+                   SET state=%s,checkpoint=%s::jsonb,error_code=%s,error_message=%s,
+                       available_at=CASE WHEN %s IN ('paused','queued')
+                           THEN now()+(%s * interval '1 second') ELSE now() END,
+                       lease_expires_at=NULL,
+                       lease_owner=NULL,
+                       completed_at=CASE WHEN %s='completed' THEN now() ELSE NULL END,
+                       updated_at=now()
+                   WHERE organization_id=%s AND id=%s AND state='running' AND lease_owner=%s""",
+                (
+                    state,
+                    json.dumps(checkpoint, ensure_ascii=False, default=str),
+                    error_code[:100] if error_code else None,
+                    error_message[:500] if error_message else None,
+                    state,
+                    max(0, retry_after),
+                    state,
+                    _uuid("organization", organization_id),
+                    _uuid("competition_job", str(job_id)),
+                    worker_id[:200],
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ApiError(409, "competition_job_not_running", "A pesquisa não está mais em execução.")
+            if state in {"paused", "queued"}:
+                await connection.execute(
+                    """INSERT INTO competition_analysis_work_queue
+                       (organization_id,job_id,available_at)
+                       VALUES (%s,%s,now()+(%s * interval '1 second'))
+                       ON CONFLICT (organization_id,job_id) DO UPDATE
+                         SET available_at=EXCLUDED.available_at,lease_owner=NULL,
+                             lease_expires_at=NULL,updated_at=now()""",
+                    (
+                        _uuid("organization", organization_id),
+                        _uuid("competition_job", str(job_id)),
+                        max(0, retry_after),
+                    ),
+                )
+            else:
+                await connection.execute(
+                    """DELETE FROM competition_analysis_work_queue
+                       WHERE organization_id=%s AND job_id=%s""",
+                    (
+                        _uuid("organization", organization_id),
+                        _uuid("competition_job", str(job_id)),
+                    ),
+                )
+
+    @staticmethod
+    def _job(row: dict[str, Any]) -> dict[str, Any]:
+        checkpoint = row["checkpoint"] or {}
+        return {
+            "id": str(row["id"]),
+            "provider_analysis_id": row["provider_analysis_id"],
+            "mode": row["mode"],
+            "target": row["target"],
+            "name": row["name"],
+            "state": row["state"],
+            "attempt_count": row["attempt_count"],
+            "checkpoint": {
+                key: checkpoint[key]
+                for key in ("phase", "items_collected", "items_saved")
+                if key in checkpoint
+            },
+            "error_code": row["error_code"],
+            "error_message": row["error_message"],
+            "available_at": _iso(row["available_at"]),
+            "lease_expires_at": _iso(row["lease_expires_at"]),
+            "lease_owner": row.get("lease_owner"),
+            "created_at": _iso(row["created_at"]),
+            "updated_at": _iso(row["updated_at"]),
+            "completed_at": _iso(row["completed_at"]),
+        }
 
     async def upsert_analysis(
         self,
@@ -25,10 +320,18 @@ class CompetitionRepository:
         status: str | None = None,
         prospect_count: int | None = None,
         provider: str = "mailerfind",
+        job_id: str | None = None,
+        worker_id: str | None = None,
     ) -> dict[str, Any]:
+        if (job_id is None) != (worker_id is None):
+            raise ValueError("job_id and worker_id must be provided together.")
         organization_uuid = _uuid("organization", organization_id)
         safe_snapshot = json.dumps(snapshot, ensure_ascii=False, default=str)
         async with self._postgres._transaction(organization_id) as connection:
+            if job_id is not None and worker_id is not None:
+                await self._assert_kiara_job_lease(
+                    connection, organization_id, job_id, worker_id
+                )
             row = await (await connection.execute(
                 """INSERT INTO competition_analyses
                    (organization_id,provider,provider_analysis_id,mode,target,name,status,prospect_count,provider_snapshot)
@@ -76,12 +379,24 @@ class CompetitionRepository:
             return max(0, cursor.rowcount)
 
     async def upsert_prospects(
-        self, organization_id: str, provider_analysis_id: str, prospects: list[dict[str, Any]]
+        self,
+        organization_id: str,
+        provider_analysis_id: str,
+        prospects: list[dict[str, Any]],
+        *,
+        job_id: str | None = None,
+        worker_id: str | None = None,
     ) -> int:
+        if (job_id is None) != (worker_id is None):
+            raise ValueError("job_id and worker_id must be provided together.")
         if not prospects:
             return 0
         organization_uuid = _uuid("organization", organization_id)
         async with self._postgres._transaction(organization_id) as connection:
+            if job_id is not None and worker_id is not None:
+                await self._assert_kiara_job_lease(
+                    connection, organization_id, job_id, worker_id
+                )
             analysis = await (await connection.execute(
                 """SELECT id FROM competition_analyses WHERE organization_id=%s AND provider_analysis_id=%s""",
                 (organization_uuid, provider_analysis_id),
