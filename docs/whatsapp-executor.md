@@ -37,6 +37,12 @@ publicado em produção e rejeita acesso sem autenticação (401, no-store).
 Foram executados 36 testes Python do executor e 16 testes JavaScript de comandos
 e sessão. Nenhum envio real foi usado para validar esta alteração.
 
+A tela apresenta um único resumo de conexão com a ação de analisar conversas.
+Configurações, histórico e ajuda começam recolhidos; a pausa permanece visível
+quando a automação está ativa. Registros de conexão ficam no diagnóstico,
+separados das mensagens. Erros do formulário aparecem nas configurações.
+Verificação visual com dados simulados: `python scripts/verify_whatsapp_workspace.py`.
+
 Cada solicitação de análise lê até 30 conversas visíveis na guia Chrome conectada, usa o modelo Ollama local e importa nome, telefone e etapa provável para o CRM. Conversas sem telefone verificável são ignoradas. Recarregue a extensão em `chrome://extensions` e atualize a guia do WhatsApp para usar a versão 2.
 
 ## Atendimento e prospecção autorizados
