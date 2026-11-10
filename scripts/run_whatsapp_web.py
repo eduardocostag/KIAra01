@@ -60,7 +60,7 @@ async def run(args):
     extension_bridge = None
     if args.chrome_extension:
         from app.whatsapp.chrome_extension import ChromeExtensionBridge
-        extension_bridge = ChromeExtensionBridge()
+        extension_bridge = ChromeExtensionBridge(require_site_session=bool(args.api_url or os.environ.get("KIARA_API_URL")))
         extension_bridge.start()
         browser = ChromeExtensionBrowser(extension_bridge)
     else:
@@ -90,10 +90,8 @@ async def run(args):
                               "outbox": [dict(r) for r in store.db.execute("SELECT status,COUNT(*) AS count FROM outbox GROUP BY status")]}, ensure_ascii=False, indent=2))
             return
         token_provider = None
-        if args.site_login:
-            from app.whatsapp.site_auth import interactive_site_session
-            session = interactive_site_session()
-            token_provider = session.token
+        if extension_bridge:
+            token_provider = extension_bridge.session_token
         bridge = SiteBridge(args.api_url, token_provider)
         if args.site_login and not bridge.configured:
             raise ValueError("Defina KIARA_API_URL ou --api-url para conectar o painel.")
@@ -130,7 +128,7 @@ def main():
     parser.add_argument("--config", help="Arquivo JSON de configuração local (site prevalece quando conectado)")
     parser.add_argument("--init-config", help="Criar exemplo JSON desativado e sair")
     parser.add_argument("--api-url", help="API Kiara para configuração e histórico; também KIARA_API_URL")
-    parser.add_argument("--site-login", action="store_true", help="Autenticar no site com e-mail/senha")
+    parser.add_argument("--site-login", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--chrome-extension", action="store_true", help="Usar a extensão instalada no Chrome já conectado")
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--pause", action="store_true")

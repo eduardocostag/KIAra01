@@ -19,7 +19,7 @@ $ExtensionDirectory = Join-Path $ProjectRoot "extensions\kiara-whatsapp"
 $Handler = Join-Path $PSScriptRoot "launch_whatsapp_executor.ps1"
 $VbsHandler = Join-Path $PSScriptRoot "launch_whatsapp_executor.vbs"
 
-foreach ($requiredPath in @($Python, $Runner, $EnvironmentFile, (Join-Path $ExtensionDirectory "manifest.json"))) {
+foreach ($requiredPath in @($Python, $Runner, (Join-Path $ExtensionDirectory "manifest.json"))) {
     if (!(Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Arquivo necessário não encontrado: $requiredPath"
     }
@@ -28,13 +28,6 @@ foreach ($requiredPath in @($Python, $Runner, $EnvironmentFile, (Join-Path $Exte
 $PythonWindowless = Join-Path (Split-Path -Parent $Python) "pythonw.exe"
 if (!(Test-Path -LiteralPath $PythonWindowless -PathType Leaf)) {
     throw "pythonw.exe não foi encontrado na instalação local do Python."
-}
-
-$envContents = Get-Content -LiteralPath $EnvironmentFile -Raw
-foreach ($key in @("NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY")) {
-    if ($envContents -notmatch "(?m)^\s*$([regex]::Escape($key))\s*=\s*\S+") {
-        throw "A variável pública $key não foi encontrada em apps\web\.env.local."
-    }
 }
 
 $command = '"{0}" //B //Nologo "{1}" "{2}"' -f (Join-Path $env:SystemRoot "System32\wscript.exe"), $VbsHandler, $Handler

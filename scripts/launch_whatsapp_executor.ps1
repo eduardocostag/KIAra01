@@ -7,19 +7,17 @@ $RunnerScript = Join-Path $PSScriptRoot "run_whatsapp_web.py"
 $EnvironmentFile = Join-Path $ProjectRoot "apps\web\.env.local"
 $DataDirectory = Join-Path $ProjectRoot "data\whatsapp-web"
 
-foreach ($requiredPath in @($Python, $PythonWindowless, $RunnerScript, $EnvironmentFile)) {
+foreach ($requiredPath in @($Python, $PythonWindowless, $RunnerScript)) {
     if (!(Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Arquivo necessário não encontrado: $requiredPath"
     }
 }
 
 $allowedKeys = @(
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "KIARA_WHATSAPP_OLLAMA_MODEL",
     "KIARA_WHATSAPP_OLLAMA_URL"
 )
-foreach ($line in Get-Content -LiteralPath $EnvironmentFile) {
+foreach ($line in $(if (Test-Path -LiteralPath $EnvironmentFile) { Get-Content -LiteralPath $EnvironmentFile })) {
     if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$' -and $allowedKeys -contains $Matches[1]) {
         $value = $Matches[2].Trim()
         if ($value.Length -ge 2 -and (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))) {
@@ -29,14 +27,9 @@ foreach ($line in Get-Content -LiteralPath $EnvironmentFile) {
     }
 }
 
-if (!$env:NEXT_PUBLIC_SUPABASE_URL -or !$env:NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    throw "A configuração pública de autenticação da Kiara está incompleta."
-}
-
 New-Item -ItemType Directory -Force -Path $DataDirectory | Out-Null
 $arguments = @(
     "`"$RunnerScript`"",
-    "--site-login",
     "--chrome-extension",
     "--api-url",
     "`"https://kiara-api-rouge.vercel.app`""

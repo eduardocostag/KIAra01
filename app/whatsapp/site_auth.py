@@ -1,8 +1,7 @@
-"""Interactive sign-in to Kiara; credentials and refresh tokens stay in memory."""
+"""Legacy noninteractive session client; the Chrome executor uses browser authentication."""
 from __future__ import annotations
 
 import json
-import os
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -69,59 +68,3 @@ class SiteSession:
             self._exchange("refresh_token", {"refresh_token": self._refresh})
         return self._access
 
-
-def interactive_site_session() -> SiteSession:
-    url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")
-    key = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
-    session = SiteSession(url, key)
-    import tkinter as tk
-    from tkinter import messagebox
-
-    root = tk.Tk()
-    root.title("Conectar à Kiara")
-    root.resizable(False, False)
-    root.attributes("-topmost", True)
-    root.columnconfigure(0, weight=1)
-
-    tk.Label(root, text="Entre na sua conta Kiara", font=("Segoe UI", 13, "bold")).grid(
-        row=0, column=0, padx=24, pady=(22, 6), sticky="w"
-    )
-    tk.Label(root, text="A senha é usada somente para conectar e não será salva.").grid(
-        row=1, column=0, padx=24, pady=(0, 16), sticky="w"
-    )
-    tk.Label(root, text="E-mail").grid(row=2, column=0, padx=24, sticky="w")
-    email_input = tk.Entry(root, width=42)
-    email_input.grid(row=3, column=0, padx=24, pady=(4, 12), sticky="ew")
-    tk.Label(root, text="Senha").grid(row=4, column=0, padx=24, sticky="w")
-    password_input = tk.Entry(root, width=42, show="*")
-    password_input.grid(row=5, column=0, padx=24, pady=(4, 16), sticky="ew")
-    result: dict[str, SiteSession] = {}
-
-    def connect():
-        password = password_input.get()
-        try:
-            session.login(email_input.get(), password)
-            result["session"] = session
-            password_input.delete(0, tk.END)
-            root.destroy()
-        except SiteLoginError as exc:
-            password_input.delete(0, tk.END)
-            messagebox.showerror("Não foi possível conectar", str(exc), parent=root)
-
-    def cancel():
-        password_input.delete(0, tk.END)
-        root.destroy()
-
-    buttons = tk.Frame(root)
-    buttons.grid(row=6, column=0, padx=24, pady=(0, 22), sticky="e")
-    tk.Button(buttons, text="Cancelar", command=cancel).pack(side="right", padx=(8, 0))
-    tk.Button(buttons, text="Conectar", command=connect, default="active").pack(side="right")
-    root.protocol("WM_DELETE_WINDOW", cancel)
-    root.bind("<Return>", lambda _event: connect())
-    root.bind("<Escape>", lambda _event: cancel())
-    email_input.focus_set()
-    root.mainloop()
-
-    if "session" not in result:
-        raise SiteLoginError("Conexão cancelada.")
-    return result["session"]

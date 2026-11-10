@@ -1,5 +1,29 @@
 (() => {
   const origin = window.location.origin
+  let sessionSyncInProgress = false
+  async function syncExecutorSession() {
+    if (sessionSyncInProgress) return
+    sessionSyncInProgress = true
+    try {
+      const response = await fetch("/api/whatsapp-web/session", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      })
+      if (response.status === 401 || response.status === 403) {
+        await chrome.runtime.sendMessage({ type: "kiara-executor-session", access_token: null, expires_at: 0 })
+      } else if (response.ok) {
+        const session = await response.json()
+        if (typeof session.access_token === "string" && Number.isFinite(session.expires_at)) {
+          await chrome.runtime.sendMessage({ type: "kiara-executor-session", ...session })
+        }
+      }
+    } catch {
+      // A disconnected executor or transient network failure must not extend its lease.
+    } finally { sessionSyncInProgress = false }
+  }
+  void syncExecutorSession()
+  setInterval(syncExecutorSession, 20000)
+  window.addEventListener("pageshow", syncExecutorSession)
   window.addEventListener("message", event => {
     if (event.source !== window || event.origin !== origin) return
     const request = event.data

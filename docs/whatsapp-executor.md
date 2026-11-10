@@ -27,9 +27,15 @@ Faça estes passos uma vez no computador que já tem o WhatsApp Web conectado:
    ```
 
 6. No site da Kiara, abra **WhatsApp** no menu e clique em **Analisar WhatsApp no Chrome**.
-7. No primeiro uso, entre na conta Kiara na janela de login. A extensão encontrará a guia WhatsApp Web existente; se não houver nenhuma aberta, abrirá uma guia no mesmo perfil do Chrome. Mantenha o computador e o Ollama local ligados até a análise terminar.
+7. Mantenha o site Kiara aberto e autenticado no mesmo Chrome. A extensão conecta o executor automaticamente, sem outra janela de login. Ela encontrará a guia WhatsApp Web existente; se não houver nenhuma aberta, abrirá uma guia no mesmo perfil do Chrome. Mantenha o computador e o Ollama local ligados até a análise terminar.
 
-O executor local abre sem uma janela de terminal. A senha e os tokens da sessão Kiara não são gravados; ficam somente na memória do processo. Resultados da leitura passam pela ponte local em `127.0.0.1:17843`, limitada à origem da extensão instalada. Saídas técnicas sanitizadas são gravadas em `data/whatsapp-web/executor.log`.
+O executor local abre sem janela de terminal nem formulário de senha. A extensão usa a sessão autenticada do site e encaminha somente o token de acesso, sem refresh token, à ponte local. O token fica na memória e precisa ser renovado pela guia em até 90 segundos; logout ou perda da sessão pausa a sincronização e os comandos. Trocar de conta exige reiniciar o executor para evitar misturar dados. Resultados da leitura passam pela ponte local em `127.0.0.1:17843`, limitada à origem da extensão instalada. Saídas técnicas sanitizadas são gravadas em `data/whatsapp-web/executor.log`.
+
+Atualização de 10/11/2026: extensão 2.1.0. Recarregue a extensão em
+`chrome://extensions` e atualize a guia Kiara uma vez. O endpoint de sessão foi
+publicado em produção e rejeita acesso sem autenticação (401, no-store).
+Foram executados 36 testes Python do executor e 16 testes JavaScript de comandos
+e sessão. Nenhum envio real foi usado para validar esta alteração.
 
 Cada solicitação de análise lê até 30 conversas visíveis na guia Chrome conectada, usa o modelo Ollama local e importa nome, telefone e etapa provável para o CRM. Conversas sem telefone verificável são ignoradas. Recarregue a extensão em `chrome://extensions` e atualize a guia do WhatsApp para usar a versão 2.
 

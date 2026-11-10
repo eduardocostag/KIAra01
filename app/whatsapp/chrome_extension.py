@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import threading
@@ -19,7 +20,8 @@ class ExtensionBridgeError(RuntimeError):
 
 
 class ChromeExtensionBridge:
-    def __init__(self):
+    def __init__(self, *, require_site_session=False):
+        self.require_site_session = require_site_session
         self._condition = threading.Condition()
         self._results: dict[str, dict] = {}
         self._last_heartbeat = 0.0
@@ -28,6 +30,47 @@ class ChromeExtensionBridge:
         self._thread: threading.Thread | None = None
         self._commands: dict[str, dict] = {}
         self._command_results: dict[str, dict] = {}
+        self._session_token = ""
+        self._session_deadline = 0.0
+        self._session_subject = None
+
+    def accept_session(self, payload):
+        token = payload.get("access_token")
+        with self._condition:
+            if token is None:
+                self._session_token = ""
+                self._session_deadline = 0.0
+                return
+            expires = payload.get("expires_at")
+            if (not isinstance(token, str) or len(token) > 16384
+                    or type(expires) not in (int, float)):
+                raise ValueError("invalid session")
+            try:
+                parts = token.split(".")
+                if len(parts) != 3:
+                    raise ValueError
+                claims = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))
+                subject = str(UUID(claims["sub"]))
+                deadline = min(float(expires), float(claims["exp"]))
+                if not time.time() < deadline <= time.time() + 3600:
+                    raise ValueError
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise ValueError("invalid session") from None
+            if self._session_subject and self._session_subject != subject:
+                self._session_token = ""
+                self._session_deadline = 0.0
+                raise ValueError("restart required for account switch")
+            # Claims here only limit lifetime/account affinity. The remote API
+            # remains responsible for signature validation and authorization.
+            self._session_subject = subject
+            self._session_token = token
+            self._session_deadline = min(deadline, time.time() + 90)
+
+    def session_token(self):
+        with self._condition:
+            if time.time() >= self._session_deadline:
+                self._session_token = ""
+            return self._session_token
 
     def start(self):
         bridge = self
@@ -68,7 +111,7 @@ class ChromeExtensionBridge:
                 self.end_headers()
 
             def do_POST(self):
-                if self.path not in {"/v1/heartbeat", "/v1/scan", "/v1/commands/next", "/v1/commands/result", "/v1/commands/authorize"}:
+                if self.path not in {"/v1/session", "/v1/heartbeat", "/v1/scan", "/v1/commands/next", "/v1/commands/result", "/v1/commands/authorize"}:
                     self._json(404, {"error": "not_found"})
                     return
                 if self.headers.get("Origin") != EXTENSION_ORIGIN or self.headers.get("Host") != f"{BRIDGE_HOST}:{BRIDGE_PORT}":
@@ -81,8 +124,13 @@ class ChromeExtensionBridge:
                     payload = json.loads(self.rfile.read(length))
                     if not isinstance(payload, dict):
                         raise TypeError
+                    if self.path == "/v1/session":
+                        bridge.accept_session(payload)
+                        self._json(200, {"ok": True})
+                        return
                     if self.path == "/v1/commands/next":
-                        self._json(200, {"command": bridge.next_command()})
+                        active = not bridge.require_site_session or bool(bridge.session_token())
+                        self._json(200, {"command": bridge.next_command() if active else None})
                         return
                     if self.path == "/v1/commands/result":
                         bridge.accept_command_result(payload)
@@ -92,6 +140,7 @@ class ChromeExtensionBridge:
                         with bridge._condition:
                             command = bridge._commands.get(payload.get("id"))
                             allowed = bool(command and command["claimed"]
+                                           and (not bridge.require_site_session or bridge.session_token())
                                            and command["expires_at"] > time.time()
                                            and command["phone"] == payload.get("phone")
                                            and command["id"] not in bridge._command_results)

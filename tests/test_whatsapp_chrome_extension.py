@@ -63,6 +63,41 @@ def test_extension_bridge_heartbeat_expires():
     assert bridge.online()
 
 
+def session_fixture(subject=None, expires=None):
+    import base64
+    import json
+    import time
+    claims = {"sub": subject or str(uuid4()), "exp": expires or time.time() + 300}
+    encoded = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return "header." + encoded + ".signature"
+
+
+def test_extension_session_is_memory_only_expires_and_clears(monkeypatch):
+    import time
+    now = time.time()
+    monkeypatch.setattr("app.whatsapp.chrome_extension.time.time", lambda: now)
+    bridge = ChromeExtensionBridge()
+    token = session_fixture(expires=now + 300)
+    bridge.accept_session({"access_token": token, "expires_at": now + 300})
+    assert bridge.session_token() == token
+    now += 91
+    assert bridge.session_token() == ""
+    bridge.accept_session({"access_token": token, "expires_at": now + 100})
+    bridge.accept_session({"access_token": None})
+    assert bridge.session_token() == ""
+
+
+def test_extension_session_rejects_account_switch_and_invalid_tokens():
+    import time
+    bridge = ChromeExtensionBridge()
+    bridge.accept_session({"access_token": session_fixture(), "expires_at": time.time() + 60})
+    with pytest.raises(ValueError, match="restart"):
+        bridge.accept_session({"access_token": session_fixture(), "expires_at": time.time() + 60})
+    assert bridge.session_token() == ""
+    with pytest.raises(ValueError):
+        bridge.accept_session({"access_token": "invalid", "expires_at": time.time() + 60})
+
+
 def test_explicit_read_only_adapter_never_runs_automatic_replies():
     with TemporaryDirectory() as directory:
         store = Store(Path(directory) / "state.sqlite3")

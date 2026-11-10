@@ -89,6 +89,27 @@ async function requestAnalysis(request) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
+  if (request?.type === "kiara-executor-session") {
+    let allowed = false
+    try {
+      allowed = sender.frameId === 0 && Boolean(sender.tab)
+        && allowedKiaraOrigins.has(new URL(sender.url).origin)
+    } catch { /* Reject malformed or extension-internal senders. */ }
+    const expiresAt = request.expires_at
+    const token = request.access_token
+    const valid = token === null || (typeof token === "string" && token.length > 0
+      && token.length <= 16000 && Number.isFinite(expiresAt)
+      && expiresAt > Date.now() / 1000 && expiresAt <= Date.now() / 1000 + 3600)
+    if (!allowed || !valid) {
+      respond({ error: "Solicitação não autorizada." })
+      return false
+    }
+    bridgePost("session", { access_token: token, expires_at: token === null ? 0 : expiresAt }).then(
+      () => respond({ error: null }),
+      () => respond({ error: "Executor indisponível." })
+    )
+    return true
+  }
   if (request?.type === "kiara-whatsapp-heartbeat") {
     if (sender.url?.startsWith("https://web.whatsapp.com/")) {
       if (connectedTabId === null && sender.tab?.id !== undefined) connectedTabId = sender.tab.id
