@@ -1,64 +1,52 @@
-# Usar o WhatsApp Web já conectado no Chrome
+# Analisar um contato do WhatsApp na Kiara
 
-A extensão da Kiara usa a guia atual do WhatsApp Web no Chrome; ela não cria um perfil novo nem pede outro QR code enquanto a sessão existente permanecer conectada. A versão 2 permite ler conversas e executar respostas solicitadas pela caixa de entrada ou pela operação previamente habilitada. Nenhuma automação é ativada apenas por instalar a extensão.
+A aba **WhatsApp** do site pode resumir, em modo somente leitura, a conversa de
+um contato autorizado. O WhatsApp permanece conectado ao OpenWA no computador
+local; a análise usa o Ollama local. Nenhuma extensão do Chrome, Chatwoot,
+OmniRoute ou chave de API paga é necessária. Essa ponte não envia mensagens,
+não faz prospecção e não lista contatos.
 
-## Configuração inicial
+## Configuração local
 
-Faça estes passos uma vez no computador que já tem o WhatsApp Web conectado:
-
-1. Prepare o executor local e instale as dependências:
-
-   ```powershell
-   .\.venv\Scripts\python.exe -m pip install -e .
-   ```
-2. No Chrome, abra `chrome://extensions`, ative **Modo do desenvolvedor** e escolha **Carregar sem compactação**. Selecione a pasta `extensions\kiara-whatsapp` dentro do repositório Kiara.
-3. Volte à guia WhatsApp Web já conectada e atualize-a uma vez para ativar a extensão nessa guia.
-4. Confira se `apps/web/.env.local` contém `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Configure também um modelo que já esteja instalado no Ollama:
+1. Confirme que OpenWA está ativo em `http://127.0.0.1:3006`, a sessão `kiara`
+   está conectada e o modelo Ollama `kiara-stable:latest` está instalado.
+2. No arquivo ignorado pelo Git `.env.local`, configure o telefone completo do
+   único contato autorizado:
 
    ```dotenv
-   KIARA_WHATSAPP_OLLAMA_MODEL=nome-do-modelo-instalado
+   KIARA_WHATSAPP_ANALYSIS_PHONE=+5511999999999
    ```
 
-   Use `ollama list` para conferir os nomes disponíveis. Se o Ollama não estiver em `http://127.0.0.1:11434`, configure também `KIARA_WHATSAPP_OLLAMA_URL` com o endereço local correto. Sem um modelo configurado, o executor pode iniciar, mas a análise não será concluída.
-5. Registre o executor local para este usuário do Windows:
+   Use DDI e DDD; mantenha o telefone e `OPENWA_API_KEY` somente no arquivo
+   local. O exemplo de configuração está em `.env.example`.
+3. Configure `NEXT_PUBLIC_SUPABASE_URL` e
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (ou `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+   no `apps/web/.env.local`, como usados pelo site. A ponte consulta o endpoint
+   de identidade Supabase para validar cada token temporário do site.
+4. Inicie o serviço local:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\install_whatsapp_executor.ps1
+   python scripts/run_whatsapp_local_bridge.py
    ```
 
-6. No site da Kiara, abra **WhatsApp** no menu e clique em **Analisar WhatsApp no Chrome**.
-7. Mantenha o site Kiara aberto e autenticado no mesmo Chrome. A extensão conecta o executor automaticamente, sem outra janela de login. Ela encontrará a guia WhatsApp Web existente; se não houver nenhuma aberta, abrirá uma guia no mesmo perfil do Chrome. Mantenha o computador e o Ollama local ligados até a análise terminar.
+   Ele escuta somente em `127.0.0.1:3007`. Para conferir a configuração sem
+   conectar ao WhatsApp nem chamar o modelo, use `--check-only`.
+5. Entre na Kiara com uma conta `owner` ou `admin`, abra **WhatsApp** e clique
+   em **Analisar conversa autorizada**. Se o navegador solicitar acesso à rede
+   local, permita-o para a Kiara.
 
-O executor local abre sem janela de terminal nem formulário de senha. A extensão usa a sessão autenticada do site e encaminha somente o token de acesso, sem refresh token, à ponte local. O token fica na memória e precisa ser renovado pela guia em até 90 segundos; logout ou perda da sessão pausa a sincronização e os comandos. Trocar de conta exige reiniciar o executor para evitar misturar dados. Resultados da leitura passam pela ponte local em `127.0.0.1:17843`, limitada à origem da extensão instalada. Saídas técnicas sanitizadas são gravadas em `data/whatsapp-web/executor.log`.
+## Proteções
 
-Atualização de 10/11/2026: extensão 2.1.0. Recarregue a extensão em
-`chrome://extensions` e atualize a guia Kiara uma vez. O endpoint de sessão foi
-publicado em produção e rejeita acesso sem autenticação (401, no-store).
-Foram executados 36 testes Python do executor e 16 testes JavaScript de comandos
-e sessão. Nenhum envio real foi usado para validar esta alteração.
+- O contato é definido no computador e não pode ser substituído pela página.
+- A ponte aceita somente as origens definidas em
+  `KIARA_WHATSAPP_ALLOWED_ORIGINS`; por padrão, o site de produção e localhost.
+- Cada operação exige uma sessão Supabase válida e usa autorização temporária
+  emitida pela rota autenticada da Kiara.
+- O resumo é processado pelo Ollama em `127.0.0.1:11434`, não é persistido pelo
+  site e não inclui credenciais.
+- O servidor oferece apenas status e análise; não existe endpoint de envio.
+- OpenWA é uma integração não oficial e pode desconectar ou estar sujeita a
+  restrições do WhatsApp.
 
-A tela apresenta um único resumo de conexão com a ação de analisar conversas.
-Configurações, histórico e ajuda começam recolhidos; a pausa permanece visível
-quando a automação está ativa. Registros de conexão ficam no diagnóstico,
-separados das mensagens. Erros do formulário aparecem nas configurações.
-Verificação visual com dados simulados: `python scripts/verify_whatsapp_workspace.py`.
-
-Cada solicitação de análise lê até 30 conversas visíveis na guia Chrome conectada, usa o modelo Ollama local e importa nome, telefone e etapa provável para o CRM. Conversas sem telefone verificável são ignoradas. Recarregue a extensão em `chrome://extensions` e atualize a guia do WhatsApp para usar a versão 2.
-
-## Atendimento e prospecção autorizados
-
-Configure contatos, contexto comercial, horário e limite diário no site. O modo piloto mantém um contato habilitado; o modo operação permite vários contatos cadastrados. `enabled` habilita a operação, `auto_reply_enabled` controla respostas da IA e `followup_enabled` habilita um acompanhamento após resposta confirmada. As três opções são independentes; o motor observa as conversas cadastradas para sincronizar o histórico mesmo com a IA pausada.
-
-`initial_outreach_enabled` começa desativado. Quando habilitado, `outreach_template` prepara uma única abordagem somente para uma conversa verificada completamente sem histórico de entrada ou saída. Apenas `{name}` é substituído. A abordagem não é repetida depois de reiniciar, alterar o texto ou obter resultado incerto. Conversas que já contêm mensagens não recebem essa abordagem inicial automática.
-
-Ao responder manualmente pela caixa de entrada, o executor lê novamente o chat e envia uma única vez, confirmando uma nova mensagem de saída. A IA desse contato é pausada. Rascunho humano, troca de destinatário, mensagem nova, comando expirado ou falta de autorização interrompem o envio. Se o clique não tiver confirmação, o resultado permanece incerto e não gera repetição automática.
-
-O histórico usa o horário de observação em UTC, com sequência estável para preservar a ordem das mensagens no mesmo lote. Esse horário não representa o horário original de envio ou entrega do WhatsApp. Reprocessar o mesmo ID de mensagem não altera o registro existente.
-
-Para remover o protocolo deste usuário do Windows:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install_whatsapp_executor.ps1 -Uninstall
-```
-
-Este executor via WhatsApp Web é experimental e não oficial. A sessão pode expirar ou deixar de funcionar; use a integração oficial da Meta para operação de produção.
+O executor anterior via extensão Chrome continua separado e não é utilizado
+pela aba atual. Respostas automáticas e prospecção permanecem desligadas.

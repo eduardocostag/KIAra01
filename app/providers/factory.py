@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from app.config import Settings
 from app.providers.freellmapi import FreeLLMAPIProvider
+from app.providers.omniroute import OmniRouteProvider
 from app.providers.guarded import GuardedRemoteProvider
 from app.providers.llm import FallbackProvider, LLMProvider, LocalFallbackProvider
 from app.providers.remote import (
@@ -77,18 +78,25 @@ def _build_provider(
 ) -> LLMProvider:
     if provider == "local":
         return LocalFallbackProvider()
-    if provider == "freellmapi":
-        remote = FreeLLMAPIProvider(
+    if provider in {"freellmapi", "omniroute"}:
+        selected_model = env.get("OMNIROUTE_MODEL", model) if provider == "omniroute" else model or "auto"
+        remote = (OmniRouteProvider(
+            api_key=env.get("OMNIROUTE_API_KEY", ""),
+            model=selected_model,
+            base_url=env.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1"),
+            timeout_seconds=timeout,
+            max_output_tokens=int(settings.get("llm.max_output_tokens", 4096)),
+        ) if provider == "omniroute" else FreeLLMAPIProvider(
             api_key=env.get("FREELLMAPI_API_KEY", ""),
             model=model or "auto",
             base_url=env.get("FREELLMAPI_BASE_URL", "http://127.0.0.1:3001/v1"),
             timeout_seconds=timeout,
             max_output_tokens=int(settings.get("llm.max_output_tokens", 4096)),
-        )
+        ))
         # Loopback refers to the router, not the ultimate model provider.
         return GuardedRemoteProvider(
             remote,
-            name=f"freellmapi:{model or 'auto'}",
+            name=f"{provider}:{selected_model}",
             ledger_path=settings.root / str(
                 settings.get("llm.routing.usage_ledger", "data/cloud-usage.json")
             ),

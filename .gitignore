@@ -46,6 +46,8 @@ data/whatsapp-web/
 # External runtimes, dependencies and local credentials
 services/freellmapi/
 services/chatwoot/
+services/openwa/
+data/openwa/
 data/chatwoot/
 data/tools/
 data/maps-scraper/

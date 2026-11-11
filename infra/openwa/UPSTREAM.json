@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/rmyndharis/OpenWA",
+  "commit": "44856156e121632cac8fb6f14d14633a6c2e3794",
+  "version": "0.30.0",
+  "license": "MIT",
+  "runtime": "Node >=22.19",
+  "local_url": "http://127.0.0.1:3006"
+}

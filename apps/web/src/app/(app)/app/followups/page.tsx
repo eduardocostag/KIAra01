@@ -1,8 +1,5 @@
-import { WhatsAppWebWorkspace } from "@/components/app-shell/whatsapp-web-workspace"
-import { FollowUpsWorkspace } from "@/components/app-shell/followups-workspace"
-import { getPipelineDTO } from "@/lib/api/pipeline-server"
+import { WhatsAppGatewayWorkspace } from "@/components/app-shell/whatsapp-gateway-workspace"
 
 export default async function FollowUpsPage() {
-  const entries = await getPipelineDTO().catch(() => [])
-  return <><FollowUpsWorkspace entries={entries} /><WhatsAppWebWorkspace entries={entries} /></>
+  return <WhatsAppGatewayWorkspace />
 }

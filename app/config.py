@@ -15,6 +15,8 @@ _LOCAL_SECRET_NAMES = frozenset(
         "GEMINI_API_KEY",
         "GROQ_API_KEY",
         "FREELLMAPI_API_KEY",
+        "OMNIROUTE_API_KEY",
+        "OPENWA_API_KEY",
         "CHATWOOT_API_ACCESS_TOKEN",
         "NVIDIA_API_KEY",
         "ANT_LING_API_KEY",
