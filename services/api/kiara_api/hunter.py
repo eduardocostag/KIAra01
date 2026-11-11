@@ -1486,7 +1486,7 @@ def research_query_variants(search: dict[str, Any]) -> list[str]:
 
 
 def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
-    """Keep indexed Instagram candidates; record what the public evidence actually proves."""
+    """Require a current profile bio that matches the requested niche and location."""
     url = safe_public_url(row.get("url"))
     parts = urlsplit(url) if url else None
     if not parts or (parts.hostname or "").lower().removeprefix("www.") != "instagram.com":
@@ -1510,11 +1510,16 @@ def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> b
     data["location_evidence"] = bool(place and all(word in indexed or word in bio for word in place))
     data["bio_niche_evidence"] = bool(niche and any(word in bio for word in niche))
     data["bio_location_evidence"] = bool(place and all(word in bio for word in place))
-    return True
+    return bool(
+        profile
+        and data.get("bio_status") == "verified_public_profile"
+        and data["bio_niche_evidence"]
+        and (not search.get("location") or data["bio_location_evidence"])
+    )
 
 
 def _facebook_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
-    """Keep indexed Facebook candidates; record what the public evidence actually proves."""
+    """Require a current page description that matches the requested niche and location."""
     url = safe_public_url(row.get("url"))
     parts = urlsplit(url) if url else None
     if not parts or (parts.hostname or "").lower().removeprefix("www.") not in {"facebook.com", "fb.com"}:
@@ -1548,7 +1553,12 @@ def _facebook_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bo
     data["location_evidence"] = bool(place and all(word in indexed or word in bio for word in place))
     data["bio_niche_evidence"] = bool(niche and any(word in bio for word in niche))
     data["bio_location_evidence"] = bool(place and all(word in bio for word in place))
-    return True
+    return bool(
+        profile
+        and data.get("bio_status") == "verified_public_profile"
+        and data["bio_niche_evidence"]
+        and (not search.get("location") or data["bio_location_evidence"])
+    )
 
 
 async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
@@ -1620,15 +1630,17 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     instagram_rows = [row for row in candidates if row.get("source") == "instagram"]
     if instagram_rows:
         await inspect_instagram_bios(instagram_rows)
-        candidates = [row for row in candidates if row.get("source") != "instagram" or _instagram_profile_matches(row, search)]
+        for row in instagram_rows:
+            _instagram_profile_matches(row, search)
         if any(row.get("public_data", {}).get("bio_status") == "indexed_excerpt_only" for row in candidates):
-            warnings.append("Alguns perfis do Instagram apareceram no índice público, mas a bio atual não pôde ser confirmada sem login; confira o perfil antes de abordar.")
+            warnings.append("Perfis do Instagram sem bio atual verificável foram excluídos; confirme o acesso público ou pesquise outra fonte.")
     facebook_rows = [row for row in candidates if row.get("source") == "facebook"]
     if facebook_rows:
         await inspect_facebook_pages(facebook_rows)
-        candidates = [row for row in candidates if row.get("source") != "facebook" or _facebook_profile_matches(row, search)]
+        for row in facebook_rows:
+            _facebook_profile_matches(row, search)
         if any(row.get("public_data", {}).get("page_status") == "indexed_excerpt_only" for row in candidates):
-            warnings.append("Algumas páginas do Facebook apareceram no índice público, mas as informações atuais não puderam ser confirmadas sem login; confira a página antes de abordar.")
+            warnings.append("Páginas do Facebook sem descrição atual verificável foram excluídas; confirme o acesso público ou pesquise outra fonte.")
     # Enrich eligible public websites even in broad searches. This fills phone,
     # WhatsApp, e-mail and technical website evidence before CRM sync. A search
     # explicitly requesting businesses without a website remains zero-crawl:
@@ -1662,7 +1674,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     if any(item.get("public_data", {}).get("enrichment") == "unavailable" for item in candidates):
         warnings.append("Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados.")
     if any(item.get("public_data", {}).get("provider") == "maps_public_index" for item in candidates):
-        warnings.append("O navegador do Maps estava indisponível. A Kiara preservou perfis públicos indexados; telefone, site e filtros específicos exigem detalhes verificáveis.")
+        warnings.append("O Google Maps estava indisponível. Trechos indexados não são fichas comerciais confirmadas e foram excluídos; configure uma fonte de Maps verificável.")
     error = (failures[0] if len(set(failures)) == 1 else "provider_error") if len(failures) == len(tasks) else None
     logger.info("hunter.research.finished", extra={
         "candidate_count": len(candidates), "accepted_count": len(results),

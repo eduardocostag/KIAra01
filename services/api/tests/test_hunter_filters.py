@@ -135,26 +135,31 @@ def test_facebook_manual_import_rejects_non_profiles(value):
         parse_facebook_import(value)
 
 
-def test_facebook_profile_kept_with_unverified_location_evidence():
+def test_facebook_profile_requires_verified_niche_and_location_evidence():
     search_data = {"query": "dentistas", "location": "Porto Alegre", "sources": ["facebook"], "market": "b2c"}
     matched = {"source": "facebook", "url": "https://www.facebook.com/clinica_alegre/",
-               "summary": "Clínica", "public_data": {"profile_bio": "Dentista em Porto Alegre"}}
-    other_city = {**matched, "public_data": {"profile_bio": "Dentista em Curitiba"}}
+               "summary": "Clínica", "public_data": {
+                   "bio_status": "verified_public_profile",
+                   "profile_bio": "Dentista em Porto Alegre",
+               }}
+    other_city = {**matched, "public_data": {
+        "bio_status": "verified_public_profile",
+        "profile_bio": "Dentista em Curitiba",
+    }}
     assert _facebook_profile_matches(matched, search_data)
-    assert _facebook_profile_matches(other_city, search_data)
+    assert not _facebook_profile_matches(other_city, search_data)
     assert matched["public_data"]["bio_location_evidence"] is True
     assert other_city["public_data"]["bio_location_evidence"] is False
 
 
-def test_facebook_publication_is_saved_but_not_presented_as_profile():
+def test_facebook_publication_is_not_a_lead():
     search_data = {"query": "educador fisico", "location": "Curitiba", "sources": ["facebook"]}
     post = {"source": "facebook", "title": "Treino funcional", "url": "https://facebook.com/posts/ABC123/",
             "summary": "Educador fisico em Curitiba"}
-    assert _facebook_profile_matches(post, search_data)
+    assert not _facebook_profile_matches(post, search_data)
     kept, stats = filter_results([post], search_data)
-    assert stats["accepted"] == 1
-    assert kept[0]["public_data"]["content_kind"] == "publication"
-    assert kept[0]["public_data"]["criterion_status"] == "not_verified"
+    assert stats["accepted"] == 0
+    assert kept == []
 
 
 def test_manual_profile_notes_do_not_become_public_contact_evidence():
@@ -165,26 +170,31 @@ def test_manual_profile_notes_do_not_become_public_contact_evidence():
     assert normalized["public_data"]["whatsapp_url"] is None
 
 
-def test_instagram_profile_kept_with_unverified_location_evidence():
+def test_instagram_profile_requires_verified_niche_and_location_evidence():
     search = {"query": "dentistas", "location": "Porto Alegre", "sources": ["instagram"], "market": "b2c"}
     matched = {"source": "instagram", "url": "https://www.instagram.com/clinica_alegre/",
-               "summary": "Clínica", "public_data": {"profile_bio": "Dentista em Porto Alegre"}}
-    other_city = {**matched, "public_data": {"profile_bio": "Dentista em Curitiba"}}
+               "summary": "Clínica", "public_data": {
+                   "bio_status": "verified_public_profile",
+                   "profile_bio": "Dentista em Porto Alegre",
+               }}
+    other_city = {**matched, "public_data": {
+        "bio_status": "verified_public_profile",
+        "profile_bio": "Dentista em Curitiba",
+    }}
     assert _instagram_profile_matches(matched, search)
-    assert _instagram_profile_matches(other_city, search)
+    assert not _instagram_profile_matches(other_city, search)
     assert matched["public_data"]["bio_location_evidence"] is True
     assert other_city["public_data"]["bio_location_evidence"] is False
 
 
-def test_instagram_publication_is_saved_but_not_presented_as_profile():
+def test_instagram_publication_is_not_a_lead():
     search_data = {"query": "educador fisico", "location": "Curitiba", "sources": ["instagram"]}
     post = {"source": "instagram", "title": "Treino funcional", "url": "https://instagram.com/reel/ABC123/",
             "summary": "Educador fisico em Curitiba"}
-    assert _instagram_profile_matches(post, search_data)
+    assert not _instagram_profile_matches(post, search_data)
     kept, stats = filter_results([post], search_data)
-    assert stats["accepted"] == 1
-    assert kept[0]["public_data"]["content_kind"] == "publication"
-    assert kept[0]["public_data"]["criterion_status"] == "not_verified"
+    assert stats["accepted"] == 0
+    assert kept == []
 
 
 @pytest.mark.parametrize("query,location", [
@@ -196,8 +206,20 @@ def test_instagram_search_keeps_arbitrary_indexed_niches_without_hardcoded_categ
     row = {"source": "instagram", "title": "Resultado público", "url": "https://instagram.com/perfil_publico/",
            "summary": f"{query} em {location}"}
     request = {"query": query, "location": location, "sources": ["instagram"]}
-    assert _instagram_profile_matches(row, request)
+    assert not _instagram_profile_matches(row, request)
     kept, stats = filter_results([row], request)
+    assert kept == []
+    assert stats["accepted"] == 0
+
+    verified = {
+        **row,
+        "public_data": {
+            "bio_status": "verified_public_profile",
+            "profile_bio": f"{query} em {location}",
+        },
+    }
+    assert _instagram_profile_matches(verified, request)
+    kept, stats = filter_results([verified], request)
     assert stats["accepted"] == 1
     assert kept[0]["public_data"]["niche_evidence"] is True
     assert kept[0]["public_data"]["location_evidence"] is True
@@ -239,7 +261,7 @@ def test_exact_reported_query_excludes_own_website_and_requires_public_whatsapp(
     assert kept[0]["public_data"]["criterion_status"] == "verified"
     assert kept[0]["public_data"]["whatsapp_url"] == "https://wa.me/5511912345678"
     assert kept[0]["public_data"]["website_status"] == "not_listed"
-    assert stats == {"checked": 5, "accepted": 1, "excluded": 4, "unknown": 2, "source_failures": 0}
+    assert stats == {"checked": 5, "accepted": 1, "excluded": 4, "unknown": 1, "source_failures": 0}
 
 
 def test_absent_or_unreadable_detail_is_unknown_never_no_website():
@@ -319,7 +341,7 @@ def test_golden_constraint_judgments_improve_precision_without_losing_eligible_c
         (search("oficinas sem site", contact_filter="whatsapp"), [maps_result("d", whatsapp=True), maps_result("e"), maps_result("f", website="https://f.example", whatsapp=True)], {"d"}),
         (search("dentistas com site"), [maps_result("g", website="https://g.example"), maps_result("h"), maps_result("i", loaded=False)], {"g"}),
         (search("padarias", contact_filter="phone"), [maps_result("j"), maps_result("k", phone=None)], {"j"}),
-        (search("lojas de roupas"), [maps_result("l"), maps_result("m", loaded=False)], {"l", "m"}),
+        (search("lojas de roupas"), [maps_result("l"), maps_result("m", loaded=False)], {"l"}),
     ]
     total = eligible = returned = correct = 0
     for request, candidates, labels in fixtures:
@@ -330,8 +352,8 @@ def test_golden_constraint_judgments_improve_precision_without_losing_eligible_c
         eligible += len(labels)
         returned += len(kept)
         correct += len(titles & labels)
-    assert (total, eligible, returned, correct) == (13, 6, 6, 6)
-    assert eligible / total < correct / returned  # 46.2% -> 100% precision, recall 100% on these 13 fixtures.
+    assert (total, eligible, returned, correct) == (13, 5, 5, 5)
+    assert eligible / total < correct / returned  # 38.5% -> 100% precision on these 13 fixtures.
 
 
 def test_partial_provider_failure_keeps_results_and_reports_warning(monkeypatch):
@@ -643,8 +665,70 @@ def test_editorial_pages_and_social_posts_are_not_crm_contacts():
         {"source": "facebook", "title": "Empresa", "url": "https://facebook.com/empresa"},
     ]
     kept, stats = filter_results(items, search("psicólogos"))
-    assert any(item["public_data"].get("content_kind") == "publication" for item in kept)
-    assert stats["excluded"] == 2
+    assert [item["title"] for item in kept] == ["Como Psicologia — Clínica"]
+    assert stats["excluded"] == 5
+
+
+def test_indexed_maps_pages_and_non_business_web_results_are_not_leads():
+    items = [
+        {
+            "source": "google_maps",
+            "title": "R. João Neves da Fontoura, 249 - Centro",
+            "url": "https://www.google.com/maps/place/Rua+Joao+Neves+da+Fontoura",
+            "summary": "R - São Leopoldo",
+            "public_data": {
+                "provider": "maps_public_index",
+                "detail_inspected": False,
+            },
+        },
+        {
+            "source": "web",
+            "title": "Os Melhores Personal Trainers em São Leopoldo",
+            "url": "https://portal.example/melhores-personal-trainers",
+            "summary": "Lista de profissionais da região.",
+        },
+        {
+            "source": "web",
+            "title": "Pesquisar locais no Google Maps - Academia",
+            "url": "https://www.google.com/maps/search/academias",
+            "summary": "Pesquise lugares e localizações.",
+        },
+        {
+            "source": "web",
+            "title": "Academia Alpha",
+            "url": "https://academia-alpha.example",
+            "summary": "Personal trainer em São Leopoldo.",
+        },
+    ]
+    kept, stats = filter_results(items, search("personal trainers em São Leopoldo"))
+    assert [item["title"] for item in kept] == ["Academia Alpha"]
+    assert stats["excluded"] == 3
+
+
+def test_maps_index_fallback_is_excluded_and_explained(monkeypatch):
+    async def indexed(_query, _limit):
+        return [{
+            "source": "google_maps",
+            "title": "R. João Neves da Fontoura, 249 - Centro",
+            "url": "https://www.google.com/maps/place/Rua+Joao+Neves+da+Fontoura",
+            "summary": "R - São Leopoldo",
+            "public_data": {
+                "provider": "maps_public_index",
+                "detail_inspected": False,
+            },
+        }]
+
+    monkeypatch.setattr(hunter, "maps_search", indexed)
+    request = SearchCreate(
+        market="b2b", query="academias", location="São Leopoldo",
+        sources=["google_maps"], result_limit=10,
+    )
+
+    outcome = asyncio.run(execute_research(request.model_dump()))
+
+    assert outcome["results"] == []
+    assert outcome["validation"]["excluded"] == 1
+    assert any("Trechos indexados não são fichas comerciais" in warning for warning in outcome["warnings"])
 
 
 def test_malformed_provider_url_does_not_strand_a_search(monkeypatch):

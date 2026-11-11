@@ -291,8 +291,18 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
                     or (len(segments) >= 3 and segments[1].lower() in {"posts", "photos", "videos"}))
     if item.get("source") == "web":
         title = folded(str(item.get("title") or ""))
-        return bool(re.search(r"/(?:blog|artigos?|noticias?|news|posts?)(?:/|$)", path)
-                    or re.match(r"^(?:\d+\s+(?:melhores|dicas|motivos|passos)|como\s+(?:escolher|encontrar|contratar|abrir|criar|saber|funciona|atrair|conseguir)|o que\s+(?:e|sao|faz))\b", title))
+        return bool(
+            is_profile_url(url)
+            or re.search(r"/(?:blog|artigos?|noticias?|news|posts?|search|maps/search)(?:/|$)", path)
+            or re.match(
+                r"^(?:(?:\d+\s+)?(?:melhores|principais|top)\b|"
+                r"(?:os|as)\s+(?:\d+\s+)?(?:melhores|principais|top)\b|"
+                r"(?:pesquisar|search)\s+(?:locais|places|no google maps)\b|"
+                r"como\s+(?:escolher|encontrar|contratar|abrir|criar|saber|funciona|atrair|conseguir)|"
+                r"o que\s+(?:e|sao|faz))",
+                title,
+            )
+        )
     return False
 
 
@@ -304,6 +314,22 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
     for raw in items:
         item = normalize_result(raw)
         data = item["public_data"]
+        if item["source"] == "google_maps" and data.get("detail_inspected") is not True:
+            counts["excluded"] += 1
+            continue
+        if item["source"] in {"instagram", "facebook"} and not data.get("manual_import"):
+            has_relevant_profile = (
+                data.get("content_kind") == "profile"
+                and data.get("bio_status") == "verified_public_profile"
+                and data.get("bio_niche_evidence") is True
+                and (
+                    not search.get("location")
+                    or data.get("bio_location_evidence") is True
+                )
+            )
+            if not has_relevant_profile:
+                counts["excluded"] += 1
+                continue
         source_parts = urlsplit(data["source_url"]) if data["source_url"] else None
         normalized_source = (
             f"{source_parts.scheme.lower()}://{(source_parts.hostname or '').lower()}"
