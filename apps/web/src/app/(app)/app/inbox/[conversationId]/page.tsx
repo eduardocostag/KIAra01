@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { UnifiedInbox } from "@/components/app-shell/unified-inbox"
 import { PageHeader } from "@/components/app-shell/page-header"
+import { SupportSectionNav } from "@/components/app-shell/workspace-section-nav"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { getInboxDTO, KiaraApiError } from "@/lib/api/inbox"
 
@@ -28,6 +29,7 @@ export default async function InboxConversationPage({
 
     return (
       <div className="space-y-6">
+        <SupportSectionNav />
         <PageHeader
           eyebrow="Atendimento multicanal"
           title="Caixa de entrada"
@@ -50,6 +52,7 @@ export default async function InboxConversationPage({
 
   return (
     <div className="space-y-6">
+      <SupportSectionNav />
       <PageHeader
         eyebrow="Atendimento multicanal"
         title="Caixa de entrada"
