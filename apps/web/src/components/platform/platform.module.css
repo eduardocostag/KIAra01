@@ -1,0 +1,53 @@
+.platform { width:100%; max-width:1240px; margin-inline:auto; min-width:0; }
+.identity { display:flex; align-items:center; justify-content:space-between; gap:1.25rem; padding-block:.25rem 1.5rem; border-bottom:1px solid var(--border); }
+.brand { display:flex; align-items:center; gap:.75rem; }
+.brand > span,.moduleIcon { display:grid; place-items:center; flex-shrink:0; background:var(--brand-subtle); color:var(--primary); border:1px solid color-mix(in oklch,var(--primary) 20%,var(--border)); border-radius:.9rem; width:2.75rem; height:2.75rem; }
+.brand strong { font-size:.9rem; letter-spacing:.2em; }
+.brand p { color:var(--muted-foreground); font-size:.75rem; margin-top:.2rem; }
+.account { min-width:0; text-align:right; }
+.account p { overflow-wrap:anywhere; font-size:.85rem; font-weight:600; }
+.account span { display:flex; align-items:center; justify-content:flex-end; gap:.35rem; color:var(--muted-foreground); font-size:.75rem; margin-top:.35rem; }
+.navigation { display:flex; flex-wrap:wrap; gap:.4rem; padding-block:1rem; margin-bottom:1rem; }
+.navigation a { display:inline-flex; align-items:center; min-height:2.75rem; border:1px solid transparent; padding:.5rem .85rem; border-radius:.7rem; color:var(--muted-foreground); font-size:.825rem; font-weight:500; transition:background .15s,color .15s; }
+.navigation a:hover { background:var(--muted); color:var(--foreground); }
+.navigation a[aria-current="page"] { border-color:color-mix(in oklch,var(--primary) 30%,var(--border)); background:var(--brand-subtle); color:var(--foreground); }
+.content { display:flex; flex-direction:column; gap:1.5rem; padding-bottom:2rem; }
+.phase { display:flex; align-items:flex-start; gap:.8rem; padding:1.15rem 1.25rem; border:1px solid color-mix(in oklch,var(--primary) 18%,var(--border)); border-radius:1rem; background:color-mix(in oklch,var(--card) 94%,var(--primary)); color:var(--primary); }
+.phase strong { display:block; font-size:.85rem; font-weight:600; color:var(--foreground); }
+.phase span { display:block; max-width:72ch; margin-top:.35rem; font-size:.8rem; line-height:1.65; color:var(--muted-foreground); }
+.moduleGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.moduleCard { min-width:0; display:flex; flex-direction:column; align-items:stretch; gap:1rem; padding:1.5rem; border:1px solid var(--border); border-radius:1.15rem; background:var(--card); transition:border-color .15s,background .15s; }
+.moduleCard:hover { border-color:color-mix(in oklch,var(--primary) 45%,var(--border)); background:color-mix(in oklch,var(--card) 96%,var(--primary)); }
+.cardTop { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; }
+.moduleCard h2 { font-size:1.25rem; font-weight:600; letter-spacing:-.025em; }
+.moduleCard > p { color:var(--muted-foreground); font-size:.85rem; line-height:1.75; max-width:58ch; }
+.cardAction { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding-top:.85rem; margin-top:auto; color:var(--primary); font-size:.8rem; font-weight:600; border-top:1px solid var(--border); }
+.skillGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.skillCard { display:flex; flex-direction:column; gap:.85rem; min-width:0; padding:1.25rem; border:1px solid var(--border); border-radius:1rem; background:var(--card); }
+.skillCard h2 { font-size:.95rem; font-weight:600; overflow-wrap:anywhere; }
+.skillCard p { color:var(--muted-foreground); font-size:.8rem; line-height:1.7; }
+.skillMeta { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin-top:auto; }
+.skillMeta span { display:inline-flex; align-items:center; min-height:1.75rem; padding:.25rem .55rem; border:1px solid var(--border); border-radius:999px; color:var(--muted-foreground); font-size:.68rem; }
+.scope,.empty { padding:1.25rem; border:1px solid var(--border); border-radius:1rem; background:var(--card); }
+.scope h2,.empty h2 { display:flex; align-items:center; gap:.5rem; font-size:.9rem; font-weight:600; }
+.scope p,.empty p { margin-top:.5rem; color:var(--muted-foreground); font-size:.8rem; line-height:1.75; max-width:85ch; }
+.scope a { margin-top:1rem; min-height:2.75rem; white-space:normal; }
+.areaGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+.areaCard { display:flex; flex-direction:column; align-items:flex-start; gap:.75rem; min-width:0; border:1px solid var(--border); border-radius:1rem; padding:1.25rem; background:var(--card); }
+.areaCard h2 { font-size:.95rem; font-weight:600; }
+.areaCard p { color:var(--muted-foreground); font-size:.8rem; line-height:1.7; }
+.preparing { display:inline-flex; align-items:center; gap:.35rem; margin-top:auto; padding-top:.5rem; color:var(--muted-foreground); font-size:.7rem; }
+.verification { display:flex; gap:.75rem; align-items:flex-start; border:1px dashed var(--border); border-radius:1rem; padding:1.25rem; }
+.verification h2 { font-size:.9rem; font-weight:600; }
+.verification p { margin-top:.5rem; font-size:.85rem; color:var(--foreground); }
+.verification span { display:block; margin-top:.4rem; font-size:.75rem; line-height:1.65; color:var(--muted-foreground); }
+.backLink { display:inline-flex; align-items:center; width:fit-content; min-height:2.75rem; font-size:.8rem; color:var(--primary); text-underline-offset:.25rem; }
+.backLink:hover { text-decoration:underline; }
+.unavailable { display:flex; flex-direction:column; align-items:flex-start; gap:1rem; padding:2rem; max-width:46rem; border:1px solid var(--border); border-radius:1rem; background:var(--card); }
+.unavailable h1 { font-size:1.5rem; font-weight:600; letter-spacing:-.035em; }
+.unavailable p { max-width:62ch; color:var(--muted-foreground); font-size:.85rem; line-height:1.75; }
+.unavailable .reference { font-size:.7rem; overflow-wrap:anywhere; }
+.platform a:focus-visible { outline:2px solid var(--ring); outline-offset:4px; }
+@media(max-width:760px) { .areaGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } .identity { align-items:flex-start; } }
+@media(max-width:760px) { .skillGrid { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:520px) { .identity { flex-direction:column; gap:1rem; } .account { text-align:left; } .account span { justify-content:flex-start; } .moduleGrid,.areaGrid { grid-template-columns:minmax(0,1fr); } .moduleCard { padding:1.2rem; } .navigation { gap:.15rem; } .navigation a { padding-inline:.65rem; } .unavailable { padding:1.25rem; } }

@@ -41,6 +41,7 @@ from .http.routes.pipeline import create_pipeline_router
 from .hunter import HunterRepository, create_hunter_router
 from .instagram_content import create_instagram_content_router
 from .integrations import IntegrationRepository, create_integration_router
+from .platform import create_platform_router
 from .ports.conversations import ConversationCommandRepository
 from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
@@ -406,6 +407,7 @@ def create_app(
         create_conversation_router(ConversationCommands(conversation_commands_repository))
     )
     app.include_router(create_pipeline_router(pipeline_entries_repository))
+    app.include_router(create_platform_router(database_url=config.database_url))
     app.include_router(create_instagram_content_router())
     app.include_router(create_whatsapp_web_router(WhatsAppWebRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_social_router(SocialRepository(PostgresRepository(config.database_url) if config.database_url else None)))

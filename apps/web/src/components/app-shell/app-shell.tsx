@@ -102,11 +102,11 @@ export function AppShell({
           <KiaraBrand inverse />
         </Link>
         <Navigation isSystemAdmin={isSystemAdmin} />
-        <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
-          <span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">
-            KIARA
-          </span>
-        </div>
+        {isSystemAdmin ? <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
+          <Link href="/app/platform" aria-label="Abrir plataforma KIARA" className="inline-flex min-h-11 items-center text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/60 hover:text-sidebar-foreground">
+            Plataforma KIARA
+          </Link>
+        </div> : null}
       </aside>
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetTrigger asChild>
@@ -137,11 +137,11 @@ export function AppShell({
               onNavigate={() => setMenuOpen(false)}
             />
           </div>
-          <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
-            <span className="text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/45">
-              KIARA
-            </span>
-          </div>
+          {isSystemAdmin ? <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
+            <Link href="/app/platform" onClick={() => setMenuOpen(false)} aria-label="Abrir plataforma KIARA" className="inline-flex min-h-11 items-center text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/60 hover:text-sidebar-foreground">
+              Plataforma KIARA
+            </Link>
+          </div> : null}
         </SheetContent>
       </Sheet>
       <div className="min-w-0 md:pl-[202px]">

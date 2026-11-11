@@ -1,0 +1,417 @@
+[
+  {
+    "path": "/health/live",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/health/ready",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/me",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/inbox/threads",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/inbox/threads/{thread_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/inbox/threads/{thread_id}/drafts",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/drafts/{draft_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/threads/{thread_id}/qualify",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/pipeline",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/pipeline/{entry_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/v1/instagram/skills",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/instagram/skills/{name}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/instagram/content-check",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/config",
+    "methods": [
+      "GET",
+      "PUT"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/events",
+    "methods": [
+      "POST",
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/analysis",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/analysis/next",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/analysis/{job_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/analysis/{job_id}/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/social/dashboard",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/social/channels",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/social/media",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/social/media/{media_id}/download",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/social/posts",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/social/posts/{post_id}",
+    "methods": [
+      "PUT",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/v1/social/posts/{post_id}/package",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/social/posts/{post_id}/publish",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/social/posts/{post_id}/confirm",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/inbox/threads/{thread_id}/read",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/inbox/threads/{thread_id}/messages",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/inbox/threads/{thread_id}/automation",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/outbox/next",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/whatsapp-web/outbox/{identifier}/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/hunter/instagram/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/hunter/facebook/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/hunter/searches",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/v1/hunter/searches/{search_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/hunter/searches/{search_id}/results/{result_id}/add-lead",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/hunter/searches/{search_id}/confirm",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/hunter/searches/{search_id}/process",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/hunter/internal/drain",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/integrations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/integrations/{provider}",
+    "methods": [
+      "PUT",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/v1/integrations/instagram-session/status",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/integrations/mailerfind/global",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/v1/integrations/hermes/capabilities",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/integrations/postiz/credentials",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/chatwoot/inboxes",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/chatwoot/conversations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/chatwoot/conversations/{conversation_id}/messages",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/channels/chatwoot/{organization_id}/webhook",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/channels/instagram/{organization_id}/webhook",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/competition/instagram/connection",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/v1/competition/instagram/connection/{session_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/competition/instagram/connection/{session_id}/screenshot",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/competition/instagram/connection/{session_id}/input",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/competition/instagram/connection/{session_id}/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/competition/overview",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/competition/analyses",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/v1/competition/kiara/analyses",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/competition/kiara/jobs/{job_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/competition/kiara/profile-preview",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/competition/analyses/{analysis_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/competition/prospects",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/v1/sales/profile",
+    "methods": [
+      "GET",
+      "PUT"
+    ]
+  },
+  {
+    "path": "/v1/sales/activities",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/v1/workspace/commercial-data",
+    "methods": [
+      "DELETE"
+    ]
+  }
+]
