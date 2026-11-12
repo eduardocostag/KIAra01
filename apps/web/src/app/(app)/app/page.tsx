@@ -1,59 +1,53 @@
-import Link from "next/link"
-import { ArrowRight, AudioLines, ChartNoAxesColumnIncreasing, Radar, Search } from "lucide-react"
-import { OrbitScene } from "@/components/brand/orbit-scene"
-import { SourceMark } from "@/components/brand/source-mark"
-import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
-import { Button } from "@/components/ui/button"
-import { getPipelineDTO } from "@/lib/api/pipeline-server"
-import { leadDisplayName, pipelineStages, sourceLabels } from "@/lib/api/pipeline"
+import Link from "next/link";
+import { ArrowRight, Inbox, Radar, Search, ShieldCheck } from "lucide-react";
+import { KiaraBrand } from "@/components/brand/kiara-brand";
+import { OrbitScene } from "@/components/brand/orbit-scene";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-function relativeTime(value: string, now: number) {
-  const minutes = Math.max(0, Math.floor((now - new Date(value).getTime()) / 60000))
-  if (!Number.isFinite(minutes)) return "—"
-  if (minutes < 1) return "Agora"
-  if (minutes < 60) return `Há ${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `Há ${hours} h`
-  const days = Math.floor(hours / 24)
-  return `Há ${days} ${days === 1 ? "dia" : "dias"}`
-}
+export default function ModuleSelectorPage() {
+  const modules = [
+    { href: "/app/leads", label: "KIARA Leads", description: "Pesquisa, CRM e Pipeline.", icon: Search, operational: true },
+    { href: "/app/platform/whatsapp", label: "KIARA WhatsApp", description: "Configurações de integração.", icon: Inbox, operational: false },
+    { href: "/app/platform/atendimento", label: "KIARA Atendimento", description: "Gestão operacional.", icon: Inbox, operational: false },
+    { href: "/app/platform/ti", label: "KIARA TI", description: "Suporte e infraestrutura.", icon: ShieldCheck, operational: false },
+  ];
 
-export default async function DashboardPage() {
-  const pipeline = await getPipelineDTO()
-    .then((entries) => ({ entries, available: true }))
-    .catch(() => ({ entries: [], available: false }))
-  const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
-  const now = new Date().getTime()
-  const nextHref = fresh.length ? "/app/pipeline?view=contacts" : "/app/hunter"
-  const metrics = [
-    { label: "Novos leads", value: pipeline.available ? fresh.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/pipeline?view=contacts" },
-    { label: "Em acompanhamento", value: pipeline.available ? pipeline.entries.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/pipeline?view=pipeline" },
-  ]
-  const recent = [...pipeline.entries].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5)
-
-  const dateLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).format(new Date())
-  return <div className="kiara-dashboard kiara-orbit-dashboard">
-    <section className="kiara-dashboard-hero" aria-labelledby="dashboard-title">
-      <div className="kiara-dashboard-copy">
-        <p className="kiara-dashboard-eyebrow">{dateLabel}</p>
-        <h1 id="dashboard-title"><span>Converse.</span><span>Entenda.</span><span className="kiara-dashboard-gradient-word">Conquiste.</span></h1>
-        <p className="kiara-dashboard-lead">{fresh.length ? `Você tem ${fresh.length} ${fresh.length === 1 ? "lead novo" : "leads novos"} esperando uma primeira abordagem.` : "A Kiara reúne oportunidades reais e organiza o próximo passo da sua operação."}</p>
-        <Button asChild size="lg" className="kiara-dashboard-cta"><Link href={nextHref}>{fresh.length ? "Começar minha fila" : "Pesquisar leads"}<ArrowRight className="size-4" /></Link></Button>
-        <div className="kiara-dashboard-capabilities" aria-label="Acessos rápidos"><Link href="/app/hunter"><span><Search className="size-3.5" /></span>Hunter</Link><Link href="/app/inbox"><span><AudioLines className="size-3.5" /></span>Leads</Link></div>
+  return (
+    <div className="relative flex min-h-screen flex-col items-center justify-center p-8">
+      <div className="absolute inset-0 z-0 opacity-20">
+        <OrbitScene />
       </div>
-      <div className="kiara-dashboard-planet" aria-hidden="true"><OrbitScene /></div>
-      <div className="kiara-dashboard-metrics" role="group" aria-label="Indicadores da operação">
-        {metrics.map(({ label, value, icon: Icon, href }) => <Link key={label} href={href} className="kiara-dashboard-metric"><span className="kiara-dashboard-metric-icon"><Icon className="size-5" aria-hidden="true" /></span><div><p className="kiara-dashboard-metric-value">{value}</p><p className="kiara-dashboard-metric-label">{label}</p></div></Link>)}
+      <div className="relative z-10 w-full max-w-5xl text-center">
+        <div className="mb-12 flex justify-center">
+          <KiaraBrand />
+        </div>
+        <h1 className="mb-12 text-4xl font-bold tracking-tight">Selecione o módulo de operação</h1>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {modules.map(({ href, label, description, icon: Icon, operational }) => (
+            <Link key={href} href={href} className={cn(
+              "group relative flex flex-col items-center rounded-3xl border border-white/10 bg-black/40 p-8 backdrop-blur-xl transition-all hover:border-primary/50 hover:bg-black/60",
+              !operational && "opacity-70 hover:opacity-100"
+            )}>
+              <div className="mb-6 rounded-2xl bg-white/5 p-4 text-primary transition-colors group-hover:bg-primary/20">
+                <Icon className="size-10" />
+              </div>
+              <h2 className="mb-2 text-xl font-semibold">{label}</h2>
+              <p className="mb-8 text-sm text-muted-foreground">{description}</p>
+              
+              {!operational && (
+                <span className="mb-4 inline-block rounded-full bg-yellow-500/20 px-3 py-1 text-xs font-medium text-yellow-500">
+                  Em preparação
+                </span>
+              )}
+              
+              <Button variant="ghost" className="mt-auto w-full group-hover:bg-primary group-hover:text-primary-foreground">
+                Acessar <ArrowRight className="ml-2 size-4" />
+              </Button>
+            </Link>
+          ))}
+        </div>
       </div>
-    </section>
-    <section className="kiara-dashboard-table" aria-labelledby="recent-title">
-      <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><RefreshWorkspace /><Link href="/app/pipeline?view=contacts" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
-      {recent.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><caption className="sr-only">Leads recentes com origem e status</caption><thead><tr><th scope="col">Lead</th><th scope="col">Origem</th><th scope="col">Tempo</th><th scope="col">Status</th></tr></thead><tbody>{recent.map((entry) => {
-        const source = entry.consumer.source ?? ""
-        const sourceLabel = sourceLabels[source] ?? "Web pública"
-        const kind = /instagram/i.test(source + sourceLabel) ? "instagram" : /facebook/i.test(source + sourceLabel) ? "facebook" : /maps|google/i.test(source + sourceLabel) ? "maps" : "web"
-        return <tr key={entry.id}><td><Link href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`} className="kiara-dashboard-lead-link"><span className="kiara-dashboard-lead-name">{leadDisplayName(entry.consumer)}</span></Link></td><td><span className="kiara-dashboard-source"><span className={`kiara-dashboard-source-icon kiara-dashboard-source-${kind}`}><SourceMark kind={kind} /></span>{sourceLabel}</span></td><td><time dateTime={entry.updated_at}>{relativeTime(entry.updated_at, now)}</time></td><td><span className="kiara-dashboard-status">{pipelineStages.find((stage) => stage.id === entry.stage)?.label ?? entry.stage}</span></td></tr>
-      })}</tbody></table></div> : <div className="kiara-dashboard-empty"><Radar className="size-5 text-primary" /><p>Seus primeiros leads aparecerão aqui depois de uma pesquisa.</p><Link href="/app/hunter" className="font-semibold text-primary hover:underline">Encontrar leads <ArrowRight className="inline size-3.5" /></Link></div>}
-    </section>
-  </div>
+    </div>
+  );
 }
