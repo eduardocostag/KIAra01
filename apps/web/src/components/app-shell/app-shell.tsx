@@ -155,7 +155,7 @@ export function AppShell({
             <KiaraBrand inverse />
           </Link>
           {isWhatsApp && <div className="mb-5 flex items-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-3 py-3 text-sm font-semibold text-emerald-300"><MessageCircle className="size-4" aria-hidden="true" />WhatsApp</div>}
-          {isChat && <div className="mb-5 flex items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/5 px-3 py-3 text-sm font-semibold text-violet-200"><Sparkles className="size-4" aria-hidden="true" />Kiara Chat</div>}
+          {isChat && <div className="mb-5 flex items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/5 px-3 py-3 text-sm font-semibold text-violet-200"><Sparkles className="size-4" aria-hidden="true" />KIARA Chat</div>}
           <Navigation isSystemAdmin={isSystemAdmin} modulePrefix={modulePrefix!} />
           <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
             {isWhatsApp && <p className="mb-3 text-xs leading-5 text-sidebar-foreground/60">Conexão e análise local.<br />Automação em área própria.</p>}
@@ -194,7 +194,7 @@ export function AppShell({
             <SheetTitle>
               <KiaraBrand inverse />
             </SheetTitle>
-            <SheetDescription>{isWhatsApp ? "WhatsApp · conexão, análise e automação" : isChat ? "Kiara Chat · conversa e criação" : "Navegue pelas áreas da Kiara"}</SheetDescription>
+            <SheetDescription>{isWhatsApp ? "WhatsApp · conexão, análise e automação" : isChat ? "KIARA Chat · conversa e criação" : "Navegue pelas áreas da Kiara"}</SheetDescription>
           </SheetHeader>
           <div className="mt-7">
             {isModuleActive && (

@@ -7,9 +7,9 @@ import styles from "./platform.module.css"
 const moduleLabels = {
   leads: "KIARA Leads",
   whatsapp: "KIARA WhatsApp",
-  atendimento: "Kiara Chat",
+  atendimento: "KIARA Chat",
   ti: "KIARA Automation",
-  intelligence: "Kiara Chat · agentes",
+  intelligence: "KIARA Chat · agentes",
 } as const
 
 export function PlatformSkills({ skills }: { skills: readonly PlatformSkill[] }) {

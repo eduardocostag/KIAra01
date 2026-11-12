@@ -144,7 +144,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         return reply.text
       } catch (error) { lastError = error }
     }
-    throw new Error(lastError instanceof Error && lastError.name !== "AbortError" ? `IA indisponível: ${lastError.message}` : "IA indisponível. Conecte a IA no Kiara Chat (Ajustes).")
+    throw new Error(lastError instanceof Error && lastError.name !== "AbortError" ? `IA indisponível: ${lastError.message}` : "IA indisponível. Conecte a IA no KIARA Chat (Ajustes).")
   }
 
   async function run() {

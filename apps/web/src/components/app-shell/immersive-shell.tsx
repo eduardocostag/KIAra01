@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 
 /**
  * Full-height workspace with a single conversation-style sidebar, used by the
- * chat-like modules (Kiara Chat, WhatsApp). On small screens the sidebar moves
+ * chat-like modules (KIARA Chat, WhatsApp). On small screens the sidebar moves
  * into a drawer opened from the top bar.
  */
 export function ImmersiveShell({ label, sidebar, footer, topBar, children }: {

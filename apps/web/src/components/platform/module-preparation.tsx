@@ -21,7 +21,7 @@ const areas: Record<Exclude<ModuleKey, "leads">, readonly Area[]> = {
     { title: "Indicadores e relatórios", description: "Espaço para acompanhar a operação após a integração." },
   ],
   intelligence: [
-    { title: "Conversa com IA", description: "Acesse o Kiara Chat para consultar os modelos e recursos conectados." },
+    { title: "Conversa com IA", description: "Acesse o KIARA Chat para consultar os modelos e recursos conectados." },
     { title: "Execução local", description: "Tarefas dependem de ferramentas reais, revisão do plano e autorização." },
   ],
   ti: [
