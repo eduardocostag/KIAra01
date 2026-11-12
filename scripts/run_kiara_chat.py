@@ -13,7 +13,9 @@ sys.path.insert(0, str(ROOT))
 from app.chat.auth import SupabaseAuthorizationVerifier
 from app.chat.automation import ControlledAutomation
 from app.chat.bridge import ChatBridge, serve, validate_origins
-from app.chat.service import LocalChatService
+from app.chat.service import LocalChatService, freellmapi_health
+from app.providers.freellmapi import FreeLLMAPIProvider
+from app.providers.remote import ProviderConfigurationError
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -34,10 +36,22 @@ def create_bridge() -> ChatBridge:
         values.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") or values.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", ""),
         values.get("KIARA_CHAT_AUTH_API_URL", "https://kiara-api-rouge.vercel.app"),
     )
-    service = LocalChatService(model=values.get("KIARA_CHAT_MODEL", "kiara-stable:latest"),
-                               ollama_url=values.get("KIARA_CHAT_OLLAMA_URL", "http://127.0.0.1:11434"),
-                               voice=values.get("KIARA_CHAT_VOICE", "pt-BR-FranciscaNeural"),
-                               whisper_model=values.get("KIARA_CHAT_WHISPER_MODEL", "base"))
+    voice = values.get("KIARA_CHAT_VOICE", "pt-BR-FranciscaNeural")
+    whisper_model = values.get("KIARA_CHAT_WHISPER_MODEL", "base")
+    if values.get("KIARA_CHAT_PROVIDER", "ollama").strip().lower() == "freellmapi":
+        # Router may forward messages to external providers; selected explicitly only.
+        base_url = values.get("FREELLMAPI_BASE_URL", "http://127.0.0.1:3001/v1")
+        api_key = values.get("FREELLMAPI_API_KEY", "")
+        model = values.get("KIARA_CHAT_MODEL", "auto")
+        provider = FreeLLMAPIProvider(api_key=api_key, model=model, base_url=base_url,
+                                      timeout_seconds=110, max_output_tokens=4096)
+        service = LocalChatService(model=model, provider=provider, provider_name="freellmapi",
+                                   health=freellmapi_health(base_url, api_key),
+                                   voice=voice, whisper_model=whisper_model)
+    else:
+        service = LocalChatService(model=values.get("KIARA_CHAT_MODEL", "kiara-stable:latest"),
+                                   ollama_url=values.get("KIARA_CHAT_OLLAMA_URL", "http://127.0.0.1:11434"),
+                                   voice=voice, whisper_model=whisper_model)
     automation = ControlledAutomation(ROOT / "data/kiara-chat-audit.jsonl")
     return ChatBridge(service, verifier, origins, automation)
 
@@ -52,6 +66,8 @@ def main():
         parser.error("Use somente 127.0.0.1 ou localhost.")
     try:
         bridge = create_bridge()
+    except ProviderConfigurationError as error:
+        parser.error(f"{error} Nenhum segredo foi exibido.")
     except ValueError:
         parser.error("Configure a URL/chave pública Supabase usada pelo site e as origens permitidas. Nenhum segredo foi exibido.")
     if args.check_only:

@@ -44,11 +44,30 @@ def _text(value: Any, name: str, maximum: int, *, optional: bool = False) -> str
     return value.strip()
 
 
+FREELLMAPI_VIRTUAL_MODELS = frozenset({"auto", "fusion"})
+
+
+def freellmapi_health(base_url: str, api_key: str, *, opener=None):
+    """Readiness probe: the router lists real models only when a provider key is usable."""
+    def check() -> bool:
+        request = Request(base_url.rstrip("/") + "/models?available=true",
+                          headers={"Accept": "application/json", "Authorization": "Bearer " + api_key})
+        with (opener or build_opener(_NoRedirect())).open(request, timeout=5) as response:
+            raw = response.read(512_001)
+        if len(raw) > 512_000:
+            raise ValueError("oversized model list")
+        payload = json.loads(raw)
+        ids = {item.get("id") for item in payload.get("data", []) if isinstance(item, dict)}
+        return bool(ids - FREELLMAPI_VIRTUAL_MODELS - {None})
+    return check
+
+
 class LocalChatService:
     """Bounded stateless chat/media jobs. No generated text is executed as a command."""
 
     def __init__(self, *, model: str = "kiara-stable:latest",
                  ollama_url: str = "http://127.0.0.1:11434", provider=None,
+                 provider_name: str = "ollama", health=None,
                  voice: str = "pt-BR-FranciscaNeural", whisper_model: str = "base"):
         parts = urlsplit(ollama_url)
         if (parts.scheme != "http" or parts.hostname not in {"127.0.0.1", "localhost", "::1"}
@@ -59,7 +78,9 @@ class LocalChatService:
             raise ValueError("Modelo do Chat inválido.")
         self.model = model
         self.ollama_url = ollama_url.rstrip("/")
-        self.provider_name = "ollama"
+        self.provider_name = provider_name
+        # Optional readiness probe for non-Ollama providers (e.g. FreeLLMAPI).
+        self.health = health
         self.provider = provider or OllamaProvider(
             model, self.ollama_url, timeout_seconds=110,
             generation_options={"temperature": 0.25, "num_ctx": 8192, "num_predict": 4096},
@@ -68,8 +89,12 @@ class LocalChatService:
         self.voice = voice
         self.whisper_model = whisper_model
 
-    def status(self) -> dict:
-        model_ready = False
+    def _model_ready(self) -> bool:
+        if self.health is not None:
+            try:
+                return bool(self.health())
+            except Exception:  # noqa: BLE001 - optional provider health boundary
+                return False
         try:
             request = Request(self.ollama_url + "/api/tags", headers={"Accept": "application/json"})
             with build_opener(_NoRedirect()).open(request, timeout=5) as response:
@@ -78,13 +103,21 @@ class LocalChatService:
                 raise ValueError("oversized model list")
             payload = json.loads(raw)
             names = {item.get("name") for item in payload.get("models", []) if isinstance(item, dict)}
-            model_ready = self.model in names or self.model + ":latest" in names
+            return self.model in names or self.model + ":latest" in names
         except Exception:  # noqa: BLE001 - optional local service health boundary
-            model_ready = False
+            return False
+
+    def status(self) -> dict:
+        model_ready = self._model_ready()
         stt = importlib.util.find_spec("faster_whisper") is not None
         tts = importlib.util.find_spec("edge_tts") is not None
+        if self.provider_name == "freellmapi":
+            chat_detail = ("FreeLLMAPI com provedores ativos; as mensagens podem ser enviadas a provedores externos."
+                           if model_ready else "FreeLLMAPI sem provedor ativo. Cadastre uma chave de provedor no painel do FreeLLMAPI.")
+        else:
+            chat_detail = "Modelo local verificado." if model_ready else "Inicie o Ollama e instale o modelo configurado."
         capabilities = [
-            {"id": "chat", "available": model_ready, "detail": "Modelo local verificado." if model_ready else "Inicie o Ollama e instale o modelo configurado."},
+            {"id": "chat", "available": model_ready, "detail": chat_detail},
             {"id": "speech", "available": tts, "detail": "Voz neural pt-BR via Edge TTS; requer internet." if tts else "Instale edge-tts no ambiente local."},
             {"id": "transcribe", "available": stt, "detail": "Faster Whisper local; o primeiro uso pode baixar o modelo." if stt else "Instale faster-whisper no ambiente local."},
             {"id": "image", "available": False, "detail": "Nenhum gerador de imagens real foi conectado a esta ponte."},
@@ -103,7 +136,9 @@ class LocalChatService:
         except ChatError:
             raise
         except Exception:  # noqa: BLE001 - provider failure must not expose request contents
-            raise ChatError(503, "O modelo local não respondeu. Verifique o Ollama e tente novamente.") from None
+            raise ChatError(503, "O modelo não respondeu. Verifique o FreeLLMAPI e seus provedores e tente novamente."
+                            if self.provider_name == "freellmapi" else
+                            "O modelo local não respondeu. Verifique o Ollama e tente novamente.") from None
 
     async def chat(self, payload: dict) -> dict:
         messages = payload.get("messages")

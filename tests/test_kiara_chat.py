@@ -176,3 +176,39 @@ def test_http_origin_auth_and_unknown_actions(tmp_path):
 def test_server_cannot_bind_public_interface():
     with pytest.raises(ValueError):
         serve(object(), host="0.0.0.0")
+
+
+class _ModelsOpener:
+    def __init__(self, ids):
+        self.body = json.dumps({"data": [{"id": item} for item in ids]}).encode()
+        self.requests = []
+
+    def open(self, request, timeout):
+        self.requests.append(request)
+        return io.BytesIO(self.body)
+
+
+@pytest.mark.parametrize(("ids", "ready"), [(["auto", "fusion"], False), (["auto", "gemini-3.8-flash"], True), ([], False)])
+def test_freellmapi_health_requires_a_real_model(ids, ready):
+    from app.chat.service import freellmapi_health
+
+    opener = _ModelsOpener(ids)
+    assert freellmapi_health("http://127.0.0.1:3001/v1", "freellmapi-test", opener=opener)() is ready
+    request = opener.requests[0]
+    assert request.full_url == "http://127.0.0.1:3001/v1/models?available=true"
+    assert request.get_header("Authorization") == "Bearer freellmapi-test"
+
+
+async def test_freellmapi_mode_reports_router_and_hides_failures():
+    class Broken:
+        async def generate(self, prompt):
+            raise RuntimeError("Authorization: Bearer freellmapi-secret")
+
+    service = LocalChatService(model="auto", provider=Broken(), provider_name="freellmapi", health=lambda: False)
+    status = service.status()
+    chat = next(item for item in status["capabilities"] if item["id"] == "chat")
+    assert status["provider"] == "freellmapi" and chat["available"] is False
+    assert "Cadastre uma chave de provedor" in chat["detail"]
+    with pytest.raises(ChatError) as error:
+        await service.chat({"messages": [{"role": "user", "content": "Oi"}]})
+    assert "FreeLLMAPI" in str(error.value) and "freellmapi-secret" not in str(error.value)
