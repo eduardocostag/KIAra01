@@ -5,12 +5,38 @@ publicado conforme [o registro de release](commercial-release.md).
 
 | Integração | Uso na Kiara | Estado local |
 | --- | --- | --- |
-| Google Maps Scraper | Pesquisa comercial desktop e backend Hunter opt-in | CLI Windows instalada e hash verificado; pesquisa real ainda não exercitada |
-| FreeLLMAPI | Provider opcional do runtime Python, com fallback e proteção de contexto | Serviço e painel compilados; falta cadastrar provedores e chave unificada |
+| Google Maps Scraper | Pesquisa comercial desktop e backend Hunter opt-in | CLI instalada e hash verificado; coleta upstream falha; fallback desktop comprovado com duas fichas em 11/11/2026 |
+| FreeLLMAPI | Provider opcional do runtime Python, com fallback e proteção de contexto | Smoke local 200/401 comprovado em 11/11/2026; inferência exige provedores e chave unificada |
 | Instagram Agent Skill | 13 skills e 6 utilitários locais de conteúdo; endpoints autenticados na API | Recursos incorporados e testes offline executados |
-| Chatwoot | Central de atendimento via Application API, comandos desktop e endpoints por organização | Adapter e skill incorporados; iniciar instância local exige Docker e configurar conta/token |
+| Chatwoot | Central de atendimento via Application API, comandos desktop e endpoints por organização | Adapter e skill incorporados; Docker CLI presente, engine inacessível nesta sessão; conta/token não configurados no ambiente |
 
 ## Descoberta e execução
+
+### Verificação e correções em 11/11/2026
+
+- O desktop agora usa a pesquisa pelo navegador existente quando a CLI Maps falha
+  ou retorna nenhuma ficha. O diagnóstico da CLI é preservado em `warnings`, e
+  `backend` identifica a fonte que entregou o resultado. Kill switch e cancelamento
+  impedem iniciar ou aproveitar uma pesquisa alternativa após interrupção.
+- Uma consulta real `dentistas em Curitiba`, limite 2, retornou duas fichas pelo
+  navegador alternativo após a CLI produzir um CSV de zero bytes. Uma segunda
+  execução com diagnóstico local confirmou `unexpected page type` no coletor
+  upstream, sem ausência do navegador: não se trata de mudança de colunas rejeitada
+  pelo parser da Kiara. Arquivos vazios agora recebem diagnóstico próprio de falha
+  de coleta. Isso comprova o fallback nessa consulta; não comprova a CLI upstream.
+- O roteamento de skills normaliza os acentos antes de comparar termos em português:
+  `prospecção` e `captação` agora selecionam Google Maps corretamente.
+- As sete suítes Python de integrações passaram com **133 testes**, incluindo
+  regressões do fallback e cancelamento. Os scripts Node upstream do Maps passaram
+  com **9 testes**. As 13 skills Instagram e seus seis utilitários locais estão
+  cobertos por essas suítes; publicação e envio não foram exercitados.
+- O smoke FreeLLMAPI iniciou uma instância isolada, confirmou painel HTTP 200 e
+  autenticação obrigatória em `/v1/models`, e encerrou a instância. Não há chave
+  unificada no ambiente desta verificação e não foi comprovada inferência.
+- O executável Docker está presente, mas a consulta somente leitura ao engine
+  falhou por acesso negado no contexto de execução. O diagnóstico agora distingue
+  CLI instalada de engine alcançável. O token Chatwoot não está no ambiente;
+  canais e atendimento reais continuam sem validação.
 
 ### Ativação local em 09/11/2026
 

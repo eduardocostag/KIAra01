@@ -146,13 +146,18 @@ async def test_broad_research_enriches_public_web_results(monkeypatch: pytest.Mo
         return [{"source": "web", "url": "https://aurora.example", "title": "Aurora", "summary": "Clínica Aurora", "public_data": {}}]
 
     async def enrich(rows):
-        rows[0]["public_data"].update({"phone": "+5511999990000", "enrichment": "completed", "provider": "test"})
+        rows[0]["public_data"].update({
+            "phone": "+5511999990000", "address": "Porto Alegre",
+            "address_evidence": "verified_public_page",
+            "enrichment": "completed", "provider": "test",
+        })
 
     monkeypatch.setattr("kiara_api.hunter.multi_public_search", public_search)
     monkeypatch.setattr("kiara_api.hunter.enrich_results", enrich)
     outcome = await execute_research({"query": "clínicas", "location": None, "sources": ["web"], "result_limit": 5, "market": "b2b"})
     assert outcome["results"][0]["public_data"]["phone"] == "+5511999990000"
     assert outcome["results"][0]["public_data"]["enrichment"] == "completed"
+    assert outcome["results"][0]["public_data"]["address"] == "Porto Alegre"
 
 
 @pytest.mark.asyncio

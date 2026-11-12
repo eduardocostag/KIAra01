@@ -8,8 +8,11 @@ export type HunterPublicData = {
   content_kind?: "profile" | "publication"
   niche_evidence?: boolean
   location_evidence?: boolean
+  bio_location_evidence?: boolean
   profile_bio?: string
   bio_status?: "verified_public_profile" | "indexed_excerpt_only"
+  page_status?: "verified_public_page" | "indexed_excerpt_only"
+  detail_inspected?: boolean
   user_notes?: string
   research_objective?: string
   website_status?: "present" | "not_listed" | "unknown"
@@ -22,7 +25,12 @@ export type HunterPublicData = {
   website_quality_signals?: string[]
   match_reasons?: string[]
   address?: string | null
+  address_evidence?: string | null
   source_url?: string | null
+  lead_requirements_missing?: string[]
+  enrichment?: string
+  rating?: number | null
+  user_rating_count?: number | null
   lead_id?: string | null
   pipeline_entry_id?: string | null
   crm_status?: string | null
@@ -49,7 +57,7 @@ export type HunterJob = {
   objective?: string
   website_filter?: WebsiteFilter
   contact_filter?: ContactFilter
-  validation?: { checked: number; accepted: number; excluded: number; unknown: number; source_failures: number }
+  validation?: { checked: number; accepted: number; excluded: number; unknown: number; incomplete?: number; source_failures: number }
   warnings?: string[]
   sync_summary?: { created: number; existing: number; skipped: number }
 }
@@ -95,17 +103,23 @@ export function parseHunterJob(value: unknown): HunterJob {
         if (result.public_data != null) {
           if (typeof result.public_data !== "object" || Array.isArray(result.public_data)) return false
           const data = result.public_data
-          const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.email, data.whatsapp_url, data.address, data.source_url, data.lead_id, data.pipeline_entry_id, data.crm_status, data.profile_handle, data.profile_bio, data.user_notes]
+          const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.email, data.whatsapp_url, data.address, data.address_evidence, data.source_url, data.enrichment, data.lead_id, data.pipeline_entry_id, data.crm_status, data.profile_handle, data.profile_bio, data.user_notes]
           if (data.bio_status && !["verified_public_profile", "indexed_excerpt_only"].includes(data.bio_status)) return false
+          if (data.page_status && !["verified_public_page", "indexed_excerpt_only"].includes(data.page_status)) return false
           if (data.content_kind && !["profile", "publication"].includes(data.content_kind)) return false
           if (data.niche_evidence != null && typeof data.niche_evidence !== "boolean") return false
           if (data.location_evidence != null && typeof data.location_evidence !== "boolean") return false
+          if (data.bio_location_evidence != null && typeof data.bio_location_evidence !== "boolean") return false
+          if (data.detail_inspected != null && typeof data.detail_inspected !== "boolean") return false
           if (!textFields.every((field) => field == null || typeof field === "string")) return false
           if (data.manual_import != null && typeof data.manual_import !== "boolean") return false
           if (data.website_status && !["present", "not_listed", "unknown"].includes(data.website_status)) return false
           if (data.criterion_status && !["verified", "not_verified", "not_requested", "manual_review"].includes(data.criterion_status)) return false
           if (data.website_quality_score != null && (typeof data.website_quality_score !== "number" || data.website_quality_score < 0 || data.website_quality_score > 100)) return false
+          if (data.rating != null && (typeof data.rating !== "number" || data.rating < 0 || data.rating > 5)) return false
+          if (data.user_rating_count != null && (!Number.isInteger(data.user_rating_count) || data.user_rating_count < 0)) return false
           if (data.match_reasons != null && (!Array.isArray(data.match_reasons) || !data.match_reasons.every(item => typeof item === "string"))) return false
+          if (data.lead_requirements_missing != null && (!Array.isArray(data.lead_requirements_missing) || !data.lead_requirements_missing.every(item => typeof item === "string"))) return false
         }
         try { return ["https:", "http:"].includes(new URL(result.url).protocol) } catch { return false }
       })) throw new Error("A API retornou dados incompletos. Tente atualizar os resultados.")
@@ -118,6 +132,58 @@ export function parseHunterJob(value: unknown): HunterJob {
     }
   }
   return job
+}
+
+export function hunterEvidenceLabel(
+  source: HunterSource,
+  data: HunterPublicData | undefined,
+  historical = false,
+): string {
+  if (data?.manual_import) return "Importado manualmente · não verificado"
+  if (source === "google_maps") {
+    return data?.detail_inspected
+      ? "Ficha do Google Maps inspecionada"
+      : "Ficha do Google Maps não confirmada"
+  }
+  if ((source === "instagram" && data?.bio_status === "verified_public_profile") ||
+      (source === "facebook" && data?.page_status === "verified_public_page")) {
+    return "Perfil público conferido"
+  }
+  if (source === "web" && data?.enrichment === "completed") return "Página pública consultada"
+  if (historical) return "Histórico sem validação"
+  return source === "web"
+    ? "Página indexada · vínculo com o negócio não confirmado"
+    : "Perfil público não confirmado"
+}
+
+export function hunterResultLocation(
+  source: HunterSource,
+  data: HunterPublicData | undefined,
+  requestedLocation: string | null,
+): string {
+  const address = data?.address?.trim()
+  if (address) return address
+  if ((source === "instagram" || source === "facebook") && data?.bio_location_evidence && requestedLocation) {
+    return `Região citada no perfil: ${requestedLocation}`
+  }
+  if (source === "google_maps" && data?.detail_inspected) return "Endereço não informado na ficha do Maps"
+  return requestedLocation
+    ? `Região pesquisada: ${requestedLocation} · não confirmada`
+    : "Localização não confirmada"
+}
+
+export function publicWebsiteUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  try {
+    const url = new URL(value)
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null
+  } catch { return null }
+}
+
+export function publicEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const email = value.trim()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
 }
 
 export function parseHunterHistory(value: unknown): HunterJob[] {

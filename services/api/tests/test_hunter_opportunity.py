@@ -23,9 +23,14 @@ def test_website_opportunity_uses_observable_signals() -> None:
 def test_missing_email_requires_inspection_and_rejects_observed_email() -> None:
     search = {"query": "clínicas sem email", "research_mode": "broad", "website_filter": "any", "contact_filter": "any"}
     rows = [
-        {"source": "web", "title": "Sem email", "url": "https://one.example", "public_data": {"enrichment": "completed"}},
-        {"source": "web", "title": "Com email", "url": "https://two.example", "public_data": {"enrichment": "completed", "email": "oi@two.example"}},
-        {"source": "web", "title": "Não inspecionado", "url": "https://three.example"},
+        {"source": "web", "title": "Sem email", "url": "https://one.example", "public_data": {
+            "enrichment": "completed", "phone": "+5511999990000", "address": "São Paulo", "address_evidence": "verified_public_page",
+        }},
+        {"source": "web", "title": "Com email", "url": "https://two.example", "public_data": {
+            "enrichment": "completed", "phone": "+5511999990001", "address": "São Paulo", "address_evidence": "verified_public_page", "email": "oi@two.example",
+        }},
+        {"source": "web", "title": "Não inspecionado", "url": "https://three.example",
+         "public_data": {"phone": "+5511999990002", "address": "São Paulo", "address_evidence": "verified_public_page"}},
     ]
     accepted, counts = filter_results(rows, search)
     assert [row["title"] for row in accepted] == ["Sem email"]
@@ -37,6 +42,7 @@ def test_weak_site_filter_preserves_evidence_reasons() -> None:
     search = {"query": "lojas com site ruim", "research_mode": "broad", "website_filter": "any", "contact_filter": "any"}
     rows = [{"source": "web", "title": "Loja", "url": "https://loja.example", "public_data": {
         "enrichment": "completed", "website_quality_score": 35,
+        "phone": "+5511999990000", "address": "São Paulo", "address_evidence": "verified_public_page",
         "website_quality_signals": ["Pouco conteúdo público na página analisada"],
     }}]
     accepted, _ = filter_results(rows, search)

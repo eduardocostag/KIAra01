@@ -12,6 +12,8 @@ from typing import Any
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from .hunter_research import lead_requirement_gaps, normalize_result
+
 
 def _public_url(value: Any) -> str | None:
     if not isinstance(value, str):
@@ -125,7 +127,7 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
         "research_objective": options.get("objective", ""),
         "website_status": data.get("website_status", "unknown"),
     }
-    for key in ("phone", "email", "address", "website_evidence", "criterion_status", "place_id", "enrichment", "provider"):
+    for key in ("phone", "email", "address", "address_evidence", "website_evidence", "criterion_status", "place_id", "enrichment", "provider"):
         if isinstance(data.get(key), str) and data[key].strip():
             metadata[key] = data[key][:3000]
     for key in ("website_quality_score", "website_quality_signals", "match_reasons"):
@@ -198,14 +200,22 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
     await connection.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
     for result in saved_rows:
         keys = identity_keys(result)
-        reason = _skip_reason(search_dict, result) or (None if keys else "invalid_source_url")
+        normalized_result = normalize_result(result)
+        missing_requirements = lead_requirement_gaps(normalized_result, search_dict)
+        reason = (
+            _skip_reason(search_dict, result)
+            or (None if keys else "invalid_source_url")
+            or (None if not missing_requirements else "incomplete_lead")
+        )
         if user_selected and reason in {"criterion_not_matched", "criterion_not_verified"}:
             reason = None
             result.setdefault("public_data", {})["manual_lead_selection"] = True
         if reason:
             summary["skipped"] += 1
-            await _save_result_status(connection, org_uuid, search_dict["id"], result,
-                                      {"crm_status": "skipped", "crm_skip_reason": reason})
+            updates = {"crm_status": "skipped", "crm_skip_reason": reason}
+            if reason == "incomplete_lead":
+                updates["lead_requirements_missing"] = missing_requirements
+            await _save_result_status(connection, org_uuid, search_dict["id"], result, updates)
             continue
 
         consumer_id = uuid5(NAMESPACE_URL, f"kiara:hunter-consumer:{org_uuid}:{keys[0]}")

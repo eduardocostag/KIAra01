@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-ModuleKey = Literal["leads", "whatsapp", "atendimento", "ti"]
+ModuleKey = Literal["leads", "whatsapp", "atendimento", "ti", "intelligence"]
 MembershipRole = Literal["owner", "admin", "operator", "viewer"]
 PlatformRole = Literal["client", "reseller", "platform_admin"]
 
@@ -32,6 +32,16 @@ _MODULES = (
         "status": "operational",
         "status_label": "Operação existente",
         "areas": ["Pesquisa", "Pipeline", "Qualificação"],
+        "integration_status": "existing",
+    },
+    {
+        "key": "intelligence",
+        "name": "KIARA Intelligence",
+        "description": "Assistente geral e orquestrador de IA.",
+        "href": "/app/platform/intelligence",
+        "status": "operational",
+        "status_label": "Agente Ativo",
+        "areas": ["Chat Geral", "Comando de Voz", "Multimídia"],
         "integration_status": "existing",
     },
     {
@@ -81,5 +91,5 @@ def skill_modules(name: str) -> list[ModuleKey]:
     if name == "kiara-chatwoot":
         return ["atendimento"]
     if name == "kiara-freellmapi":
-        return ["leads", "whatsapp", "atendimento", "ti"]
+        return ["leads", "whatsapp", "atendimento", "ti", "intelligence"]
     return []

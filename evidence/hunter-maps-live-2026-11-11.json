@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-11-11T21:25:57.198301+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 40.84,
+  "requested": 3,
+  "accepted": 3,
+  "requested_limit_reached": true,
+  "all_sources_succeeded": true,
+  "sources": {
+    "google_maps": 3
+  },
+  "with_phone": 3,
+  "with_public_whatsapp": 2,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 6,
+    "accepted": 3,
+    "excluded": 0,
+    "unknown": 0,
+    "incomplete": 0,
+    "source_failures": 0
+  },
+  "warnings": [],
+  "error": null,
+  "passed": true
+}

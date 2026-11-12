@@ -25,6 +25,7 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, field_validator
 
 from .adapters.postgres import PostgresRepository, _iso, _uuid
+from .browser_runtime import browser_task
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
@@ -33,9 +34,11 @@ from .hunter_intelligence import expand_provider_query, understand_search
 from .hunter_research import (
     clean_summary,
     extract_contacts,
+    extract_public_address,
     filter_results,
     folded,
     maps_detail_result,
+    merge_public_contacts,
     normalize_result,
     research_options,
     safe_public_url,
@@ -872,9 +875,18 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
     """Enrich public websites with contacts and observable opportunity signals."""
     key = os.getenv("FIRECRAWL_API_KEY", "").strip()
     if not key:
-        await obscura_enrich_results(results)
         await native_enrich_results(results)
-        await semantic_enrich_results(results)
+        pending = [item for item in results if (
+            item.get("public_data", {}).get("enrichment") != "completed"
+            or not (item.get("public_data", {}).get("phone") or item.get("public_data", {}).get("whatsapp_url"))
+            or item.get("source") == "web" and item.get("public_data", {}).get("address_evidence") != "verified_public_page"
+        )]
+        if pending:
+            try:
+                await asyncio.wait_for(obscura_enrich_results(pending), timeout=8)
+            except Exception as exc:  # noqa: BLE001 — optional renderers must not discard native facts
+                logger.warning("hunter.obscura.enrichment_unavailable", extra={"error_class": type(exc).__name__})
+        await _optional_semantic_enrichment(results)
         return
     candidates = []
     for item in results:
@@ -896,9 +908,12 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
             if response.get("success") and isinstance(content, str) and content.strip():
                 links = (response.get("data") or {}).get("links") or []
                 contacts = extract_contacts(content[:40000], links)
+                merge_public_contacts(item.setdefault("public_data", {}), contacts)
+                if item.get("source") == "web":
+                    item["public_data"].update(extract_public_address(content[:40000], item["public_data"]["enrichment_url"]))
                 quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
                 item.setdefault("public_data", {}).update({
-                    "enrichment": "completed", "provider": "firecrawl", **contacts,
+                    "enrichment": "completed", "provider": "firecrawl",
                     "website_quality_score": quality, "website_quality_signals": signals,
                 })
                 item["summary"] = clean_summary(content)
@@ -909,7 +924,14 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
 
     await asyncio.gather(*(enrich(item) for item in candidates))
     await native_enrich_results(results)
-    await semantic_enrich_results(results)
+    await _optional_semantic_enrichment(results)
+
+
+async def _optional_semantic_enrichment(results: list[dict[str, Any]]) -> None:
+    try:
+        await asyncio.wait_for(semantic_enrich_results(results), timeout=4)
+    except Exception as exc:  # noqa: BLE001 — hints are optional; inspected contact facts are retained
+        logger.warning("hunter.scrapegraph.unavailable", extra={"error_class": type(exc).__name__})
 
 
 class _PublicHtmlParser(HTMLParser):
@@ -992,7 +1014,9 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
     candidates: list[dict[str, Any]] = []
     for item in results:
         data = item.setdefault("public_data", {})
-        if data.get("enrichment") == "completed":
+        if data.get("enrichment") == "completed" and (
+            item.get("source") != "web" or data.get("address_evidence") == "verified_public_page"
+        ):
             continue
         target = safe_public_url(data.get("website_url")) or (safe_public_url(item.get("url")) if item.get("source") == "web" else None)
         host = (urlsplit(target).hostname or "").lower().removeprefix("www.") if target else ""
@@ -1026,6 +1050,7 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
                         break
                 page_count = 1
                 combined_content = content[:40000]
+                address = extract_public_address(content[:40000], target)
                 combined_links = list(links[:500])
                 for page_url in internal_pages:
                     try:
@@ -1033,12 +1058,16 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
                     except (OSError, ValueError, TypeError, AttributeError, UnicodeError):
                         continue
                     page_count += 1
+                    address = address or extract_public_address(child_content[:30000], page_url)
                     combined_content = (combined_content + "\n" + child_content[:30000])[:100000]
                     combined_links.extend(child_links[:300])
                 contacts = extract_contacts(combined_content, combined_links)
+                merge_public_contacts(item["public_data"], contacts)
+                if item.get("source") == "web":
+                    item["public_data"].update(address)
                 quality, signals = website_opportunity(target, combined_content, combined_links)
                 item["public_data"].update({
-                    "enrichment": "completed", "provider": provider, **contacts,
+                    "enrichment": "completed", "provider": provider,
                     "website_quality_score": quality, "website_quality_signals": signals,
                     "pages_inspected": page_count,
                 })
@@ -1090,6 +1119,7 @@ def _obscura_connection() -> tuple[str, dict[str, str]] | None:
     return endpoint, headers
 
 
+@browser_task
 async def obscura_enrich_results(results: list[dict[str, Any]]) -> None:
     """Render dynamic public pages through Obscura and extract observable facts."""
     connection = _obscura_connection()
@@ -1128,9 +1158,12 @@ async def obscura_enrich_results(results: list[dict[str, Any]]) -> None:
                     links = snapshot.get("links", []) if isinstance(snapshot, dict) else []
                     if content.strip():
                         contacts = extract_contacts(content, links)
+                        merge_public_contacts(item["public_data"], contacts)
+                        if item.get("source") == "web":
+                            item["public_data"].update(extract_public_address(content, page.url))
                         quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
                         item["public_data"].update({
-                            "enrichment": "completed", "provider": "obscura", **contacts,
+                            "enrichment": "completed", "provider": "obscura",
                             "website_quality_score": quality, "website_quality_signals": signals,
                         })
                         item["summary"] = clean_summary(content)
@@ -1205,17 +1238,24 @@ async def google_places_search(query: str, limit: int) -> list[dict[str, Any]]:
 
 
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
+    unverified_rows: list[dict[str, Any]] = []
+
+    def has_verified_details(rows: list[dict[str, Any]]) -> bool:
+        return any(row.get("public_data", {}).get("detail_inspected") is True for row in rows)
+
     if os.getenv("KIARA_MAPS_SCRAPER_EXECUTABLE", "").strip():
         try:
             from .maps_scraper import native_maps_search
 
             native_rows = await native_maps_search(query, limit)
-            if native_rows:
+            if has_verified_details(native_rows):
                 return native_rows
+            unverified_rows.extend(native_rows)
         except Exception as exc:  # noqa: BLE001 - existing providers remain independent fallbacks
             logger.warning("hunter.maps.native_scraper_unavailable", extra={"error_class": type(exc).__name__})
 
     async def supplement(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows = sorted(rows, key=lambda row: row.get("public_data", {}).get("detail_inspected") is not True)
         if len(rows) >= limit:
             return rows[:limit]
         try:
@@ -1239,10 +1279,13 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
 
     async def local_or_index() -> list[dict[str, Any]]:
         try:
-            return await supplement(await _read_maps_local(query, limit))
+            rows = await _read_maps_local(query, limit)
         except Exception as exc:  # noqa: BLE001 — public index remains the final no-browser fallback
             logger.warning("hunter.maps.local_browser_unavailable", extra={"error_class": type(exc).__name__})
+            rows = []
+        if not rows and not unverified_rows:
             return await maps_index_search(query, limit)
+        return await supplement(rows if has_verified_details(rows) else [*rows, *unverified_rows])
 
     try:
         places = await google_places_search(query, limit)
@@ -1264,19 +1307,22 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         endpoint, headers = obscura
         try:
             rows = await _read_maps_cdp(endpoint, query, limit, headers=headers)
-            if rows:
+            if has_verified_details(rows):
                 return await supplement(rows)
+            unverified_rows.extend(rows)
+            logger.warning("hunter.obscura.maps_details_unverified")
         except Exception as exc:  # noqa: BLE001 — Browserbase remains the isolated fallback
             logger.warning("hunter.obscura.maps_failed", extra={"error_class": type(exc).__name__})
     if not key or not project:
-        return await maps_index_search(query, limit)
+        return await local_or_index()
     if _browserbase_circuit_open():
         logger.warning("hunter.maps.browserbase_circuit_open")
         return await local_or_index()
     try:
         from browserbase import Browserbase
     except ImportError as exc:
-        raise RuntimeError("browser_provider_unavailable") from exc
+        logger.warning("hunter.maps.browserbase_library_unavailable", extra={"error_class": type(exc).__name__})
+        return await local_or_index()
     client = Browserbase(api_key=key, timeout=10, max_retries=0)
     try:
         session = await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
@@ -1289,7 +1335,12 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         return await local_or_index()
     try:
         try:
-            return await supplement(await _read_maps_cdp(session.connect_url, query, limit))
+            rows = await _read_maps_cdp(session.connect_url, query, limit)
+            if has_verified_details(rows):
+                return await supplement(rows)
+            unverified_rows.extend(rows)
+            logger.warning("hunter.maps.browserbase_details_unverified")
+            return await local_or_index()
         except Exception as exc:  # noqa: BLE001 — a local browser can recover a broken remote session
             logger.warning("hunter.maps.browserbase_session_failed", extra={"error_class": type(exc).__name__})
             return await local_or_index()
@@ -1321,6 +1372,7 @@ async def maps_index_search(query: str, limit: int) -> list[dict[str, Any]]:
     return indexed
 
 
+@browser_task
 async def _read_maps_cdp(connect_url: str, query: str, limit: int, *, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import async_playwright
@@ -1338,6 +1390,7 @@ async def _read_maps_cdp(connect_url: str, query: str, limit: int, *, headers: d
                 logger.warning("hunter.maps.browser_cleanup_failed")
 
 
+@browser_task
 async def _read_maps_local(query: str, limit: int) -> list[dict[str, Any]]:
     """Use a locally installed Chromium without an API key or remote CDP service."""
     from playwright.async_api import async_playwright
@@ -1382,19 +1435,20 @@ async def _collect_maps_page(context: Any, page: Any, query: str, limit: int) ->
                     "els => [...new Map(els.map(e => [e.href, {title: e.getAttribute('aria-label') || e.textContent.trim(), url: e.href}])).values()]"
                 )
                 items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, HUNTER_MAX_RESULTS)]
-            slots = asyncio.Semaphore(6)
+            # Fewer concurrent Maps tabs leave time for each business panel to hydrate.
+            slots = asyncio.Semaphore(3)
 
             async def inspect(item: dict[str, Any]) -> dict[str, Any]:
                 async with slots:
                     detail_page = await context.new_page()
                     try:
-                        await detail_page.goto(item["url"], wait_until="domcontentloaded", timeout=10_000)
+                        await detail_page.goto(item["url"], wait_until="domcontentloaded", timeout=15_000)
                         await detail_page.wait_for_function("""() => {
                             const heading = document.querySelector('h1.DUwDvf') || document.querySelector('[role="main"] h1');
                             const panel = heading?.closest('[role="main"]');
                             return panel && panel.querySelector('[data-item-id="address"], [data-item-id^="phone:"], a[data-item-id="authority"]')
                                 && !panel.querySelector('[role="progressbar"]');
-                        }""", timeout=5_000)
+                        }""", timeout=12_000)
                         detail = await detail_page.evaluate(MAPS_DETAIL_SCRIPT)
                         return maps_detail_result(item, detail)
                     except (PlaywrightError, TimeoutError, ValueError, TypeError):
@@ -1570,9 +1624,8 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         "sources": search["sources"], "result_limit": search["result_limit"],
         "has_location": bool(search.get("location")), "research_mode": search.get("research_mode", "broad"),
     })
-    strict = any(options[key] != "any" for key in ("website_filter", "contact_filter", "email_filter", "website_quality_filter"))
     # Filter after recall: never spend the user's result allowance on rejects.
-    per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2) if strict else max(1, (search["result_limit"] + len(search["sources"]) - 1) // len(search["sources"]))
+    per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2)
     def source_task(source: str) -> asyncio.Task[list[dict[str, Any]]]:
         operation = maps_search(query, per_source) if source == "google_maps" else multi_public_search(expanded_queries, source, per_source)
         return asyncio.create_task(operation)
@@ -1669,12 +1722,20 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         warnings.append("Oportunidade digital usa sinais técnicos verificáveis; a Kiara não classifica gosto visual como fato.")
     if validation["unknown"]:
         warnings.append(f"{validation['unknown']} candidato(s) excluído(s) por falta de evidência para os filtros solicitados.")
+    if validation["incomplete"]:
+        warnings.append(
+            f"{validation['incomplete']} candidato(s) excluído(s) por não apresentar nome/empresa, telefone ou WhatsApp, "
+            "cidade/endereço comprovado e URL pública da fonte."
+        )
     if options["unsupported_criterion"]:
         warnings.append("O critério livre foi enviado à busca, mas não pôde ser comprovado automaticamente. Esses resultados não foram importados para o CRM.")
     if any(item.get("public_data", {}).get("enrichment") == "unavailable" for item in candidates):
         warnings.append("Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados.")
     if any(item.get("public_data", {}).get("provider") == "maps_public_index" for item in candidates):
         warnings.append("O Google Maps estava indisponível. Trechos indexados não são fichas comerciais confirmadas e foram excluídos; configure uma fonte de Maps verificável.")
+    unverified_maps = sum(item.get("source") == "google_maps" and item.get("public_data", {}).get("detail_inspected") is not True for item in candidates)
+    if unverified_maps:
+        warnings.append(f"{unverified_maps} ficha(s) do Google Maps não puderam ser verificadas e foram excluídas. Tente novamente para consultar os detalhes públicos; contatos não confirmados não foram importados.")
     error = (failures[0] if len(set(failures)) == 1 else "provider_error") if len(failures) == len(tasks) else None
     logger.info("hunter.research.finished", extra={
         "candidate_count": len(candidates), "accepted_count": len(results),
@@ -1792,6 +1853,7 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
                 message = (
                     "Esta publicação não representa um contato individual." if reason == "publication_not_contact"
                     else "A fonte deste resultado não possui uma identidade segura para criar o lead." if reason == "invalid_source_url"
+                    else "Este resultado não tem todos os dados obrigatórios: nome/empresa, telefone ou WhatsApp, cidade/endereço comprovado e URL pública da fonte." if reason == "incomplete_lead"
                     else "Este contato está bloqueado ou não pode ser reativado."
                 )
                 raise ApiError(422, "hunter_result_not_eligible", message, {"reason": reason})

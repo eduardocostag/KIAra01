@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+from html import escape
 from typing import Any
 from urllib.parse import urljoin
 
@@ -67,12 +68,18 @@ def analyze_with_scrapegraph(source_url: str, prompt: str) -> dict[str, Any]:
         raise RuntimeError("scrapegraph_model_not_configured")
     from scrapegraphai.graphs import SmartScraperGraph
 
+    # Reuse the bounded public HTTP fetcher. Giving the graph a URL starts its
+    # own browser, which cannot run on psycopg's Windows Selector loop and
+    # bypasses Kiara's fetch limits. Raw HTML is an upstream-supported source.
+    text, _, _ = fetch_public_with_scrapling(source_url)
+    if not text.strip():
+        raise ValueError("empty_public_page")
     llm: dict[str, Any] = {"model": model, "model_tokens": 4096}
     if key := os.getenv("KIARA_SCRAPEGRAPH_API_KEY", "").strip():
         llm["api_key"] = key
     graph = SmartScraperGraph(
         prompt=prompt[:500],
-        source=source_url,
+        source="<html><body>" + escape(text[:12000]) + "</body></html>",
         config={"llm": llm, "headless": True, "verbose": False},
     )
     result = graph.run()

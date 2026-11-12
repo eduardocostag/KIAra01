@@ -11,6 +11,7 @@ import yaml
 
 def _words(text: str) -> set[str]:
     normalized = unicodedata.normalize("NFKD", text.casefold())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
     return set(re.findall(r"[a-z0-9]+", normalized))
 
 

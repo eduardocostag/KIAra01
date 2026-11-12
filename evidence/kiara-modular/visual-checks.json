@@ -1,0 +1,224 @@
+{
+  "mode": "isolated_ssr_component_fixture",
+  "production_auth_tested": false,
+  "external_requests_allowed": false,
+  "checks": [
+    {
+      "scenario": "overview",
+      "width": 1440,
+      "passed": true,
+      "viewport": 1440,
+      "pageWidth": 1440,
+      "headings": [
+        "Sua operação, por módulos"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "whatsapp",
+      "width": 1440,
+      "passed": true,
+      "viewport": 1440,
+      "pageWidth": 1440,
+      "headings": [
+        "KIARA WhatsApp"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "atendimento",
+      "width": 1440,
+      "passed": true,
+      "viewport": 1440,
+      "pageWidth": 1440,
+      "headings": [
+        "KIARA Atendimento"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "ti",
+      "width": 1440,
+      "passed": true,
+      "viewport": 1440,
+      "pageWidth": 1440,
+      "headings": [
+        "KIARA TI"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "unavailable",
+      "width": 1440,
+      "passed": true,
+      "viewport": 1440,
+      "pageWidth": 1440,
+      "headings": [
+        "Plataforma indisponível"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "denied",
+      "width": 1440,
+      "passed": true,
+      "viewport": 1440,
+      "pageWidth": 1440,
+      "headings": [
+        "Acesso não disponível"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "overview",
+      "width": 390,
+      "passed": true,
+      "viewport": 390,
+      "pageWidth": 390,
+      "headings": [
+        "Sua operação, por módulos"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "whatsapp",
+      "width": 390,
+      "passed": true,
+      "viewport": 390,
+      "pageWidth": 390,
+      "headings": [
+        "KIARA WhatsApp"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "atendimento",
+      "width": 390,
+      "passed": true,
+      "viewport": 390,
+      "pageWidth": 390,
+      "headings": [
+        "KIARA Atendimento"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "ti",
+      "width": 390,
+      "passed": true,
+      "viewport": 390,
+      "pageWidth": 390,
+      "headings": [
+        "KIARA TI"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "unavailable",
+      "width": 390,
+      "passed": true,
+      "viewport": 390,
+      "pageWidth": 390,
+      "headings": [
+        "Plataforma indisponível"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    },
+    {
+      "scenario": "denied",
+      "width": 390,
+      "passed": true,
+      "viewport": 390,
+      "pageWidth": 390,
+      "headings": [
+        "Acesso não disponível"
+      ],
+      "moduleNavigation": [
+        "/app/platform",
+        "/app",
+        "/app/platform/whatsapp",
+        "/app/platform/atendimento",
+        "/app/platform/ti"
+      ],
+      "mutationControls": 0
+    }
+  ],
+  "passed": true
+}

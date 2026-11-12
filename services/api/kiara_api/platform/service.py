@@ -8,6 +8,8 @@ from .access import PlatformAccessRepository
 from .policy import PlatformPolicy, load_policy
 from .registry import module_descriptors, module_exists, skill_modules
 from .skills_catalog import SKILLS_CATALOG
+from .brain.orchestrator import KiaraBrain
+from .executors.factory import ExecutorFactory
 
 PLATFORM_ADMIN_EMAILS = frozenset({"admin@kiara.local"})
 
@@ -56,6 +58,34 @@ class PlatformService:
         if policy.reseller_assignments.get(user_id):
             return "reseller"
         return "client"
+
+    async def brain_command(self, context: RequestContext, prompt: str) -> dict:
+        # Reutiliza o gate de admin do método context
+        await self.context(context)
+        
+        brain = KiaraBrain()
+        plan = brain.create_execution_plan(prompt)
+        
+        results = []
+        for task in plan:
+            executor = ExecutorFactory.get_executor(task.target_executor)
+            # Como ainda estamos em fase de estrutura, chamamos a execução simulada
+            result = await executor.execute(task.prompt)
+            results.append({
+                "executor": task.target_executor,
+                "action": task.action_type,
+                "success": result.success,
+                "output": result.output_path,
+                "message": result.message
+            })
+            
+        return {
+            "prompt": prompt,
+            "execution_plan": [task.__dict__ for task in plan],
+            "results": results,
+            "phase": "structure_only",
+            "agent": "KIARA Jarvis"
+        }
 
     async def module(self, context: RequestContext, key: str) -> dict:
         if not module_exists(key):

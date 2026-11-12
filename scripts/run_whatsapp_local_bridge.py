@@ -150,27 +150,39 @@ def _supabase_identity(token: str) -> None:
         raise BridgeError(401, "Sessão da Kiara inválida ou expirada. Entre novamente no site.") from None
 
 
-def _model_request(messages: list[dict[str, str]], model: str) -> str:
-    payload = json.dumps({
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 500},
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        "http://127.0.0.1:11434/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+def _model_request(messages: list[dict[str, str]], model: str, endpoint: str, api_key: str) -> str:
+    is_openai = "/v1" in endpoint
+    if is_openai:
+        payload_dict = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "temperature": 0.1,
+        }
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+    else:
+        payload_dict = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 500},
+        }
+        headers = {"Content-Type": "application/json"}
+    payload = json.dumps(payload_dict).encode("utf-8")
+    request = urllib.request.Request(endpoint, data=payload, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=MODEL_TIMEOUT_SECONDS) as response:
             result = json.loads(response.read(256_001))
-    except (OSError, urllib.error.URLError, ValueError, UnicodeError, json.JSONDecodeError):
-        raise BridgeError(503, "Modelo local indisponível. Verifique se o Ollama está ligado.") from None
-    answer = result.get("message", {}).get("content") if isinstance(result, dict) else None
+    except (OSError, urllib.error.URLError, ValueError, UnicodeError, json.JSONDecodeError) as e:
+        raise BridgeError(503, f"Modelo indisponível. Verifique se o serviço está ligado. Erro: {e}") from None
+    if is_openai:
+        answer = result.get("choices", [{}])[0].get("message", {}).get("content") if isinstance(result, dict) else None
+    else:
+        answer = result.get("message", {}).get("content") if isinstance(result, dict) else None
     if not isinstance(answer, str) or not answer.strip() or len(answer) > 8_000:
-        raise BridgeError(502, "O modelo local não retornou um resumo válido.")
+        raise BridgeError(502, "O modelo não retornou um resumo válido.")
     return answer.strip()
 
 
@@ -185,6 +197,16 @@ class WhatsAppLocalBridge:
             "KIARA_WHATSAPP_ANALYSIS_MODEL",
             ROOT / ".env.local",
             default="kiara-stable:latest",
+        )
+        self.endpoint = _config_value(
+            "KIARA_WHATSAPP_ANALYSIS_ENDPOINT",
+            ROOT / ".env.local",
+            default="http://127.0.0.1:11434/api/chat",
+        )
+        self.api_key = _config_value(
+            "KIARA_WHATSAPP_ANALYSIS_API_KEY",
+            ROOT / ".env.local",
+            default="",
         )
         if not re.fullmatch(r"[A-Za-z0-9._:/-]{1,200}", self.model):
             raise RuntimeError("KIARA_WHATSAPP_ANALYSIS_MODEL is invalid.")
@@ -248,6 +270,8 @@ class WhatsAppLocalBridge:
                 *messages,
             ],
             self.model,
+            self.endpoint,
+            self.api_key,
         )
         return {"summary": summary, "messages_analyzed": len(messages), "phone": mask_phone(self.phone)}
 

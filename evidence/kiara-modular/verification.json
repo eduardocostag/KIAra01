@@ -1,0 +1,63 @@
+{
+  "branch": "codex/kiara-modular-platform",
+  "phase": "structure_only",
+  "build": {
+    "command": "npm run build",
+    "passed": true,
+    "framework": "Next.js 16.3.4",
+    "build_id": "RHu3-j7_XR48sAqQ9eTpj"
+  },
+  "api_tests": {
+    "passed": 440,
+    "skipped": 1,
+    "artifact": "api-tests.xml"
+  },
+  "frontend_tests": {
+    "passed": 52
+  },
+  "focused_final_tests": {
+    "passed": 44
+  },
+  "eslint": "passed_new_frontend_and_shell",
+  "ruff": "passed_new_backend_tests_main_and_preservation",
+  "preservation": {
+    "passed": true,
+    "baseline_commit": "b025f1dd1acfc1eed2a32b65d2f284435ce04ffa",
+    "baseline_branch": "main",
+    "baseline_file_count": 227,
+    "unchanged_count": 225,
+    "approved_files_requiring_diff_review": [
+      "apps/web/src/components/app-shell/app-shell.tsx",
+      "services/api/kiara_api/main.py"
+    ],
+    "missing_files": [],
+    "unexpected_source_changes": [],
+    "baseline_contract_paths": 28,
+    "changed_contract_paths": [],
+    "unexpected_contract_paths": [],
+    "new_platform_contract_paths": [
+      "/v1/platform/context",
+      "/v1/platform/modules/{module_key}",
+      "/v1/platform/portfolio",
+      "/v1/platform/skills"
+    ]
+  },
+  "visual": {
+    "passed": true,
+    "scenarios": 12,
+    "mode": "isolated_ssr_component_fixture",
+    "artifact": "visual-checks.json"
+  },
+  "not_verified": [
+    "production_authentication",
+    "live_database_membership_and_RLS",
+    "commercial_multi_company_switching",
+    "reseller_operational_access",
+    "external_integrations",
+    "hydrated_browser_application",
+    "screen_reader"
+  ],
+  "deployment_performed": false,
+  "migration_performed": false,
+  "executor_started": false
+}

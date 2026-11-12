@@ -100,11 +100,15 @@ def search(**overrides):
 
 
 def result(**overrides):
-    return {"id": uuid4(), "title": "Clínica teste", "source": "google_maps",
-            "url": "https://www.google.com/maps/place/Clinica/data=!4m2!3m1!1s0x123:0xabc?hl=pt",
-            "public_data": {"phone": "+55 11 99999-0000", "website_status": "not_listed",
-                            "criterion_status": "verified", "website_evidence": "No website listed on public Maps detail"},
-            **overrides}
+    row = {"id": uuid4(), "title": "Clínica teste", "source": "google_maps",
+           "url": "https://www.google.com/maps/place/Clinica/data=!4m2!3m1!1s0x123:0xabc?hl=pt",
+           "public_data": {"phone": "+55 11 99999-0000", "address": "São Paulo",
+                           "detail_inspected": True, "website_status": "not_listed", "criterion_status": "verified",
+                           "website_evidence": "No website listed on public Maps detail"}}
+    if "public_data" in overrides:
+        row["public_data"].update(overrides["public_data"])
+        overrides = {**overrides, "public_data": row["public_data"]}
+    return {**row, **overrides}
 
 
 def run(connection, org, job, rows):
@@ -190,6 +194,25 @@ def test_user_can_explicitly_add_unverified_result_as_lead():
     assert len(conn.consumers) == len(conn.entries) == 1
     assert row["public_data"]["manual_lead_selection"] is True
     assert row["public_data"]["crm_status"] == "synced"
+
+
+def test_manual_selection_cannot_bypass_required_contact_and_location_evidence():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(public_data={"phone": None, "address": None})
+    summary = asyncio.run(sync_hunter_results(conn, org, search(), [row], user_selected=True))
+    assert summary == {"created": 0, "existing": 0, "skipped": 1}
+    assert not conn.consumers and not conn.entries
+    assert row["public_data"]["crm_skip_reason"] == "incomplete_lead"
+    assert row["public_data"]["lead_requirements_missing"] == ["phone_or_whatsapp", "verified_location"]
+
+
+def test_manual_selection_without_a_public_source_url_is_rejected():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(url="")
+    summary = asyncio.run(sync_hunter_results(conn, org, search(), [row], user_selected=True))
+    assert summary["skipped"] == 1
+    assert not conn.consumers and not conn.entries
+    assert row["public_data"]["crm_skip_reason"] == "invalid_source_url"
 
 
 def test_user_selection_does_not_turn_publication_into_contact():

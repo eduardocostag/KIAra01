@@ -25,3 +25,13 @@ Resultados, histórico e credenciais nunca saem do contexto da organização.
 Escalar workers aumenta vazão, mas não remove limites impostos pelas próprias
 fontes. A fila garante que a solicitação seja preservada e retomada; ela não
 autoriza contornar bloqueios, login, CAPTCHA ou termos de serviço.
+
+## Qualidade mínima de leads
+
+Um resultado só é apresentado como lead se tiver nome/empresa, telefone ou
+WhatsApp público, cidade/endereço presente na fonte e URL pública de origem.
+Para perfis sociais, uma cidade citada em bio pública inspecionada pode comprovar
+a localização quando ela corresponde à região pesquisada. A região digitada na
+busca, sozinha, não comprova o endereço. Candidatos incompletos são descartados
+e contabilizados em `validation.incomplete`; a inclusão manual no CRM também
+não permite contornar esses requisitos.

@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowRight, AtSign, Check, Filter, Globe2, ListFilter, Loader2, MapPin, Phone, Plus, Radar, RefreshCw, Trash2, TriangleAlert } from "lucide-react"
+import { ArrowRight, AtSign, Check, Filter, Globe2, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, Radar, RefreshCw, Star, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { publicPhone, publicWhatsappUrl, type HunterJob, type HunterResult, type HunterSource } from "@/lib/api/hunter-client"
+import { hunterEvidenceLabel, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult, type HunterSource } from "@/lib/api/hunter-client"
 import { HunterActivity } from "./hunter-activity"
 import styles from "./hunter.module.css"
 
@@ -50,16 +50,23 @@ function LeadRow({ result, searchId, location, historical }: { result: HunterRes
   const data = result.public_data
   const whatsapp = publicWhatsappUrl(data?.whatsapp_url)
   const phone = publicPhone(data?.phone)
+  const email = publicEmail(data?.email)
+  const website = publicWebsiteUrl(data?.website_url)
   const whatsappNumber = whatsapp ? new URL(whatsapp).hostname === "wa.me" ? new URL(whatsapp).pathname.replace(/\//g, "") : new URL(whatsapp).searchParams.get("phone") : null
   const contact = phone || (whatsappNumber ? `+${whatsappNumber}` : null)
   const publication = (result.source === "instagram" || result.source === "facebook") && data?.content_kind === "publication"
-  const verified = data?.bio_status === "verified_public_profile" || data?.manual_import
+  const evidenceConfirmed = !data?.manual_import && (
+    (result.source === "google_maps" && data?.detail_inspected === true) ||
+    (result.source === "instagram" && data?.bio_status === "verified_public_profile") ||
+    (result.source === "facebook" && data?.page_status === "verified_public_page")
+  )
+  const evidenceLabel = hunterEvidenceLabel(result.source, data, historical)
   const displayName = resultDisplayName(result)
-  const category = result.summary?.split(/[.!?\n]/)[0]?.trim().slice(0, 70) || "Lead encontrado"
-  const subtitle = `${category}${location ? ` · ${location}` : ""}`
-  const resolvedLocation = result.source === "instagram" || result.source === "facebook"
-    ? data?.location_evidence ? location || "Região citada no índice" : "Localização não confirmada"
-    : data?.address || location || "Localização não informada"
+  const category = result.summary?.split(/[.!?\n]/)[0]?.trim().slice(0, 70) || "Categoria não informada"
+  const resolvedLocation = hunterResultLocation(result.source, data, location)
+  const websiteLabel = result.source === "web" && data?.website_evidence
+    ? "Página candidata"
+    : "Site público informado"
   async function addLead() {
     if (adding || added) return
     setAdding(true); setAddError("")
@@ -76,15 +83,19 @@ function LeadRow({ result, searchId, location, historical }: { result: HunterRes
     <div className={styles.hunterResultAvatar} aria-hidden="true">{displayName.replace(/^@/, "").slice(0, 1).toUpperCase()}</div>
     <div className={styles.hunterResultBody}>
       <div className={styles.hunterResultTop}>
-        <div className={styles.hunterIdentity}><h3>{displayName}</h3><p>{subtitle}</p></div>
+        <div className={styles.hunterIdentity}><h3>{displayName}</h3><p>{category}</p></div>
         <div className={styles.hunterBadges}>
-          <span className={contact ? styles.badgePositive : styles.badgeMuted}>{contact ? <><Phone />Telefone encontrado</> : <>Telefone não encontrado</>}</span>
+          <span className={contact ? styles.badgePositive : styles.badgeMuted}>{contact ? <><Phone />Contato público listado</> : <>Telefone não encontrado</>}</span>
           <span className={result.source === "instagram" ? styles.badgeInstagram : styles.badgeSource}>{labels[result.source]}</span>
-          <span className={verified ? styles.badgeSource : styles.badgeWarning}>{publication ? "Publicação" : verified ? "Perfil confirmado" : historical ? "Não verificado" : "Trecho indexado"}</span>
+          <span className={evidenceConfirmed ? styles.badgeSource : styles.badgeWarning}>{publication ? "Publicação" : evidenceLabel}</span>
         </div>
       </div>
       <div className={styles.hunterResultMeta}>
-        <span><Phone />{contact || "Telefone não encontrado"}</span>
+        {phone && <span><Phone />{phone}</span>}
+        {whatsapp && <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle />Link público de WhatsApp</a>}
+        {email && <a href={`mailto:${encodeURIComponent(email)}`}><Mail />{email}</a>}
+        {website && <a href={website} target="_blank" rel="noopener noreferrer" title={data?.website_evidence || undefined}><Globe2 />{websiteLabel}</a>}
+        {result.source === "google_maps" && data?.rating != null && <span><Star />{data.rating.toFixed(1)} ({data.user_rating_count ?? 0} avaliações)</span>}
       </div>
       <div className={styles.hunterResultBottom}>
         <span><MapPin />{resolvedLocation}</span>
@@ -104,7 +115,9 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, act
   onRefresh: () => void; onClear: () => void; onSelect: (id: string) => void; onBroaden: (job: HunterJob) => void
 }) {
   const historical = Boolean(selected && !selected.validation)
-  const withPhone = selected?.results.filter(result => publicPhone(result.public_data?.phone)).length ?? 0
+  const withContact = selected?.results.filter(result =>
+    publicPhone(result.public_data?.phone) || publicWhatsappUrl(result.public_data?.whatsapp_url),
+  ).length ?? 0
   const discoveredLocations = selected?.results.flatMap((result) => result.public_data?.address ? [result.public_data.address] : []) ?? []
   return <Card className={styles.resultsCard}>
     <CardHeader className={styles.resultsHeader}>
@@ -125,7 +138,8 @@ export function HunterResults({ jobs, selected, busy, loading, stage, error, act
           <div className={styles.summaryIdentity}><h2>{selected.status === "completed" ? "Pesquisa concluída" : statuses[selected.status]}</h2><p>{selected.query}{selected.location ? ` · ${selected.location}` : ""}</p></div>
           <div className={styles.summaryMetrics}>
             <span><strong>{selected.results.length}</strong> resultado{selected.results.length === 1 ? "" : "s"}</span>
-            {selected.validation && <span><strong>{withPhone}</strong> com telefone</span>}
+            {selected.validation && <span><strong>{withContact}</strong> com contato</span>}
+            {Boolean(selected.validation?.incomplete) && <span><strong>{selected.validation?.incomplete}</strong> incompletos descartados</span>}
           </div>
         </div>
         {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}

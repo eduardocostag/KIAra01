@@ -60,7 +60,8 @@ async def test_hunter_prefers_explicitly_configured_native_provider(monkeypatch)
     from services.api.kiara_api import hunter, maps_scraper
 
     monkeypatch.setenv("KIARA_MAPS_SCRAPER_EXECUTABLE", "configured.exe")
-    expected = [{"source": "google_maps", "title": "fixture"}]
+    expected = [{"source": "google_maps", "title": "fixture",
+                 "public_data": {"detail_inspected": True}}]
 
     async def native(query, limit):
         assert (query, limit) == ("dentistas Canoas", 10)
@@ -71,6 +72,9 @@ async def test_hunter_prefers_explicitly_configured_native_provider(monkeypatch)
 
     monkeypatch.setattr(maps_scraper, "native_maps_search", native)
     monkeypatch.setattr(hunter, "google_places_search", unexpected)
+    monkeypatch.setattr(hunter, "_read_maps_local", unexpected)
+    monkeypatch.setattr(hunter, "maps_index_search", unexpected)
+    monkeypatch.setattr(hunter, "_read_maps_cdp", unexpected)
     assert await hunter.maps_search("dentistas Canoas", 10) == expected
 
 

@@ -44,6 +44,8 @@ def test_packaged_instagram_skills_and_references():
     ("crie um carrossel para Instagram", "ig-carousel"),
     ("prospectar dentistas em Curitiba", "google-maps-scraper"),
     ("captar empresas nos mapas", "google-maps-scraper"),
+    ("prospecção de clínicas", "google-maps-scraper"),
+    ("captação de empresas", "google-maps-scraper"),
     ("configurar freellmapi para responder", "kiara-freellmapi"),
 ])
 def test_portuguese_skill_routing(query, expected):

@@ -249,6 +249,7 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
                 timeout=int(settings.get("integrations.maps_scraper.timeout_seconds", 600)),
             ),
             verify_whatsapp=browser.verify_whatsapp_number,
+            fallback_search=browser.search_google_maps_businesses,
         ))
     else:
         registry.register(GoogleMapsBusinessSearchTool(browser))

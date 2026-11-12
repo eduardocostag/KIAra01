@@ -8,6 +8,71 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /v1/platform/brain/command:
+    post:
+      operationId: platform_brain_command
+      summary: Send command to KIARA Brain
+      description: Sends a natural language command to the KIARA Brain for intent analysis and execution orchestration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prompt:
+                  type: string
+                  description: The natural language command for the KIARA Brain.
+                  example: "Gere um vídeo viral sobre o mercado de IA com voz narrativa."
+      responses:
+        '200':
+          description: Command processed and execution plan returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prompt:
+                    type: string
+                  execution_plan:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        action_type:
+                          type: string
+                        target_executor:
+                          type: string
+                        prompt:
+                          type: string
+                        metadata:
+                          type: object
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        executor:
+                          type: string
+                        action:
+                          type: string
+                        success:
+                          type: boolean
+                        output:
+                          type: string
+                          nullable: true
+                        message:
+                          type: string
+                          nullable: true
+                  phase:
+                    type: string
+                  agent:
+                    type: string
+        '403':
+          $ref: '#/components/responses/platform_admin_only'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+
   /v1/platform/context:
     get:
       operationId: getPlatformContext

@@ -216,6 +216,7 @@ def test_instagram_search_keeps_arbitrary_indexed_niches_without_hardcoded_categ
         "public_data": {
             "bio_status": "verified_public_profile",
             "profile_bio": f"{query} em {location}",
+            "phone": "+5511912345678",
         },
     }
     assert _instagram_profile_matches(verified, request)
@@ -261,7 +262,84 @@ def test_exact_reported_query_excludes_own_website_and_requires_public_whatsapp(
     assert kept[0]["public_data"]["criterion_status"] == "verified"
     assert kept[0]["public_data"]["whatsapp_url"] == "https://wa.me/5511912345678"
     assert kept[0]["public_data"]["website_status"] == "not_listed"
-    assert stats == {"checked": 5, "accepted": 1, "excluded": 4, "unknown": 1, "source_failures": 0}
+    assert stats == {"checked": 5, "accepted": 1, "excluded": 4, "unknown": 1, "incomplete": 1, "source_failures": 0}
+
+
+def test_required_quality_gate_overfetches_before_applying_the_result_limit(monkeypatch):
+    observed_limits = []
+
+    async def public_search(_queries, _source, limit):
+        observed_limits.append(limit)
+        return [{
+            "source": "web", "title": "Clínica Aurora", "url": "https://aurora.example",
+            "summary": "Telefone: +55 51 91234-5678",
+            "public_data": {"address": "Porto Alegre", "address_evidence": "verified_public_page"},
+        }]
+
+    async def no_enrichment(_rows):
+        return None
+
+    monkeypatch.setattr(hunter, "multi_public_search", public_search)
+    monkeypatch.setattr(hunter, "enrich_results", no_enrichment)
+    outcome = asyncio.run(execute_research({
+        "query": "clínicas", "location": None, "sources": ["web"],
+        "result_limit": 5, "market": "b2b",
+    }))
+    assert observed_limits == [10]
+    assert [row["title"] for row in outcome["results"]] == ["Clínica Aurora"]
+
+
+def test_hunter_only_returns_leads_with_every_required_public_field():
+    cases = [
+        ("name", maps_result("Contato público")),
+        ("contact", maps_result("No contact", phone=None)),
+        ("location", maps_result("No address")),
+        ("source", maps_result("No source")),
+    ]
+    cases[2][1]["public_data"]["address"] = None
+    cases[3][1]["url"] = ""
+    for _, candidate in cases:
+        kept, stats = filter_results([candidate], search("dentistas"))
+        assert kept == []
+        assert stats["incomplete"] == 1
+
+
+def test_verified_social_bio_location_can_satisfy_city_requirement():
+    profile = {
+        "source": "instagram",
+        "title": "Perfil público",
+        "url": "https://instagram.com/clinica.alegre/",
+        "summary": "Telefone: +55 51 91234-5678",
+        "public_data": {
+            "bio_status": "verified_public_profile",
+            "profile_bio": "Clínica odontológica em Porto Alegre",
+            "bio_location_evidence": True,
+            "bio_niche_evidence": True,
+        },
+    }
+    kept, stats = filter_results([profile], {
+        "query": "dentistas", "location": "Porto Alegre",
+        "sources": ["instagram"], "market": "b2b",
+    })
+    assert len(kept) == 1
+    assert stats["incomplete"] == 0
+
+
+def test_web_address_requires_evidence_from_the_public_business_page():
+    candidate = {
+        "source": "web", "title": "Clínica Aurora", "url": "https://aurora.example/contact",
+        "summary": "Telefone: +55 51 91234-5678",
+        "public_data": {"address": "Porto Alegre"},
+    }
+    request = {"query": "clínicas", "location": "Porto Alegre", "sources": ["web"], "market": "b2b"}
+    kept, stats = filter_results([candidate], request)
+    assert kept == []
+    assert stats["incomplete"] == 1
+
+    candidate["public_data"]["address_evidence"] = "verified_public_page"
+    kept, stats = filter_results([candidate], request)
+    assert len(kept) == 1
+    assert stats["incomplete"] == 0
 
 
 def test_absent_or_unreadable_detail_is_unknown_never_no_website():
@@ -487,9 +565,9 @@ def test_browserbase_open_circuit_uses_local_maps_before_public_index(monkeypatc
 
 def test_cross_source_identity_deduplication_is_conservative():
     duplicated = [
-        {"source": "web", "title": "Clínica Aurora", "url": "https://aurora.example", "summary": "Telefone: +55 51 99999-0000"},
-        {"source": "google_maps", "title": "Clínica Aurora", "url": "https://google.com/maps/place/aurora", "summary": "", "public_data": {"phone": "+5551999990000", "detail_inspected": True}},
-        {"source": "google_maps", "title": "Clínica Boreal", "url": "https://google.com/maps/place/boreal", "summary": "", "public_data": {"phone": "+5551999990000", "detail_inspected": True}},
+        {"source": "web", "title": "Clínica Aurora", "url": "https://aurora.example", "summary": "Telefone: +55 51 99999-0000", "public_data": {"address": "Porto Alegre", "address_evidence": "verified_public_page"}},
+        {"source": "google_maps", "title": "Clínica Aurora", "url": "https://google.com/maps/place/aurora", "summary": "", "public_data": {"phone": "+5551999990000", "address": "Porto Alegre", "detail_inspected": True}},
+        {"source": "google_maps", "title": "Clínica Boreal", "url": "https://google.com/maps/place/boreal", "summary": "", "public_data": {"phone": "+5551999990000", "address": "Porto Alegre", "detail_inspected": True}},
     ]
     kept, _ = filter_results(duplicated, search("clínicas"))
     assert [row["title"] for row in kept] == ["Clínica Aurora", "Clínica Boreal"]
@@ -660,7 +738,8 @@ def test_editorial_pages_and_social_posts_are_not_crm_contacts():
         {"source": "web", "title": "10 melhores psicólogos: como escolher", "url": "https://portal.example/blog/melhores-psicologos"},
         {"source": "instagram", "title": "Conheça nossa equipe", "url": "https://instagram.com/p/abc123"},
         {"source": "facebook", "title": "Grupo de discussão", "url": "https://facebook.com/groups/psicologos"},
-        {"source": "web", "title": "Como Psicologia — Clínica", "url": "https://clinica.example/equipe"},
+        {"source": "web", "title": "Como Psicologia — Clínica", "url": "https://clinica.example/equipe",
+         "summary": "Telefone: +55 11 91234-5678", "public_data": {"address": "São Paulo", "address_evidence": "verified_public_page"}},
         {"source": "instagram", "title": "Clínica", "url": "https://instagram.com/clinica"},
         {"source": "facebook", "title": "Empresa", "url": "https://facebook.com/empresa"},
     ]
@@ -697,7 +776,8 @@ def test_indexed_maps_pages_and_non_business_web_results_are_not_leads():
             "source": "web",
             "title": "Academia Alpha",
             "url": "https://academia-alpha.example",
-            "summary": "Personal trainer em São Leopoldo.",
+            "summary": "Personal trainer em São Leopoldo. Telefone: +55 51 91234-5678.",
+            "public_data": {"address": "São Leopoldo", "address_evidence": "verified_public_page"},
         },
     ]
     kept, stats = filter_results(items, search("personal trainers em São Leopoldo"))

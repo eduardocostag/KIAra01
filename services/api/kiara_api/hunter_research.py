@@ -165,6 +165,51 @@ def extract_contacts(text: str, links: list[str] | None = None) -> dict[str, Any
     return result
 
 
+def merge_public_contacts(data: dict[str, Any], contacts: dict[str, Any]) -> None:
+    """Fill missing contacts without erasing facts observed in another source."""
+    for key, value in contacts.items():
+        existing = data.get(key)
+        if key == "phone":
+            existing = phone_number(existing)
+        elif key == "whatsapp_url":
+            existing = whatsapp_link(existing)
+        if value and not existing:
+            data[key] = value
+
+
+def extract_public_address(text: str, source_url: str) -> dict[str, Any]:
+    """Extract a complete visible Brazilian street address, preserving its source.
+
+    A street number plus an observed state or postcode is required. Search-query
+    locations and indexed snippets must never be passed as inspected page text.
+    """
+    source = safe_public_url(source_url)
+    if not source:
+        return {}
+    visible = re.sub(r"\s+", " ", html.unescape(text))
+    street = re.compile(
+        r"\b(?:Rua|R\.|Avenida|Av\.|Alameda|Travessa|Estrada|Rodovia|Praça)\s+"
+        r"[\wÀ-ÿ .'-]{2,100}?,?\s+(?:n[º°o.]?\s*)?\d{1,6}\b",
+        re.IGNORECASE,
+    )
+    state = r"(?:AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)"
+    ending = re.compile(
+        rf"(?:\bCEP\s*[:\-]?\s*\d{{5}}-?\d{{3}}\b|\b\d{{5}}-\d{{3}}\b|"
+        rf"[\-/–,]\s*{state}\b|\b[A-ZÀ-Ý][\wÀ-ÿ'-]+(?:\s+[A-ZÀ-Ý][\wÀ-ÿ'-]+){{0,4}}\s+{state}\b)"
+    )
+    for match in street.finditer(visible):
+        tail = visible[match.end():match.start() + 300]
+        # Do not borrow location evidence from a later contact/marketing block.
+        tail = re.split(r"\b(?:telefone|whatsapp|e-?mail|copyright|todos os direitos)\b", tail, maxsplit=1, flags=re.IGNORECASE)[0]
+        tail = re.split(r"[.!?](?:\s|$)", tail, maxsplit=1)[0]
+        end = ending.search(tail)
+        if end:
+            address = visible[match.start():match.end()] + tail[:end.end()]
+            return {"address": address, "address_evidence": "verified_public_page",
+                    "address_source_url": source, "address_evidence_text": address}
+    return {}
+
+
 def website_opportunity(url: str, content: str, links: list[str]) -> tuple[int, list[str]]:
     """Score observable homepage signals; never claim subjective visual quality."""
     score, signals = 100, []
@@ -256,6 +301,102 @@ def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
             "summary": clean_summary(text), "public_data": data}
 
 
+_BRAZIL_STATES = {
+    "ac": "acre", "al": "alagoas", "ap": "amapa", "am": "amazonas", "ba": "bahia",
+    "ce": "ceara", "df": "distrito federal", "es": "espirito santo", "go": "goias",
+    "ma": "maranhao", "mt": "mato grosso", "ms": "mato grosso do sul", "mg": "minas gerais",
+    "pa": "para", "pb": "paraiba", "pr": "parana", "pe": "pernambuco", "pi": "piaui",
+    "rj": "rio de janeiro", "rn": "rio grande do norte", "rs": "rio grande do sul",
+    "ro": "rondonia", "rr": "roraima", "sc": "santa catarina", "sp": "sao paulo",
+    "se": "sergipe", "to": "tocantins",
+}
+
+
+def address_matches_location(address: str, location: str | None) -> bool:
+    """Require the requested city/region in observed locality, never infer from UF/CEP."""
+    if not location or not location.strip():
+        return True
+
+    def words(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", folded(value)).strip()
+
+    requested = words(location)
+    requested_locality = folded(location)
+    observed = address
+    # A street called Curitiba does not prove that the business is in Curitiba.
+    if re.match(r"\s*(?:rua|r\.|avenida|av\.|alameda|travessa|estrada|rodovia|praça)\s", address, re.IGNORECASE):
+        numbered = re.search(r"\b\d{1,6}\b", address)
+        if numbered:
+            observed = address[numbered.end():]
+    locality_address = observed
+    observed = " " + words(observed) + " "
+    region = None
+    # Prefer the longest names, e.g. Mato Grosso do Sul before Mato Grosso.
+    for abbreviation, name in sorted(_BRAZIL_STATES.items(), key=lambda pair: len(pair[1]), reverse=True):
+        for suffix in (name, abbreviation):
+            if requested == suffix and suffix in {"sao paulo", "rio de janeiro"}:
+                continue  # Ambiguous capital/state names alone mean the requested city.
+            if requested == suffix or requested.endswith(" " + suffix):
+                region = (abbreviation, name)
+                requested = requested[:-len(suffix)].strip()
+                requested_locality = re.sub(re.escape(suffix) + r"$", "", requested_locality).strip(" ,;/–-")
+                break
+        if region:
+            break
+    if region and not any(" " + value + " " in observed for value in region):
+        return False
+    # Compare complete locality components: São Paulo de Olivença is not São Paulo.
+    locality_parts = [words(part) for part in re.split(r"[,;/–-]", requested_locality)]
+    observed_parts = {words(part) for part in re.split(r"[,;/–-]", locality_address)}
+    for part in tuple(observed_parts):
+        for abbreviation, name in _BRAZIL_STATES.items():
+            for suffix in (abbreviation, name):
+                if part.endswith(" " + suffix):
+                    observed_parts.add(part[:-len(suffix)].strip())
+    return all(part in observed_parts for part in locality_parts if part)
+
+
+def lead_requirement_gaps(item: dict[str, Any], search: dict[str, Any]) -> list[str]:
+    """Return missing evidence for the minimum fields required of a Hunter lead."""
+    data = item.get("public_data") or {}
+    title = str(item.get("title") or "").strip()
+    has_name = bool(title and title.lower() not in {
+        "contato público", "contato publico", "resultado sem nome", "empresa no google maps",
+    })
+    if item.get("source") in {"instagram", "facebook"} and data.get("profile_handle"):
+        has_name = True
+    missing = [] if has_name else ["name"]
+    if not phone_number(data.get("phone")) and not whatsapp_link(data.get("whatsapp_url")):
+        missing.append("phone_or_whatsapp")
+
+    address = clean_summary(data.get("address"), 300)
+    verified_source_address = bool(address) and (
+        item.get("source") == "google_maps" and data.get("detail_inspected") is True
+        or item.get("source") == "web" and data.get("address_evidence") == "verified_public_page"
+    )
+    if verified_source_address:
+        verified_source_address = address_matches_location(address, search.get("location"))
+    verified_social_profile = (
+        item.get("source") == "instagram"
+        and data.get("bio_status") == "verified_public_profile"
+        or item.get("source") == "facebook"
+        and data.get("page_status") == "verified_public_page"
+    )
+    verified_social_location = (
+        verified_social_profile
+        and data.get("bio_location_evidence") is True
+        and bool(data.get("profile_bio"))
+        and bool(search.get("location"))
+        and not data.get("manual_import")
+    )
+    if not verified_source_address and not verified_social_location:
+        missing.append("verified_location")
+
+    if not safe_public_url(data.get("source_url") or item.get("url")):
+        missing.append("source_url")
+    return missing
+
+
 def is_editorial_or_post(item: dict[str, Any]) -> bool:
     """Obvious articles and posts are sources, not CRM contact identities."""
     url = safe_public_url(item.get("url"))
@@ -309,7 +450,8 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
 def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, int]]:
     options = research_options(search)
     accepted: list[dict[str, Any]] = []
-    counts = {"checked": len(items), "accepted": 0, "excluded": 0, "unknown": 0, "source_failures": 0}
+    counts = {"checked": len(items), "accepted": 0, "excluded": 0, "unknown": 0,
+              "incomplete": 0, "source_failures": 0}
     seen: set[str] = set()
     for raw in items:
         item = normalize_result(raw)
@@ -344,8 +486,16 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
         if website_url and data.get("address"):
             website_host = (urlsplit(website_url).hostname or "").lower().removeprefix("www.")
             identities.add(f"business:{website_host}:{folded(str(data['address']))}:{folded(item['title'])}")
-        if not data["source_url"] or identities & seen or is_editorial_or_post(item):
+        if not data["source_url"]:
             counts["excluded"] += 1
+            counts["incomplete"] += 1
+            continue
+        if identities & seen or is_editorial_or_post(item):
+            counts["excluded"] += 1
+            continue
+        if lead_requirement_gaps(item, search):
+            counts["excluded"] += 1
+            counts["incomplete"] += 1
             continue
         website = options["website_filter"]
         contact = options["contact_filter"]
@@ -414,7 +564,9 @@ def maps_detail_result(item: dict[str, Any], detail: dict[str, Any]) -> dict[str
     state = "present" if website else "not_listed" if inspected and (whatsapp_website or not detail.get("website_button")) and not profile_website else "unknown"
     contacts = extract_contacts(str(detail.get("phone") or ""), [*(detail.get("links") or []), *([listed_link] if listed_link else [])])
     contacts["phone"] = phone_number(detail.get("phone")) or contacts["phone"]
-    public_data = {**contacts, "address": detail.get("address"), "website_url": website,
+    public_data = {**contacts, "address": detail.get("address"),
+                   "address_evidence": "verified_maps_detail" if inspected and detail.get("address") else None,
+                   "website_url": website,
                    "website_status": state, "detail_inspected": inspected,
                    "website_evidence": ("O campo Site do Google Maps aponta para WhatsApp; nenhum site comercial foi listado nesse campo."
                     if whatsapp_website and inspected else "O campo Site aponta para um perfil ou diretório; site comercial não verificado."

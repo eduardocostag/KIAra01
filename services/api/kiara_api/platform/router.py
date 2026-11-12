@@ -49,6 +49,15 @@ def create_platform_router(
     )
     router = APIRouter(prefix="/v1/platform", tags=["platform"], route_class=PlatformRoute)
 
+    @router.post("/brain/command")
+    async def brain_command(
+        command: dict, # Assuming command will be a JSON object with a 'prompt' field
+        response: Response,
+        identity: Annotated[RequestContext, Depends(authenticated_context)],
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        return await service.brain_command(identity, command.get("prompt", ""))
+
     @router.get("/context")
     async def context(
         response: Response, identity: Annotated[RequestContext, Depends(authenticated_context)]

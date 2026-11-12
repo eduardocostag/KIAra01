@@ -1,0 +1,29 @@
+{
+  "checked_at": "2026-11-11T21:23:02.027386+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 1.7,
+  "requested": 3,
+  "accepted": 1,
+  "requested_limit_reached": false,
+  "all_sources_succeeded": true,
+  "sources": {
+    "web": 1
+  },
+  "with_phone": 1,
+  "with_public_whatsapp": 0,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 6,
+    "accepted": 1,
+    "excluded": 5,
+    "unknown": 0,
+    "incomplete": 4,
+    "source_failures": 0
+  },
+  "warnings": [
+    "4 candidato(s) excluído(s) por não apresentar nome/empresa, telefone ou WhatsApp, cidade/endereço comprovado e URL pública da fonte.",
+    "Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados."
+  ],
+  "error": null,
+  "passed": true
+}

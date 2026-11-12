@@ -22,7 +22,7 @@ const sourceInfo = {
 } satisfies Record<Source, { label: string; detail: string; icon: typeof Globe2 }>
 
 const websiteLabels = { any: "Qualquer presença digital", without_website: "Sem site informado no Maps", with_website: "Com site identificado" }
-const contactLabels = { any: "Todos os contatos disponíveis", phone: "Somente com telefone público", whatsapp: "Somente com WhatsApp identificado" }
+const contactLabels = { any: "Telefone ou WhatsApp (qualquer um)", phone: "Somente com telefone público", whatsapp: "Somente com WhatsApp identificado" }
 
 const HUNTER_MAX_RESULTS = 100
 
@@ -54,7 +54,7 @@ export function HunterClient() {
       setJobs((items) => [current, ...items.filter((item) => item.id !== current.id)])
       if (current.status !== "running") {
         if (current.status === "completed" && current.results.length) {
-          setStage(`${current.results.length} oportunidade${current.results.length === 1 ? " confirmada" : "s confirmadas"} na região`)
+          setStage(`${current.results.length} resultado${current.results.length === 1 ? " encontrado" : "s encontrados"}`)
           await new Promise((resolve) => setTimeout(resolve, 2_400))
         }
         return current
@@ -217,6 +217,7 @@ export function HunterClient() {
           <div><p className="text-lg font-semibold tracking-tight">{query}</p><p className="text-sm text-muted-foreground">{location || "Todas as regiões"} · até {limit} resultados</p></div>
           <section aria-labelledby="hunter-preflight-title" className="rounded-xl border bg-muted/30 p-4">
             <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" /><div><h3 id="hunter-preflight-title" className="text-sm font-semibold">Antes de pesquisar</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">A busca pública está pronta e não exige login. Se uma rede bloquear detalhes do perfil, entre nela em outra aba para fazer a verificação manual.</p></div></div>
+            <p className="mt-3 rounded-lg border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">Só serão aceitos leads com nome/empresa, telefone ou WhatsApp, cidade/endereço comprovado e link público da fonte. Resultados sem qualquer um desses dados serão descartados.</p>
             {socialChecks.length > 0 ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{socialChecks.map((source) => {
               const instagram = source === "instagram"
               return <div key={source} className="rounded-lg border bg-background p-3"><p className="text-xs font-semibold">{instagram ? "Instagram" : "Facebook"}: busca pública pronta</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">Login só será necessário se a própria rede limitar a visualização durante sua conferência.</p><Button asChild variant="outline" size="sm" className="mt-3 h-8 w-full text-xs"><a href={instagram ? "https://www.instagram.com/accounts/login/" : "https://www.facebook.com/login/"} target="_blank" rel="noopener noreferrer">Abrir {instagram ? "Instagram" : "Facebook"}<ExternalLink className="size-3" /></a></Button></div>

@@ -1,0 +1,29 @@
+{
+  "checked_at": "2026-11-11T21:19:31.082209+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 30.88,
+  "requested": 3,
+  "accepted": 1,
+  "sources": {
+    "web": 1
+  },
+  "with_phone": 1,
+  "with_public_whatsapp": 1,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 18,
+    "accepted": 1,
+    "excluded": 17,
+    "unknown": 0,
+    "incomplete": 5,
+    "source_failures": 1
+  },
+  "warnings": [
+    "Facebook não concluiu a consulta porque o índice público está temporariamente indisponível. Tente novamente em alguns minutos; se persistir, peça ao administrador para verificar EXA_API_KEY e FIRECRAWL_API_KEY. Os resultados das outras fontes foram preservados.",
+    "Perfis do Instagram sem bio atual verificável foram excluídos; confirme o acesso público ou pesquise outra fonte.",
+    "5 candidato(s) excluído(s) por não apresentar nome/empresa, telefone ou WhatsApp, cidade/endereço comprovado e URL pública da fonte.",
+    "Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados."
+  ],
+  "error": null,
+  "passed": true
+}

@@ -102,6 +102,7 @@
 .hunterResultMeta span,.hunterResultMeta a,.hunterResultBottom > span { display: flex; min-width: 0; align-items: center; gap: .32rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hunterResultMeta a { color: #a69df3; }
 .hunterResultMeta svg,.hunterResultBottom svg { width: .7rem; height: .7rem; flex: none; }
+.hunterResultMeta { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem 1rem; }
 .hunterResultActions { grid-column: 3; display: flex; align-items: center; gap: .35rem; }
 .hunterAddButton,.hunterDetailsButton { min-height: 1.7rem; height: 1.7rem; border-radius: .42rem; padding-inline: .6rem; font-size: .59rem; white-space: nowrap; }
 .hunterAddButton { min-width: 6.1rem; border-color: rgb(104 208 160 / .32); color: #6dd4a3; }

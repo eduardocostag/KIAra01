@@ -106,6 +106,8 @@ class MapsScraperClient:
 
     @staticmethod
     def read_results(path: Path, *, limit: int) -> list[dict[str, Any]]:
+        if path.stat().st_size == 0:
+            raise MapsScraperError("Google Maps Scraper não coletou fichas; o arquivo de resultados está vazio.")
         if path.stat().st_size > 10_000_000:
             raise MapsScraperError("Resultado do Google Maps excedeu o limite de 10 MB.")
         businesses: list[dict[str, Any]] = []

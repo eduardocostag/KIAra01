@@ -22,6 +22,23 @@ sys.path.insert(0, str(ROOT))
 from app.integrations.operational_skills import OperationalSkills
 
 
+def docker_engine_status() -> dict[str, object]:
+    executable = shutil.which("docker")
+    if not executable:
+        return {"available": False, "reason": "docker_not_installed"}
+    try:
+        completed = subprocess.run(
+            [executable, "version", "--format", "{{.Server.Version}}"],
+            capture_output=True, text=True, timeout=10, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {"available": False, "reason": "docker_engine_unreachable"}
+    if completed.returncode or not completed.stdout.strip():
+        return {"available": False, "reason": "docker_engine_unreachable"}
+    return {"available": True, "version": completed.stdout.strip()[:80]}
+
+
 def smoke_freellmapi() -> dict[str, object]:
     service = ROOT / "services/freellmapi"
     with socket.socket() as listener:
@@ -85,6 +102,7 @@ def main() -> None:
         "freellmapi_key_configured": bool(os.environ.get("FREELLMAPI_API_KEY")),
         "chatwoot_checkout_present": (ROOT / "services/chatwoot/Gemfile").is_file(),
         "chatwoot_docker_available": shutil.which("docker") is not None,
+        "chatwoot_docker_engine": docker_engine_status(),
         "chatwoot_token_configured": bool(os.environ.get("CHATWOOT_API_ACCESS_TOKEN")),
     }
     if args.smoke_freellmapi:

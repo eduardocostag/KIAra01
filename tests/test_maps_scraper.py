@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import subprocess
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -59,6 +60,13 @@ def test_missing_site_column_is_an_incompatible_result(tmp_path):
     output = tmp_path / "results.csv"
     output.write_text('title,link\nClínica,https://google.com/maps/place/x\n', encoding="utf-8")
     with pytest.raises(MapsScraperError, match="incompatível"):
+        MapsScraperClient.read_results(output, limit=1)
+
+
+def test_empty_scraper_output_is_collection_failure_not_csv_schema_failure(tmp_path):
+    output = tmp_path / "results.csv"
+    output.write_bytes(b"")
+    with pytest.raises(MapsScraperError, match="não coletou fichas"):
         MapsScraperClient.read_results(output, limit=1)
 
 
@@ -159,3 +167,42 @@ async def test_public_whatsapp_verifier_starts_browser_under_lock(monkeypatch):
     monkeypatch.setattr(browser, "_whatsapp_number_is_valid", verify)
     assert await browser.verify_whatsapp_number("51999991111")
     assert calls == ["start", "51999991111"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", [False, True])
+async def test_cli_failure_or_empty_results_use_browser_without_losing_diagnostic(tmp_path, monkeypatch, empty):
+    client = client_fixture(tmp_path)
+    search = AsyncMock(return_value=[]) if empty else AsyncMock(side_effect=MapsScraperError("CLI falhou"))
+    monkeypatch.setattr(client, "search", search)
+    fallback = AsyncMock(return_value=[{"name": "Clínica", "phone": "51999991111"}])
+    result = await GoogleMapsScraperTool(client, fallback_search=fallback).execute(query="dentistas", limit=1)
+    assert result.success
+    assert len(result.metadata["businesses"]) == 1
+    assert result.metadata["backend"] == "kiara_browser"
+    assert result.metadata["warnings"]
+    fallback.assert_awaited_once_with(query="dentistas", limit=1)
+
+
+@pytest.mark.asyncio
+async def test_cli_failure_never_falls_back_after_kill_switch(tmp_path, monkeypatch):
+    client = client_fixture(tmp_path)
+    client.kill_switch.trigger()
+    fallback = AsyncMock()
+    result = await GoogleMapsScraperTool(client, fallback_search=fallback).execute(query="dentistas", limit=1)
+    assert not result.success
+    fallback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browser_fallback_failure_is_explicit_and_cancellation_propagates(tmp_path, monkeypatch):
+    client = client_fixture(tmp_path)
+    monkeypatch.setattr(client, "search", AsyncMock(side_effect=MapsScraperError("CLI falhou")))
+    fallback = AsyncMock(side_effect=RuntimeError("browser failed"))
+    tool = GoogleMapsScraperTool(client, fallback_search=fallback)
+    result = await tool.execute(query="dentistas", limit=1)
+    assert not result.success
+    assert "CLI falhou" in result.error and "também falhou" in result.error
+    fallback.side_effect = asyncio.CancelledError()
+    with pytest.raises(asyncio.CancelledError):
+        await tool.execute(query="dentistas", limit=1)
