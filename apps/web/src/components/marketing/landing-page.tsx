@@ -1,22 +1,33 @@
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, Check, ContactRound, Globe2, Workflow } from "lucide-react"
+import { ArrowRight, Bot, Check, Hand, Laptop, MessageCircle, Search, ShieldCheck, SlidersHorizontal, UserCheck, Workflow } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { Button } from "@/components/ui/button"
+import { HeroScene, Reveal, TiltCard } from "./landing-interactive"
+import { AutomationPreview, LeadsPreview, VoicePreview, WhatsAppPreview } from "./module-previews"
 import { ProductPreview } from "./product-preview"
-import { SignalPreview } from "./signal-preview"
+import styles from "./landing.module.css"
 
-const features = [
-  { icon: Globe2, eyebrow: "Hunter", title: "Busque por perfil e região.", copy: "Escolha as fontes, defina os critérios e acompanhe os resultados da pesquisa." },
-  { icon: ContactRound, eyebrow: "Leads", title: "Revise tudo em uma ficha.", copy: "Origem, canais disponíveis, endereço e atividades ficam no mesmo contexto." },
-  { icon: Workflow, eyebrow: "Pipeline", title: "Saiba sempre o próximo passo.", copy: "Organize etapas, registre contatos e mantenha follow-ups visíveis." },
+const channels = ["Google Maps", "Instagram", "Facebook", "WhatsApp", "LinkedIn", "Google Ads", "Meta Ads", "Google Agenda", "CRM integrado", "IA local", "Voz em português", "Chatwoot"]
+
+const modules = [
+  { icon: Search, tone: "#38bdf8", eyebrow: "Kiara Leads", title: "Encontre e organize clientes.", copy: "Descreva quem você procura e a Kiara pesquisa, confere contato e localização e leva cada oportunidade para o CRM com a próxima ação.", bullets: ["Busca por nicho, região e presença digital", "Contato e endereço conferidos na fonte", "Pipeline com etapas e follow-ups"], preview: LeadsPreview },
+  { icon: MessageCircle, tone: "#34d399", eyebrow: "Kiara WhatsApp", title: "Atenda e prospecte no WhatsApp.", copy: "Conecte por QR Code. A Kiara entende cada conversa, atualiza o CRM e responde os contatos que você autorizar.", bullets: ["Conexão por QR Code, sem extensão", "Resumo, etapa e próxima ação de cada contato", "Respostas e follow-up com limites e horários"], preview: WhatsAppPreview },
+  { icon: Bot, tone: "#c4a1ff", eyebrow: "Kiara Chat", title: "Converse com a Kiara, até por voz.", copy: "Um assistente completo para pensar, escrever e criar. No modo conversa, o orbe da Kiara escuta e responde em voz alta.", bullets: ["Modo conversa por voz em português", "Cria sites, dashboards e planos de tarefas", "Histórico das suas conversas"], preview: VoicePreview },
+  { icon: Workflow, tone: "#facc15", eyebrow: "Kiara Automation", title: "Automatize sem programar.", copy: "Monte fluxos ligando blocos: agenda, mensagens, redes sociais, sites, computador e anúncios, com o custo das campanhas visível antes.", bullets: ["Editor visual de blocos ligados por linhas", "Instagram, Facebook, LinkedIn e Google", "Meta, Google e LinkedIn Ads com custo previsto"], preview: AutomationPreview },
 ]
 
-const questions = [
-  ["Como a Kiara encontra novos leads?", "Você define o perfil, a localidade e as fontes. A Kiara pesquisa, reúne os dados disponíveis e organiza os resultados para revisão."],
-  ["Quais informações aparecem em cada lead?", "Origem, telefone, WhatsApp, Instagram, site e endereço aparecem quando estiverem disponíveis nas fontes consultadas."],
-  ["O que acontece depois da pesquisa?", "Você revisa os resultados, adiciona as oportunidades ao Pipeline e acompanha etapas, atividades e próximos contatos."],
-  ["Preciso conectar Instagram ou Google?", "Não para começar. Você pode usar as fontes públicas disponíveis. Quando um recurso depender de conta ou API, a Kiara informa antes da pesquisa qual conexão é necessária."],
+const steps = [
+  ["Conte sobre o seu negócio", "Serviço, público, região e o que a Kiara pode dizer em seu nome."],
+  ["Conecte seus canais", "WhatsApp por QR Code, redes sociais, agenda e contas de anúncio, quando quiser."],
+  ["Deixe a Kiara trabalhar", "Ela busca, atende e automatiza. Você acompanha tudo e aprova o que importa."],
+]
+
+const control = [
+  { icon: Hand, title: "Você aprova", copy: "Ações sensíveis, como enviar, publicar ou agir no computador, pedem sua confirmação." },
+  { icon: SlidersHorizontal, title: "Limites claros", copy: "Envios por dia, horário de contato e pedidos para parar são respeitados." },
+  { icon: UserCheck, title: "Só quem autorizou", copy: "No WhatsApp, a Kiara responde e prospecta apenas os contatos que você habilitar." },
+  { icon: Laptop, title: "IA local quando quiser", copy: "As conversas podem ser analisadas por um modelo no seu próprio computador." },
 ]
 
 const segments = [
@@ -28,6 +39,14 @@ const segments = [
   ["Varejo", "Lojas e e-commerces"],
 ]
 
+const questions = [
+  ["O que a Kiara faz?", "Ela encontra clientes e organiza o CRM (Leads), atende e prospecta no WhatsApp, conversa por texto e voz (Chat) e executa fluxos de automação para redes sociais, agenda, mensagens e anúncios (Automation)."],
+  ["Preciso instalar alguma coisa?", "Para começar, não: a pesquisa de leads, o CRM, o Chat e o editor de automações funcionam no navegador. Recursos que agem no seu WhatsApp ou no seu computador usam o serviço da Kiara rodando no seu computador ou servidor."],
+  ["A Kiara envia mensagens sozinha?", "Somente se você ativar, apenas para contatos autorizados e dentro dos horários e limites diários definidos. Quando alguém pede para parar ou um atendente assume, a IA pausa naquele contato."],
+  ["Como funcionam os custos dos anúncios?", "O orçamento é seu e é cobrado pela própria plataforma (Meta, Google ou LinkedIn). Antes de criar a campanha, a Kiara mostra o valor por dia, o total e como cada plataforma cobra."],
+  ["Meus dados ficam seguros?", "Cada conta tem seu próprio espaço, e você escolhe quais canais conectar. A análise das conversas do WhatsApp pode rodar com IA local, sem enviar o conteúdo para fora do seu computador."],
+]
+
 export function LandingPage() {
   return (
     <div className="marketing-shell min-h-svh overflow-hidden bg-background text-foreground">
@@ -35,9 +54,9 @@ export function LandingPage() {
       <div className="marketing-backdrop-effects" aria-hidden="true"><i className="backdrop-orbit orbit-a" /><i className="backdrop-orbit orbit-b" /><i className="backdrop-glow glow-a" /><i className="backdrop-glow glow-b" /></div>
       <header className="marketing-header sticky top-0 z-40 border-b border-white/8 bg-[#0d0c16]/78 backdrop-blur-2xl">
         <nav aria-label="Navegação principal" className="mx-auto flex h-[70px] max-w-[1320px] items-center gap-6 px-5 sm:px-8">
-          <Link href="/" className="rounded-xl focus-visible:outline-offset-4" aria-label="Kiara Lead Intelligence, início"><KiaraBrand inverse /></Link>
+          <Link href="/" className="rounded-xl focus-visible:outline-offset-4" aria-label="Kiara, início"><KiaraBrand inverse /></Link>
           <div className="ml-auto hidden items-center gap-7 md:flex">
-            <Link href="#produto" className="marketing-nav-link">Produto</Link><Link href="#segmentos" className="marketing-nav-link">Soluções</Link><Link href="#recursos" className="marketing-nav-link">Recursos</Link><Link href="#duvidas" className="marketing-nav-link">Dúvidas</Link>
+            <Link href="#modulos" className="marketing-nav-link">Plataforma</Link><Link href="#como-funciona" className="marketing-nav-link">Como funciona</Link><Link href="#segmentos" className="marketing-nav-link">Segmentos</Link><Link href="#duvidas" className="marketing-nav-link">Dúvidas</Link>
           </div>
           <div className="ml-auto flex items-center gap-1.5 md:ml-3">
             <Button asChild variant="ghost" className="h-10 px-3 text-white/72 hover:bg-white/8 hover:text-white"><Link href="/sign-in">Entrar</Link></Button>
@@ -47,43 +66,64 @@ export function LandingPage() {
       </header>
 
       <main id="conteudo">
-        <section className="marketing-reference-hero relative mx-auto grid max-w-[1440px] items-center gap-12 overflow-hidden px-5 pb-16 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[.82fr_1.18fr] lg:pb-20">
+        <section className="marketing-reference-hero relative mx-auto grid max-w-[1440px] items-center gap-10 overflow-hidden px-5 pb-14 pt-12 sm:px-8 sm:pt-16 lg:grid-cols-[.9fr_1.1fr] lg:pb-20">
           <Image src="/images/kiara-hero-ai.png" alt="" fill priority sizes="100vw" className="marketing-hero-art" />
           <div className="marketing-hero-shade" aria-hidden="true" />
-          <div className="marketing-dot-field pointer-events-none absolute -right-48 top-0 z-[1] size-[680px] opacity-30" aria-hidden="true" />
-          <div className="relative z-10 max-w-[535px]">
-            <p className="eyebrow">Prospecção organizada, do início ao avanço</p><h1 className="hero-display mt-5 text-balance text-white">Encontre leads e avance com clareza.</h1>
-            <p className="mt-6 max-w-[500px] text-pretty text-base leading-7 text-white/58">Pesquise oportunidades, revise os dados encontrados e conduza cada lead pelo Pipeline.</p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row"><Button asChild size="lg" className="h-12 rounded-xl px-6 shadow-[0_16px_45px_rgb(91_54_199/.22)]"><Link href="/sign-up">Começar agora <ArrowRight aria-hidden="true" /></Link></Button><Button asChild size="lg" variant="outline" className="h-12 rounded-xl border-white/12 bg-white/[.025] px-6 text-white hover:bg-white/7 hover:text-white"><Link href="#produto">Conhecer a Kiara</Link></Button></div>
-            <div className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-white/42">{["Busca por localidade", "Dados centralizados", "Controle por workspace"].map((item) => <span key={item} className="flex items-center gap-1.5"><Check className="size-3 text-primary" />{item}</span>)}</div>
+          <div className="relative z-10 max-w-[560px]">
+            <p className="eyebrow">Inteligência comercial, atendimento e automação</p>
+            <h1 className="hero-display mt-5 text-balance text-white">A IA que prospecta, atende e trabalha por você.</h1>
+            <p className="mt-6 max-w-[520px] text-pretty text-base leading-7 text-white/60">A Kiara encontra clientes, conversa no WhatsApp, responde por voz e automatiza suas tarefas e campanhas, com você aprovando o que importa.</p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row"><Button asChild size="lg" className="h-12 rounded-xl px-6 shadow-[0_16px_45px_rgb(91_54_199/.3)]"><Link href="/sign-up">Começar agora <ArrowRight aria-hidden="true" /></Link></Button><Button asChild size="lg" variant="outline" className="h-12 rounded-xl border-white/12 bg-white/[.025] px-6 text-white hover:bg-white/7 hover:text-white"><Link href="#modulos">Conhecer a plataforma</Link></Button></div>
+            <div className="mt-7 grid max-w-[460px] grid-cols-2 gap-x-5 gap-y-2 text-xs text-white/50">{["Leads com fonte conferida", "WhatsApp por QR Code", "Conversa por voz", "Fluxos de automação"].map((item) => <span key={item} className="flex items-center gap-1.5"><Check className="size-3.5 text-primary" />{item}</span>)}</div>
           </div>
-          <div className="relative z-10"><SignalPreview /></div>
+          <div className="relative z-10"><HeroScene /></div>
         </section>
 
-        <section id="produto" className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
-          <div><p className="eyebrow">Uma visão completa</p><h2 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-[1.05] tracking-[-.045em] text-white sm:text-5xl">Da pesquisa ao relacionamento.</h2></div>
-          <div className="mt-9"><ProductPreview /></div>
+        <div className="border-y border-white/8 bg-white/[.015] py-5"><div className={styles.marquee}><div className={styles.marqueeTrack}>{[...channels, ...channels].map((item, index) => <span key={`${item}-${index}`} aria-hidden={index >= channels.length}>{item}</span>)}</div></div></div>
+
+        <section id="modulos" className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-24">
+          <Reveal className="mx-auto max-w-2xl text-center"><p className="eyebrow">Uma plataforma completa</p><h2 className="mt-3 text-balance text-4xl font-semibold leading-[1.05] tracking-[-.045em] text-white sm:text-5xl">Quatro módulos. Uma Kiara.</h2><p className="mt-4 text-sm leading-6 text-white/50 sm:text-base">Comece pelo que você mais precisa. Os módulos compartilham o mesmo CRM e a mesma inteligência.</p></Reveal>
+          <div className="mt-12 grid gap-5 md:grid-cols-2">{modules.map(({ icon: Icon, tone, eyebrow, title, copy, bullets, preview: Preview }, index) => <Reveal key={eyebrow} delay={(index % 2) * 120}>
+            <TiltCard>
+              <Preview />
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.14em]" style={{ color: tone }}><Icon className="size-4" aria-hidden="true" />{eyebrow}</p>
+              <h3 className="mt-3 text-2xl font-semibold tracking-[-.03em] text-white">{title}</h3>
+              <p className="mt-3 text-sm leading-6 text-white/52">{copy}</p>
+              <ul className="mt-4 space-y-2">{bullets.map((item) => <li key={item} className="flex items-start gap-2 text-sm text-white/72"><Check className="mt-0.5 size-4 shrink-0" style={{ color: tone }} />{item}</li>)}</ul>
+            </TiltCard>
+          </Reveal>)}</div>
         </section>
 
-        <section id="segmentos" className="reference-segments border-y border-white/8 bg-white/[.016]">
+        <section className="mx-auto max-w-[1320px] px-5 pb-16 sm:px-8 sm:pb-24">
+          <Reveal><p className="eyebrow">Por dentro do Kiara Leads</p><h2 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-[1.05] tracking-[-.045em] text-white sm:text-5xl">Da pesquisa ao relacionamento.</h2></Reveal>
+          <Reveal className="mt-9" delay={100}><ProductPreview /></Reveal>
+        </section>
+
+        <section id="como-funciona" className="border-y border-white/8 bg-white/[.016]">
+          <div className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-24">
+            <Reveal className="max-w-xl"><p className="eyebrow">Como funciona</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.045em] text-white">Pronta para trabalhar em três passos.</h2></Reveal>
+            <div className="mt-10 grid gap-4 lg:grid-cols-3">{steps.map(([title, copy], index) => <Reveal key={title} delay={index * 120}><article className={styles.step}><span className={styles.stepNumber}>{index + 1}</span><h3 className="mt-5 text-xl font-semibold tracking-[-.025em] text-white">{title}</h3><p className="mt-2 text-sm leading-6 text-white/50">{copy}</p></article></Reveal>)}</div>
+            <Reveal className="mt-16"><div className="flex items-center gap-3"><ShieldCheck className="size-5 text-primary" aria-hidden="true" /><h3 className="text-2xl font-semibold tracking-[-.03em] text-white">Você no controle, sempre.</h3></div></Reveal>
+            <div className={`mt-6 ${styles.controlGrid}`}>{control.map(({ icon: Icon, title, copy }, index) => <Reveal key={title} delay={index * 90}><article className={styles.controlCard}><Icon aria-hidden="true" /><h4 className="mt-3 font-semibold text-white">{title}</h4><p className="mt-1.5 text-sm leading-6 text-white/50">{copy}</p></article></Reveal>)}</div>
+          </div>
+        </section>
+
+        <section id="segmentos" className="reference-segments">
           <div className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
-            <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><p className="eyebrow">Soluções por segmento</p><h2 className="mt-4 max-w-md text-4xl font-semibold leading-[1.04] tracking-[-.045em] text-white">Prospecção para diferentes mercados.</h2></div><p className="max-w-md text-sm leading-6 text-white/46">Use filtros e fontes adequados ao público que sua empresa precisa encontrar.</p></div>
-            <div className="segment-card-track mt-10">{segments.map(([title, copy], index) => <article className="segment-card" key={title}><div className={`segment-photo segment-${index}`}><Image src="/images/kiara-segments.png" alt={`Profissional do segmento de ${title}`} fill sizes="(max-width: 767px) 1800px, 1320px" /></div><div className="segment-card-copy"><h3>{title}</h3><p>{copy}</p><Link href="/sign-up">Encontrar leads <ArrowRight /></Link></div></article>)}</div>
+            <Reveal className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><p className="eyebrow">Para o seu mercado</p><h2 className="mt-4 max-w-md text-4xl font-semibold leading-[1.04] tracking-[-.045em] text-white">Feita para quem vende e atende.</h2></div><p className="max-w-md text-sm leading-6 text-white/46">Autônomos, pequenas empresas e equipes comerciais de diferentes segmentos usam a mesma Kiara, ajustada à sua oferta.</p></Reveal>
+            <div className="segment-card-track mt-10">{segments.map(([title, copy], index) => <article className="segment-card" key={title}><div className={`segment-photo segment-${index}`}><Image src="/images/kiara-segments.png" alt={`Profissional do segmento de ${title}`} fill sizes="(max-width: 767px) 1800px, 1320px" /></div><div className="segment-card-copy"><h3>{title}</h3><p>{copy}</p><Link href="/sign-up">Começar <ArrowRight /></Link></div></article>)}</div>
           </div>
         </section>
-
-        <section id="recursos"><div className="mx-auto max-w-[1320px] px-5 py-16 sm:px-8 sm:py-20">
-          <div className="max-w-xl"><p className="eyebrow">O essencial, bem resolvido</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.045em] text-white">Três etapas. Um único fluxo.</h2></div>
-          <div className="mt-10 grid gap-4 lg:grid-cols-3">{features.map(({ icon: Icon, eyebrow, title, copy }, index) => <article className="reference-feature-card" key={eyebrow}><div className="reference-feature-visual"><span className={`reference-orbit orbit-${index + 1}`} /><Icon /></div><p className="eyebrow mt-6">{eyebrow}</p><h3 className="mt-2 text-xl font-semibold tracking-[-.025em] text-white">{title}</h3><p className="mt-3 text-sm leading-6 text-white/48">{copy}</p></article>)}</div>
-        </div></section>
 
         <section id="duvidas" className="mx-auto grid max-w-[1320px] gap-10 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[.72fr_1.28fr]">
-          <div><p className="eyebrow">Dúvidas frequentes</p><h2 className="mt-4 max-w-sm text-4xl font-semibold tracking-[-.045em] text-white">Direto ao ponto.</h2><p className="mt-4 max-w-sm text-sm leading-6 text-white/46">O que você precisa saber antes de começar.</p></div>
+          <Reveal><p className="eyebrow">Dúvidas frequentes</p><h2 className="mt-4 max-w-sm text-4xl font-semibold tracking-[-.045em] text-white">Direto ao ponto.</h2><p className="mt-4 max-w-sm text-sm leading-6 text-white/46">O que você precisa saber antes de começar.</p></Reveal>
           <div className="reference-faq">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}</div>
         </section>
 
-        <section className="px-5 pb-14 sm:px-8 sm:pb-16"><div className="reference-final-cta mx-auto max-w-[1320px]"><div className="reference-cta-orb" aria-hidden="true" /><div className="relative"><p className="eyebrow">Comece com uma pesquisa</p><h2 className="mt-3 max-w-xl text-balance text-3xl font-semibold tracking-[-.04em] text-white sm:text-5xl">Transforme buscas em oportunidades organizadas.</h2></div><Button asChild size="lg" className="relative h-12 shrink-0 rounded-xl px-6"><Link href="/sign-up">Criar minha conta <ArrowRight /></Link></Button></div></section>
+        <section className="px-5 pb-14 sm:px-8 sm:pb-16"><Reveal><div className="reference-final-cta mx-auto max-w-[1320px]"><div className="reference-cta-orb" aria-hidden="true" /><div className="relative"><p className="eyebrow">Comece hoje</p><h2 className="mt-3 max-w-xl text-balance text-3xl font-semibold tracking-[-.04em] text-white sm:text-5xl">Coloque a Kiara para trabalhar no seu negócio.</h2></div><Button asChild size="lg" className="relative h-12 shrink-0 rounded-xl px-6"><Link href="/sign-up">Criar minha conta <ArrowRight /></Link></Button></div></Reveal></section>
       </main>
+
+      <footer className="border-t border-white/8"><div className="mx-auto flex max-w-[1320px] flex-col gap-4 px-5 py-8 text-xs text-white/40 sm:flex-row sm:items-center sm:px-8"><KiaraBrand inverse /><span className="sm:ml-auto">Leads · WhatsApp · Chat · Automation</span><Link href="/sign-in" className="hover:text-white">Entrar</Link></div></footer>
     </div>
   )
 }

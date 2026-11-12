@@ -1,0 +1,179 @@
+/* ---------- Hero 3D scene ---------- */
+.scene {
+  position: relative;
+  aspect-ratio: 1 / .92;
+  width: 100%;
+  max-width: 680px;
+  margin-inline: auto;
+  perspective: 1200px;
+  --px: 0;
+  --py: 0;
+}
+.stage {
+  position: absolute;
+  inset: 0;
+  /* Layered parallax instead of preserve-3d: real 3D layers + backdrop blur render artifacts in Chrome. */
+}
+.halo {
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(140 82 255 / .55), transparent 65%);
+  filter: blur(40px);
+  animation: breathe 6s ease-in-out infinite;
+}
+.ring {
+  position: absolute;
+  inset: 14%;
+  border: 1px solid rgb(190 150 255 / .32);
+  border-radius: 50%;
+  transform: rotateX(72deg) rotateZ(0deg);
+  animation: spin 28s linear infinite;
+}
+.ring::after { position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; border-radius: 50%; background: #c9a7ff; box-shadow: 0 0 14px #b28aff; content: ""; }
+.ring2 { inset: 4%; border-color: rgb(120 200 255 / .2); animation-duration: 44s; animation-direction: reverse; transform: rotateX(70deg) rotateY(-14deg); }
+.ring3 { inset: 24%; border-style: dashed; border-color: rgb(190 150 255 / .22); animation-duration: 20s; transform: rotateX(64deg) rotateY(18deg); }
+
+.orb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 38%;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgb(212 157 255 / .55);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 14%, rgb(249 220 255 / .86), transparent 15%),
+    radial-gradient(circle at 39% 30%, #c698ff 1%, #a061ef 25%, #6522bf 56%, #2e135e 86%);
+  box-shadow: inset 18px 16px 40px rgb(253 216 255 / .2), inset -40px -44px 64px rgb(26 5 59 / .72), 0 0 60px rgb(127 56 242 / .75), 0 0 140px rgb(95 38 187 / .45);
+  transform: translate(calc(-50% + var(--px) * -10px), calc(-50% + var(--py) * -8px));
+  transition: transform .3s ease-out;
+  animation: float 6s ease-in-out infinite;
+}
+.orb::before { position: absolute; inset: 0; border-radius: inherit; background: conic-gradient(from 0deg, transparent 0 62%, rgb(255 255 255 / .14) 72%, transparent 82%); content: ""; animation: spin 10s linear infinite; }
+.face { position: relative; display: flex; width: 24%; gap: 24%; justify-content: center; transform: translate(calc(-10% + var(--px) * 26%), calc(-4% + var(--py) * 22%)); transition: transform .2s ease-out; }
+.face i { display: block; width: 30%; aspect-ratio: .68; border-radius: 50%; background: #10041f; transform: rotate(11deg); animation: blink 5s infinite; }
+
+.card {
+  position: absolute;
+  display: flex;
+  min-width: 11.5rem;
+  align-items: center;
+  gap: .65rem;
+  padding: .7rem .85rem;
+  border: 1px solid rgb(255 255 255 / .1);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgb(32 24 58 / .78), rgb(14 12 26 / .72));
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / .8), inset 0 1px 0 rgb(255 255 255 / .06);
+  backdrop-filter: blur(14px);
+  color: white;
+  font-size: .78rem;
+  transition: transform .3s ease-out;
+  animation: drift 7s ease-in-out infinite;
+}
+.card strong { display: block; font-size: .82rem; }
+.card small { color: rgb(255 255 255 / .5); font-size: .68rem; }
+.cardIcon { display: grid; width: 2rem; height: 2rem; flex-shrink: 0; place-items: center; border-radius: 10px; background: var(--tone-bg); color: var(--tone); }
+.cardIcon svg { width: 1rem; height: 1rem; }
+.cardA { top: 8%; left: 2%; transform: translate(calc(var(--px) * 26px), calc(var(--py) * 20px)); --tone: #38bdf8; --tone-bg: rgb(56 189 248 / .16); }
+.cardB { top: 14%; right: 0; transform: translate(calc(var(--px) * 18px), calc(var(--py) * 14px)); animation-delay: -2s; --tone: #34d399; --tone-bg: rgb(52 211 153 / .16); }
+.cardC { bottom: 14%; left: 0; transform: translate(calc(var(--px) * 22px), calc(var(--py) * 16px)); animation-delay: -4s; --tone: #c4a1ff; --tone-bg: rgb(167 139 250 / .18); }
+.cardD { right: 2%; bottom: 8%; transform: translate(calc(var(--px) * 30px), calc(var(--py) * 24px)); animation-delay: -1s; --tone: #facc15; --tone-bg: rgb(250 204 21 / .14); }
+@media (max-width: 640px) {
+  .card { min-width: 0; padding: .55rem .65rem; font-size: .7rem; }
+  .card small { display: none; }
+  .cardB, .cardD { display: none; }
+  .cardA { top: 4%; left: 0; }
+  .cardC { bottom: 6%; right: 0; left: auto; }
+}
+.live { display: inline-block; width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: #34d399; box-shadow: 0 0 10px #34d399; animation: breathe 1.6s ease-in-out infinite; }
+
+/* ---------- Marquee ---------- */
+.marquee { position: relative; overflow: hidden; mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent); }
+.marqueeTrack { display: flex; width: max-content; gap: 2.5rem; animation: marquee 38s linear infinite; }
+.marqueeTrack span { display: inline-flex; align-items: center; gap: .5rem; color: rgb(255 255 255 / .42); font-size: .82rem; font-weight: 550; white-space: nowrap; }
+.marqueeTrack span::before { width: 5px; height: 5px; border-radius: 50%; background: var(--primary); content: ""; }
+
+/* ---------- Module cards (3D tilt) ---------- */
+.tilt { position: relative; height: 100%; perspective: 1000px; }
+.tiltInner {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  padding: 1.5rem;
+  border: 1px solid rgb(255 255 255 / .08);
+  border-radius: 24px;
+  background: linear-gradient(160deg, rgb(28 22 50 / .9), rgb(12 11 22 / .92));
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform .2s ease-out, border-color .3s;
+}
+.tiltInner:hover { border-color: rgb(167 139 250 / .35); }
+.tiltInner::after { position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 0%), rgb(167 139 250 / .14), transparent 40%); content: ""; pointer-events: none; }
+.preview { position: relative; height: 13.5rem; margin-bottom: 1.4rem; overflow: hidden; border: 1px solid rgb(255 255 255 / .06); border-radius: 18px; background: radial-gradient(circle at 50% 0%, rgb(124 77 255 / .18), transparent 60%), rgb(8 7 16 / .7); }
+
+/* Leads mini */
+.leadRow { display: flex; align-items: center; gap: .55rem; margin: .5rem .7rem 0; padding: .5rem .6rem; border: 1px solid rgb(255 255 255 / .06); border-radius: 12px; background: rgb(255 255 255 / .03); color: white; font-size: .72rem; animation: rise .8s both; }
+.leadRow:nth-child(2) { animation-delay: .15s; border-color: rgb(167 139 250 / .4); background: rgb(124 77 255 / .12); }
+.leadRow:nth-child(3) { animation-delay: .3s; }
+.leadRow:nth-child(4) { animation-delay: .45s; }
+.avatar { display: grid; width: 1.6rem; height: 1.6rem; place-items: center; border-radius: 50%; background: rgb(124 77 255 / .25); font-size: .6rem; font-weight: 700; }
+.pill { margin-left: auto; border-radius: 999px; padding: .1rem .45rem; font-size: .6rem; font-weight: 600; }
+
+/* WhatsApp mini */
+.bubbles { display: flex; height: 100%; flex-direction: column; justify-content: flex-end; gap: .45rem; padding: .9rem; }
+.bubble { max-width: 78%; border-radius: 14px; padding: .45rem .65rem; color: white; font-size: .72rem; line-height: 1.35; animation: rise .6s both; }
+.bubbleIn { align-self: flex-start; border-bottom-left-radius: 4px; background: rgb(255 255 255 / .08); }
+.bubbleOut { align-self: flex-end; border-bottom-right-radius: 4px; background: rgb(52 211 153 / .2); }
+.typing { display: inline-flex; gap: 3px; align-self: flex-end; border-radius: 12px; padding: .5rem .65rem; background: rgb(52 211 153 / .14); }
+.typing i { width: 5px; height: 5px; border-radius: 50%; background: #6ee7b7; animation: typing 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; }
+.typing i:nth-child(3) { animation-delay: .3s; }
+
+/* Voice mini */
+.voice { display: grid; height: 100%; place-items: center; }
+.voiceOrb { position: relative; width: 6.5rem; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 40% 25%, #d7b8ff, #8b4dff 45%, #2e135e 90%); box-shadow: 0 0 40px rgb(127 56 242 / .8); animation: talk 1.4s ease-in-out infinite; }
+.voiceOrb::before, .voiceOrb::after { position: absolute; inset: -14px; border: 1px solid rgb(196 150 255 / .45); border-radius: 50%; content: ""; animation: ripple 2.4s ease-out infinite; }
+.voiceOrb::after { animation-delay: 1.2s; }
+.wave { display: flex; position: absolute; bottom: 1rem; left: 50%; gap: 3px; align-items: center; transform: translateX(-50%); }
+.wave i { width: 3px; border-radius: 3px; background: #c4a1ff; animation: bar 1s ease-in-out infinite; }
+
+/* Automation mini */
+.flowSvg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.flowPath { fill: none; stroke: rgb(167 139 250 / .7); stroke-width: 2; stroke-dasharray: 6 6; animation: dash .8s linear infinite; }
+.flowNode { position: absolute; display: flex; align-items: center; gap: .4rem; padding: .4rem .55rem; border: 1px solid rgb(255 255 255 / .1); border-top: 2px solid var(--tone); border-radius: 10px; background: rgb(20 17 36 / .95); color: white; font-size: .66rem; white-space: nowrap; }
+.flowNode svg { width: .8rem; height: .8rem; color: var(--tone); }
+
+/* ---------- Reveal on scroll ---------- */
+.reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s cubic-bezier(.2,.7,.2,1); }
+.revealed { opacity: 1; transform: none; }
+
+/* ---------- Control section ---------- */
+.controlGrid { display: grid; gap: 1rem; }
+@media (min-width: 768px) { .controlGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .controlGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.controlCard { padding: 1.25rem; border: 1px solid rgb(255 255 255 / .07); border-radius: 18px; background: rgb(255 255 255 / .02); }
+.controlCard svg { width: 1.2rem; height: 1.2rem; color: var(--primary); }
+
+.step { position: relative; padding: 1.4rem; border: 1px solid rgb(255 255 255 / .08); border-radius: 20px; background: linear-gradient(170deg, rgb(28 22 50 / .7), rgb(12 11 22 / .7)); }
+.stepNumber { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; border: 1px solid rgb(167 139 250 / .4); border-radius: 50%; background: rgb(124 77 255 / .14); color: #d6c4ff; font-weight: 700; box-shadow: 0 0 22px rgb(124 77 255 / .35); }
+
+@keyframes spin { to { rotate: 360deg; } }
+@keyframes float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+@keyframes breathe { 0%, 100% { opacity: .75; scale: 1; } 50% { opacity: 1; scale: 1.06; } }
+@keyframes drift { 0%, 100% { translate: 0 0; } 50% { translate: 0 -9px; } }
+@keyframes blink { 0%, 92%, 100% { scale: 1 1; } 95% { scale: 1 .1; } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes typing { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@keyframes talk { 0%, 100% { scale: 1; } 30% { scale: 1.08; } 60% { scale: .97; } }
+@keyframes ripple { from { opacity: .7; scale: .9; } to { opacity: 0; scale: 1.5; } }
+@keyframes bar { 0%, 100% { height: 6px; } 50% { height: 22px; } }
+@keyframes dash { to { stroke-dashoffset: -12; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .halo, .ring, .orb, .orb::before, .face i, .card, .live, .marqueeTrack, .leadRow, .bubble, .typing i, .voiceOrb, .voiceOrb::before, .voiceOrb::after, .wave i, .flowPath { animation: none !important; }
+  .stage, .face, .tiltInner { transform: none !important; transition: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
