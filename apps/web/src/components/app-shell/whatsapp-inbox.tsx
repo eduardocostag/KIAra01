@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, ArrowUp, Bot, Cable, Hand, Info, LoaderCircle, MessageCircle, RefreshCw, Search, Workflow } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
-import { WhatsAppConnectionPanel } from "@/components/app-shell/whatsapp-gateway-workspace"
+import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel } from "@/components/app-shell/whatsapp-gateway-workspace"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -29,8 +30,12 @@ function WhatsAppFooter({ onConnection }: { onConnection: () => void }) {
 function ConnectionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-      <DialogHeader><DialogTitle>Conexão do WhatsApp</DialogTitle><DialogDescription>Estado da sessão e resumo do contato autorizado.</DialogDescription></DialogHeader>
-      {open ? <WhatsAppConnectionPanel /> : null}
+      <DialogHeader><DialogTitle>Conexão do WhatsApp</DialogTitle><DialogDescription>Escolha como a Kiara acessa o seu WhatsApp.</DialogDescription></DialogHeader>
+      {open ? <Tabs defaultValue="web" className="gap-4">
+        <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="web">WhatsApp Web</TabsTrigger><TabsTrigger value="openwa">OpenWA</TabsTrigger></TabsList>
+        <TabsContent value="web"><WhatsAppWebConnectionPanel /></TabsContent>
+        <TabsContent value="openwa"><p className="mb-4 text-sm text-muted-foreground">Sessão mantida por um serviço (computador ou servidor), sem depender do navegador aberto.</p><WhatsAppConnectionPanel /></TabsContent>
+      </Tabs> : null}
     </DialogContent>
   </Dialog>
 }
@@ -168,7 +173,7 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
     </> : <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <span className="mb-4 grid size-12 place-items-center rounded-full border bg-card text-emerald-400"><MessageCircle className="size-5" aria-hidden="true" /></span>
       <h1 className="text-2xl font-medium tracking-tight">Nenhuma conversa ainda</h1>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">Conecte o WhatsApp para que as conversas apareçam aqui e a Kiara possa ajudar no atendimento.</p>
+      <p className="mt-2 max-w-sm text-sm text-muted-foreground">Conecte pelo WhatsApp Web logado no Chrome ou pelo OpenWA. A Kiara passa a identificar, entender, prospectar e responder seus contatos autorizados.</p>
       <div className="mt-6 flex flex-wrap justify-center gap-2"><Button type="button" onClick={() => setConnectionOpen(true)}><Cable />Conectar WhatsApp</Button><Button asChild variant="outline"><Link href="/app/whatsapp/automacao">Configurar automação</Link></Button></div>
     </div>}
     <ConnectionDialog open={connectionOpen} onOpenChange={setConnectionOpen} />

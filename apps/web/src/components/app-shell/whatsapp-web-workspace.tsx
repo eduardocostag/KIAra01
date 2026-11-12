@@ -1,105 +1,60 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { Activity as ActivityIcon, ArrowLeft, ChevronDown, CircleHelp, Link2, MessageCircle, Settings2 } from "lucide-react"
+import { Bot, Loader2, Megaphone, ScanSearch, ShieldCheck, Trash2, UserPlus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { leadDisplayName, type PipelineEntry } from "@/lib/api/pipeline"
-import { normalizeWhatsAppPhone } from "@/lib/api/pipeline"
-import styles from "./whatsapp-workspace.module.css"
-
-type Contact = { phone: string; name: string; enabled: boolean; handoff: boolean }
-type Config = { pilot_mode: boolean; daily_limit?: number; auto_reply_enabled?: boolean; followup_enabled?: boolean; initial_outreach_enabled?: boolean; outreach_template?: string; pilot_consent_confirmed: boolean; enabled: boolean; ai_context: string; reply_template: string; followup_template: string; followup_hours: number; contact_start: string; contact_end: string; contacts: Contact[] }
-type Activity = { id: string; phone: string; kind: string; text: string; occurred_at: string; status: string }
-type Events = { items: Activity[]; last_heartbeat_at: string | null; online: boolean }
-type AnalysisJob = { id: string; status: "queued" | "running" | "completed" | "failed"; result?: { imported?: number; duplicates?: number; scanned?: number; skipped?: number; error?: string | null } | null }
-
-function apiErrorMessage(payload: unknown) {
-  if (typeof payload !== "object" || payload === null || !("error" in payload)) return null
-  const error = payload.error
-  return typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-    ? error.message
-    : null
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/whatsapp-web/${path}`, { ...init, cache: "no-store", headers: { "Content-Type": "application/json" }, signal: init?.signal ?? AbortSignal.timeout(15000) })
-  const text = await response.text()
-  let payload: unknown
-  try {
-    payload = JSON.parse(text)
-  } catch {
-    const isHtml = response.headers.get("content-type")?.includes("text/html") || /^\s*</.test(text)
-    if (isHtml) {
-      throw new Error("Não foi possível carregar o WhatsApp. Tente novamente em instantes.")
-    }
-    throw new Error("A conexão não respondeu como esperado. Tente novamente em instantes.")
-  }
-  if (!response.ok) throw new Error(apiErrorMessage(payload) ?? "Não foi possível acessar o atendimento.")
-  return payload as T
-}
+import { leadDisplayName, normalizeWhatsAppPhone, type PipelineEntry } from "@/lib/api/pipeline"
+import { connectWhatsAppWeb, whatsappWebRequest as request, type WhatsAppAnalysisJob as AnalysisJob, type WhatsAppConfig as Config, type WhatsAppContact as Contact, type WhatsAppEvents as Events } from "@/lib/whatsapp-web-client"
+import { cn } from "@/lib/utils"
 
 const activityLabels: Record<string, string> = {
-  inbound: "Mensagem recebida", outbound_observed: "Mensagem enviada observada", reply: "Resposta automática",
-  reply_handoff: "Encaminhamento para humano", followup: "Follow-up", heartbeat: "Conexão do executor",
-  optout: "Pedido para parar", handoff: "Atendimento humano", resume: "Retomada", error: "Erro",
-  recorded: "Registrado", pending: "Na fila", sending: "Enviando", sent: "Enviado",
-  confirmed: "Confirmado na conversa", uncertain: "Envio incerto — revisar", cancelled: "Cancelado",
-  paused: "Pausado", ready: "WhatsApp conectado", qr_required: "Login por QR necessário", disconnected: "Desconectado",
+  inbound: "Mensagem recebida", outbound_observed: "Mensagem enviada", reply: "Resposta automática",
+  reply_handoff: "Passou para humano", followup: "Follow-up", outreach: "Primeira abordagem", optout: "Pediu para parar",
+  handoff: "Atendimento humano", resume: "Retomada", error: "Erro", recorded: "Registrado", pending: "Na fila",
+  sending: "Enviando", sent: "Enviado", confirmed: "Confirmado", uncertain: "Envio incerto · revisar",
+  cancelled: "Cancelado", paused: "Pausado",
 }
 
 function dateLabel(value: string) {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? "Data indisponível" : date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })
 }
 
-function prepareWhatsApp() {
-  const requestId = crypto.randomUUID()
-  return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      window.removeEventListener("message", handleMessage)
-      reject(new Error("Extensão Kiara não detectada. Instale-a no Chrome e atualize as guias do site e do WhatsApp Web."))
-    }, 45000)
-    function handleMessage(event: MessageEvent) {
-      if (event.source !== window || event.origin !== window.location.origin) return
-      if (event.data?.source !== "kiara-whatsapp-extension"
-          || event.data.type !== "whatsapp-ready"
-          || event.data.requestId !== requestId) return
-      clearTimeout(timeout)
-      window.removeEventListener("message", handleMessage)
-      if (event.data.error) reject(new Error(event.data.error))
-      else resolve()
-    }
-    window.addEventListener("message", handleMessage)
-    window.postMessage({ source: "kiara-app", type: "whatsapp-prepare", requestId }, window.location.origin)
-  })
+function Section({ icon: Icon, title, description, children }: { icon: typeof Bot; title: string; description: string; children: ReactNode }) {
+  return <section className="rounded-2xl border bg-card p-5">
+    <header className="mb-4 flex items-start gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Icon className="size-4" aria-hidden="true" /></span>
+      <div><h2 className="font-semibold">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div>
+    </header>
+    <div className="space-y-4">{children}</div>
+  </section>
 }
 
-async function waitForExecutor() {
-  const deadline = Date.now() + 90000
-  while (Date.now() < deadline) {
-    const value = await request<Events>("events")
-    if (value.online) return
-    await new Promise(resolve => setTimeout(resolve, 3000))
-  }
-  throw new Error("Não foi possível conectar. Mantenha a Kiara e o WhatsApp Web abertos no Chrome e tente novamente.")
+function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (value: boolean) => void; label: string; hint?: string }) {
+  return <label className="flex cursor-pointer items-start gap-3">
+    <input type="checkbox" className="mt-1 size-4 accent-[var(--primary)]" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <span><span className="text-sm font-medium">{label}</span>{hint ? <span className="block text-xs text-muted-foreground">{hint}</span> : null}</span>
+  </label>
 }
 
+function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
+  return <div className="space-y-1.5"><label htmlFor={id} className="text-sm font-medium">{label}</label>{children}{hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}</div>
+}
+
+/** Kiara on WhatsApp Web: identify/understand conversations, reply, prospect and follow up — only for authorized contacts. */
 export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) {
   const router = useRouter()
   const [config, setConfig] = useState<Config | null>(null)
   const [savedEnabled, setSavedEnabled] = useState(false)
   const [events, setEvents] = useState<Events | null>(null)
-  const [error, setError] = useState("")
   const [configError, setConfigError] = useState("")
   const [formError, setFormError] = useState("")
   const [formNotice, setFormNotice] = useState("")
-  const [eventError, setEventError] = useState("")
-  const [notice, setNotice] = useState("")
+  const [analysisError, setAnalysisError] = useState("")
+  const [analysisNotice, setAnalysisNotice] = useState("")
   const [saving, setSaving] = useState(false)
   const [phone, setPhone] = useState("")
   const [name, setName] = useState("")
@@ -107,23 +62,16 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
   const [analysis, setAnalysis] = useState<AnalysisJob | null>(null)
   const [analysisStarting, setAnalysisStarting] = useState(false)
   const extensionRequestIdRef = useRef("")
-  const configDetailsRef = useRef<HTMLDetailsElement>(null)
   const analysisId = analysis?.id
   const analysisStatus = analysis?.status
-
-  useEffect(() => {
-    if (formError && configDetailsRef.current) configDetailsRef.current.open = true
-  }, [formError])
 
   useEffect(() => {
     function handleExtensionMessage(event: MessageEvent) {
       if (event.source !== window || event.origin !== window.location.origin) return
       const message = event.data
-      if (message?.source !== "kiara-whatsapp-extension"
-          || message.type !== "analysis-status"
-          || message.jobId !== extensionRequestIdRef.current) return
-      if (message.error) { setNotice(""); setError(message.error) }
-      else { setError(""); setNotice("Conversas recebidas. A Kiara está analisando os contatos.") }
+      if (message?.source !== "kiara-whatsapp-extension" || message.type !== "analysis-status" || message.jobId !== extensionRequestIdRef.current) return
+      if (message.error) { setAnalysisNotice(""); setAnalysisError(message.error) }
+      else { setAnalysisError(""); setAnalysisNotice("Conversas recebidas. A Kiara está entendendo cada contato…") }
     }
     window.addEventListener("message", handleExtensionMessage)
     return () => window.removeEventListener("message", handleExtensionMessage)
@@ -131,7 +79,7 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
 
   useEffect(() => {
     const controller = new AbortController()
-    void request<Config>("config", { signal: controller.signal }).then(value => { setConfig(value); setSavedEnabled(value.enabled) }).catch(reason => { if (!controller.signal.aborted) setConfigError(reason instanceof Error ? reason.message : "Não foi possível carregar a configuração.") })
+    void request<Config>("config", { signal: controller.signal }).then((value) => { setConfig(value); setSavedEnabled(value.enabled) }).catch((reason) => { if (!controller.signal.aborted) setConfigError(reason instanceof Error ? reason.message : "Não foi possível carregar a configuração.") })
     return () => controller.abort()
   }, [])
 
@@ -144,22 +92,15 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
       try {
         const job = await request<AnalysisJob>(`analysis/${encodeURIComponent(jobId)}`, { signal: controller.signal })
         if (controller.signal.aborted) return
-        setAnalysis(job)
-        setError("")
+        setAnalysis(job); setAnalysisError("")
         if (job.status === "completed" && job.result) {
-          setNotice(`Análise concluída: ${job.result.imported ?? 0} leads importados, ${job.result.duplicates ?? 0} já existentes; ${job.result.skipped ?? 0} conversas ignoradas.`)
+          setAnalysisNotice(`Pronto: ${job.result.imported ?? 0} contatos novos no CRM, ${job.result.duplicates ?? 0} atualizados, ${job.result.skipped ?? 0} conversas ignoradas.`)
           router.refresh()
         } else if (job.status === "failed") {
-          setNotice("")
-          setError(job.result?.error ?? "Não foi possível concluir a análise. Verifique o executor e o Ollama.")
-        } else {
-          timer = setTimeout(() => void refreshAnalysis(), 3000)
-        }
+          setAnalysisNotice(""); setAnalysisError(job.result?.error ?? "Não foi possível concluir a análise.")
+        } else timer = setTimeout(() => void refreshAnalysis(), 3000)
       } catch (reason) {
-        if (!controller.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : "Não foi possível consultar o andamento da análise.")
-          timer = setTimeout(() => void refreshAnalysis(), 5000)
-        }
+        if (!controller.signal.aborted) { setAnalysisError(reason instanceof Error ? reason.message : "Não foi possível consultar a análise."); timer = setTimeout(() => void refreshAnalysis(), 5000) }
       }
     }
     void refreshAnalysis()
@@ -170,17 +111,17 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     async function refresh() {
-      try {
-        const value = await request<Events>("events", { signal: controller.signal })
-        if (!controller.signal.aborted) { setEvents(value); setEventError("") }
-      } catch { if (!controller.signal.aborted) setEventError("Histórico indisponível. A conexão do executor não pôde ser verificada.") }
+      try { const value = await request<Events>("events", { signal: controller.signal }); if (!controller.signal.aborted) setEvents(value) }
+      catch { /* Status stays "não verificado"; the next poll retries. */ }
       finally { if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 10000) }
     }
     void refresh()
     return () => { controller.abort(); clearTimeout(timer) }
   }, [])
 
-  function update(values: Partial<Config>) { setConfig(current => current ? { ...current, ...values } : current); setFormNotice("") }
+  function update(values: Partial<Config>) { setConfig((current) => current ? { ...current, ...values } : current); setFormNotice("") }
+  // Any change to who is authorized switches the operation off until it is confirmed again.
+  const deauthorize = { enabled: false, pilot_consent_confirmed: false }
   function updateContact(index: number, values: Partial<Contact>) {
     if (!config) return
     const contacts = config.contacts.map((contact, position) => ({
@@ -188,150 +129,160 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
       ...(values.enabled === true && config.pilot_mode ? { enabled: position === index } : {}),
       ...(position === index ? values : {}),
     }))
-    const changedAuthorization = values.enabled !== undefined
-    update({ contacts, enabled: changedAuthorization ? false : config.enabled, pilot_consent_confirmed: changedAuthorization ? false : config.pilot_consent_confirmed })
+    update({ contacts, ...(values.enabled !== undefined ? deauthorize : {}) })
   }
-  function addContact() {
-    const normalized = normalizeWhatsAppPhone(phone)
-    if (!normalized) { setFormError("Informe o telefone com DDD, por exemplo (11) 99999-9999. Para outro país, comece com + e o código do país."); return }
-    if (config?.contacts.some(contact => contact.phone.replace(/[^0-9]/g, "") === normalized)) { setFormError("Esse telefone já está cadastrado."); return }
-    if (config) update({ enabled: false, pilot_consent_confirmed: false, contacts: [...config.contacts.map(contact => ({ ...contact, enabled: config.pilot_mode ? false : contact.enabled })), { phone: normalized, name: name.trim() || normalized, enabled: true, handoff: false }] })
-    setPhone(""); setName(""); setFormError("")
-  }
-  function selectPilotLead(entry: PipelineEntry) {
-    const normalized = normalizeWhatsAppPhone(entry.consumer.phone)
-    if (!normalized) { setFormError("Esse lead não tem um telefone válido com DDD. Complete o telefone no CRM."); return }
+  function addContact(normalized: string, contactName: string) {
     if (!config) return
-    const existing = config.contacts.find(contact => contact.phone === normalized)
+    const existing = config.contacts.find((contact) => contact.phone === normalized)
     const contacts = existing
-      ? config.contacts.map(contact => ({ ...contact, enabled: contact.phone === normalized || (!config.pilot_mode && contact.enabled), handoff: contact.phone === normalized ? false : contact.handoff }))
-      : [...config.contacts.map(contact => ({ ...contact, enabled: config.pilot_mode ? false : contact.enabled })), { phone: normalized, name: leadDisplayName(entry.consumer), enabled: true, handoff: false }]
-    update({ enabled: false, pilot_consent_confirmed: false, contacts })
-    setLeadSearch("")
-    setFormError("")
-    setFormNotice("Lead selecionado. Confirme a autorização do contato, salve a configuração e só então habilite as respostas automáticas.")
+      ? config.contacts.map((contact) => ({ ...contact, enabled: contact.phone === normalized || (!config.pilot_mode && contact.enabled), handoff: contact.phone === normalized ? false : contact.handoff }))
+      : [...config.contacts.map((contact) => ({ ...contact, enabled: config.pilot_mode ? false : contact.enabled })), { phone: normalized, name: contactName, enabled: true, handoff: false }]
+    update({ contacts, ...deauthorize })
+    setFormError(""); setFormNotice("Contato adicionado. Revise a ativação e salve.")
   }
-  const matchingLeads = entries.filter(entry => {
-    const search = leadSearch.trim().toLocaleLowerCase("pt-BR")
-    return !["won", "lost"].includes(entry.stage) && normalizeWhatsAppPhone(entry.consumer.phone) !== null &&
-      (!search || `${leadDisplayName(entry.consumer)} ${entry.consumer.phone}`.toLocaleLowerCase("pt-BR").includes(search))
-  }).slice(0, 8)
+  function addManual() {
+    const normalized = normalizeWhatsAppPhone(phone)
+    if (!normalized) { setFormError("Informe o telefone com DDD, por exemplo (11) 99999-9999. Para outro país, comece com +."); return }
+    addContact(normalized, name.trim() || normalized)
+    setPhone(""); setName("")
+  }
+  function addLead(entry: PipelineEntry) {
+    const normalized = normalizeWhatsAppPhone(entry.consumer.phone)
+    if (!normalized) { setFormError("Esse lead não tem telefone válido com DDD. Complete no CRM."); return }
+    addContact(normalized, leadDisplayName(entry.consumer))
+    setLeadSearch("")
+  }
+  const search = leadSearch.trim().toLocaleLowerCase("pt-BR")
+  const matchingLeads = search ? entries.filter((entry) => !["won", "lost"].includes(entry.stage) && normalizeWhatsAppPhone(entry.consumer.phone) !== null
+    && `${leadDisplayName(entry.consumer)} ${entry.consumer.phone}`.toLocaleLowerCase("pt-BR").includes(search)).slice(0, 8) : []
+
   async function startAnalysis() {
-    setAnalysisStarting(true); setError(""); setNotice("")
+    setAnalysisStarting(true); setAnalysisError(""); setAnalysisNotice("Conectando ao WhatsApp Web…")
     try {
-      window.open("kiara-whatsapp://analyze", "_blank")
-      setNotice("Conectando com sua sessão da Kiara…")
-      await prepareWhatsApp()
-      await waitForExecutor()
+      await connectWhatsAppWeb()
       const job = await request<AnalysisJob>("analysis", { method: "POST", body: JSON.stringify({ limit: 30 }) })
       setAnalysis(job)
       extensionRequestIdRef.current = job.id
       window.postMessage({ source: "kiara-app", type: "whatsapp-analysis", jobId: job.id, limit: 30 }, window.location.origin)
-      setNotice("Analisando conversas. Os contatos encontrados aparecerão no CRM.")
+      setAnalysisNotice("Lendo as conversas recentes…")
     } catch (reason) {
-      setNotice("")
-      setError(reason instanceof Error ? reason.message : "Não foi possível solicitar a análise.")
-    } finally {
-      setAnalysisStarting(false)
-    }
+      setAnalysisNotice(""); setAnalysisError(reason instanceof Error ? reason.message : "Não foi possível iniciar a análise.")
+    } finally { setAnalysisStarting(false) }
   }
+
   async function save(pause = false) {
     if (!config) return
-    if (!pause && config.enabled && (!config.pilot_consent_confirmed || !config.contacts.some(contact => contact.enabled && !contact.handoff))) {
-      setFormError("Selecione os contatos autorizados e confirme a ativação da operação.")
-      return
-    }
-    if (!pause && config.enabled && !config.ai_context.trim()) {
-      setFormError("Informe as informações autorizadas da empresa antes de habilitar a automação.")
-      return
-    }
-    if (!pause && (!Number.isInteger(config.followup_hours) || config.followup_hours < 1 || config.followup_hours > 720 || !config.contact_start || !config.contact_end || config.contact_start >= config.contact_end)) {
-      setFormError("Informe um prazo de 1 a 720 horas e um horário de início anterior ao fim.")
-      return
-    }
+    if (!pause && config.enabled && (!config.pilot_consent_confirmed || !config.contacts.some((contact) => contact.enabled && !contact.handoff))) { setFormError("Para ativar, habilite ao menos um contato e confirme a autorização."); return }
+    if (!pause && config.enabled && !config.ai_context.trim()) { setFormError("Para ativar, descreva o que a Kiara pode dizer sobre sua empresa."); return }
+    if (!pause && (!Number.isInteger(config.followup_hours) || config.followup_hours < 1 || config.followup_hours > 720 || !config.contact_start || !config.contact_end || config.contact_start >= config.contact_end)) { setFormError("Use um follow-up de 1 a 720 horas e um horário de início anterior ao fim."); return }
     setSaving(true); setFormError(""); setFormNotice("")
     try {
       const source = pause ? await request<Config>("config") : config
       const value = await request<Config>("config", { method: "PUT", body: JSON.stringify({ ...source, enabled: pause ? false : source.enabled }) })
       setConfig(value); setSavedEnabled(value.enabled)
-      setFormNotice(value.enabled ? "Operação habilitada. O executor seguirá os contatos, horários e limites configurados." : "Automação pausada. Novos envios automáticos estão desabilitados.")
+      setFormNotice(value.enabled ? "Kiara ativa no WhatsApp, dentro dos contatos, horários e limites definidos." : "Kiara pausada no WhatsApp. Nada será enviado automaticamente.")
     } catch (reason) { setFormError(reason instanceof Error ? reason.message : "Falha ao salvar.") }
     finally { setSaving(false) }
   }
 
-  const analysisBusy = analysis?.status === "queued" || analysis?.status === "running"
-  const connectionLabel = error ? "Não foi possível concluir" : analysisStarting ? "Conectando…"
-    : analysisBusy ? "Analisando conversas…" : eventError ? "Conexão não verificada"
-      : events?.online ? "Computador conectado" : events ? "Aguardando conexão" : "Verificando conexão…"
-  const connectionDescription = error || notice || (eventError ? "Não conseguimos verificar a conexão agora. Tente novamente."
-    : events?.online ? "Sua conexão local está ativa. Você já pode analisar as conversas."
-      : "Mantenha a Kiara e o WhatsApp Web abertos no mesmo Chrome.")
-  const activity = events?.items.filter(event => event.kind !== "heartbeat") ?? []
-  const diagnostics = events?.items.filter(event => event.kind === "heartbeat") ?? []
+  const analysisBusy = analysisStarting || analysis?.status === "queued" || analysis?.status === "running"
+  const online = Boolean(events?.online)
+  const activity = events?.items.filter((event) => event.kind !== "heartbeat") ?? []
+  const enabledCount = config?.contacts.filter((contact) => contact.enabled && !contact.handoff).length ?? 0
 
-  return <section className={styles.workspace} aria-labelledby="whatsapp-heading">
-    <header className={`${styles.pageHeader} ${styles.legacyHeader}`}>
-      <div className={styles.headingGroup}><span className={styles.moduleIcon}><MessageCircle aria-hidden="true" /></span><div><p className={styles.eyebrow}>WhatsApp · Operação assistida</p><h1 id="whatsapp-heading">Automação e contatos</h1><p>Organize os contatos autorizados, defina como a IA atende e acompanhe a atividade do executor.</p></div></div>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={savedEnabled ? styles.connectedBadge : styles.pendingBadge}>{config ? savedEnabled ? "Automação ativa" : "Automação pausada" : "Automação não verificada"}</span>
-        {savedEnabled ? <Button type="button" variant="outline" onClick={() => void save(true)} disabled={saving}>{saving ? "Pausando…" : "Pausar automação"}</Button> : null}
+  return <div className="space-y-5">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-medium tracking-tight">Kiara no WhatsApp</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Funciona com o WhatsApp Web logado no seu Chrome, com a extensão Kiara.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1"><span className={cn("size-1.5 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{events ? online ? "WhatsApp Web conectado" : "WhatsApp Web desconectado" : "Verificando…"}</span>
+        <span className={cn("rounded-full border px-2.5 py-1", savedEnabled ? "border-emerald-400/40 text-emerald-400" : "text-muted-foreground")}>{config ? savedEnabled ? "Kiara ativa" : "Kiara pausada" : "—"}</span>
+        {savedEnabled ? <Button type="button" size="sm" variant="outline" onClick={() => void save(true)} disabled={saving}>{saving ? "Pausando…" : "Pausar"}</Button> : null}
       </div>
     </header>
-    <nav className={styles.legacyNav} aria-label="Seções da automação do WhatsApp"><Link href="/app/whatsapp"><ArrowLeft aria-hidden="true" />Conversas</Link><a href="#executor"><Link2 aria-hidden="true" />Conexão do executor</a><a href="#automacao"><Settings2 aria-hidden="true" />Configurar operação</a><a href="#atividade"><ActivityIcon aria-hidden="true" />Histórico</a></nav>
-    <div className={styles.automationOverview} aria-label="Resumo da configuração"><div><p>Contatos habilitados</p><strong>{config ? config.contacts.filter(contact => contact.enabled && !contact.handoff).length : "—"}</strong></div><div><p>Modo de operação</p><strong>{config ? config.pilot_mode ? "Piloto · um contato" : "Contatos autorizados" : "Não verificado"}</strong></div><div><p>Limite diário configurado</p><strong>{config ? `${config.daily_limit ?? 50} envios` : "—"}</strong></div></div>
-    <div id="executor" className={styles.panel}>
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0" role={error ? "alert" : "status"}>
-          <p className={styles.eyebrow}>Conexão do executor · extensão Chrome</p>
-          <h3 className="flex items-center gap-2 font-semibold"><span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${error ? "bg-destructive" : events?.online && !eventError ? "bg-emerald-500" : "bg-muted-foreground"}`} />{connectionLabel}</h3>
-          <p className={`mt-2 max-w-xl break-words text-sm ${error ? "text-destructive" : "text-muted-foreground"}`}>{connectionDescription}</p>
-        </div>
-        <Button type="button" className="w-full shrink-0 sm:w-auto" onClick={() => void startAnalysis()} disabled={analysisStarting || analysisBusy}>{analysisStarting ? "Conectando…" : analysisBusy ? "Analisando…" : error ? "Tentar novamente" : "Analisar conversas"}</Button>
+
+    <Section icon={ScanSearch} title="Identificar e entender" description="A Kiara lê até 30 conversas recentes, identifica quem é cada contato e registra no CRM a etapa, um resumo e a próxima ação. Analisar não envia mensagens.">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" onClick={() => void startAnalysis()} disabled={analysisBusy}>{analysisBusy ? <Loader2 className="animate-spin" /> : <ScanSearch />}{analysisBusy ? "Analisando…" : "Analisar conversas"}</Button>
+        {analysisError ? <p role="alert" className="text-sm text-destructive">{analysisError}</p> : analysisNotice ? <p role="status" className="text-sm text-muted-foreground">{analysisNotice}</p> : null}
       </div>
-      <p className="mt-5 border-t pt-4 text-xs leading-6 text-muted-foreground">Esta operação usa a extensão Kiara e o executor local, uma conexão separada da análise individual da Central. Cada análise consulta até 30 conversas e importa contatos no CRM; analisar não envia mensagens.</p>
-    </div>
-    <details id="automacao" ref={configDetailsRef} className={styles.settingsPanel} open>
-      <summary><span><Settings2 aria-hidden="true" /><span><strong>Configurações da automação</strong><small>{config ? `${config.contacts.filter(contact => contact.enabled).length} contato(s) habilitado(s)` : configError ? "Configuração indisponível" : "Carregando…"}</small></span></span><ChevronDown aria-hidden="true" /></summary>
-      <div className={styles.automationBody}>
-    {!config ? <p className="text-sm text-muted-foreground">{configError || "Carregando configuração…"}</p> : <fieldset disabled={saving} className="space-y-5 disabled:opacity-60">
-      <legend className="sr-only">Configuração da automação do WhatsApp</legend>
-      {formError ? <p role="alert" className="text-sm text-destructive">{formError}</p> : formNotice ? <p role="status" className="text-sm text-primary">{formNotice}</p> : null}
-      <p className="text-sm text-muted-foreground">Defina quem a Kiara pode atender e quais informações ela pode usar. A automação depende do computador e da IA local ligados.</p>
-      <h3 className={styles.formSectionTitle}>01 · Ativação e autorização</h3>
-      <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={config.enabled} aria-describedby="wa-read-only-note" onChange={event => update({ enabled: event.target.checked })} />Habilitar a operação autônoma</label>
-      <label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" checked={config.pilot_consent_confirmed} aria-describedby="wa-read-only-note" onChange={event => update({ pilot_consent_confirmed: event.target.checked })} /><span>Confirmo que os contatos selecionados estão autorizados nesta operação e podem receber respostas e follow-ups conforme a configuração.</span></label>
-      <p id="wa-read-only-note" className="text-xs text-muted-foreground">Envios são limitados aos contatos habilitados. Atendimento humano e pedidos para parar pausam a IA; um envio incerto exige revisão antes de repetir.</p>
-      <h3 className={styles.formSectionTitle}>02 · Limites e horários</h3>
-      <div className="grid gap-4 sm:grid-cols-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.pilot_mode} onChange={event => update({ pilot_mode: event.target.checked, enabled: false, pilot_consent_confirmed: false, contacts: event.target.checked ? config.contacts.map((contact, index) => ({ ...contact, enabled: index === 0 && contact.enabled })) : config.contacts })} />Modo piloto: um contato</label><div className="space-y-2"><Label htmlFor="wa-daily-limit">Limite de envios por dia</Label><Input id="wa-daily-limit" type="number" min={1} max={200} value={config.daily_limit ?? 50} onChange={event => update({ daily_limit: Number(event.target.value) })} /></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.auto_reply_enabled ?? true} onChange={event => update({ auto_reply_enabled: event.target.checked })} />Responder mensagens com IA</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.followup_enabled ?? false} onChange={event => update({ followup_enabled: event.target.checked })} />Executar follow-ups configurados</label></div>
-      <div className="grid gap-4 md:grid-cols-3"><div className="space-y-2"><Label htmlFor="wa-followup">Follow-up após (horas)</Label><Input id="wa-followup" type="number" min={1} max={720} value={config.followup_hours} onChange={event => update({ followup_hours: Number(event.target.value) })} /></div><div className="space-y-2"><Label htmlFor="wa-start">Início dos envios (hora, São Paulo)</Label><Input id="wa-start" type="time" value={config.contact_start} onChange={event => update({ contact_start: event.target.value })} /></div><div className="space-y-2"><Label htmlFor="wa-end">Fim dos envios (hora, São Paulo)</Label><Input id="wa-end" type="time" value={config.contact_end} onChange={event => update({ contact_end: event.target.value })} /></div></div>
-      <h3 className={styles.formSectionTitle}>03 · Contexto e mensagens</h3>
-      <div className="space-y-2"><Label htmlFor="wa-ai-context">Informações autorizadas para a IA</Label><Textarea id="wa-ai-context" maxLength={6000} value={config.ai_context} onChange={event => update({ ai_context: event.target.value })} className="min-h-32" placeholder="Descreva a empresa, serviços, preços aprovados, horários e limites do atendimento." /><p className="text-xs text-muted-foreground">Inclua somente informações públicas/aprovadas para atendimento. Sem esse contexto, a automação não pode ser habilitada; não insira senhas ou dados pessoais de clientes.</p></div>
-      <div className="space-y-3 rounded-xl border p-4"><label className="flex items-start gap-2 text-sm font-medium"><input type="checkbox" className="mt-1" checked={config.initial_outreach_enabled ?? false} onChange={event => update({ initial_outreach_enabled: event.target.checked })} /><span>Enviar abordagem inicial aos contatos autorizados sem conversa iniciada</span></label><Label htmlFor="wa-outreach">Mensagem de abordagem inicial</Label><Textarea id="wa-outreach" maxLength={4000} value={config.outreach_template ?? ""} onChange={event => update({ outreach_template: event.target.value })} placeholder="Olá {name}, ..." /><p className="text-xs text-muted-foreground">Uma abordagem inicial por contato. O executor respeita o horário, a pausa, o limite diário e resultados incertos. Esta opção vem desligada.</p></div>
-      <div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label htmlFor="wa-reply">Mensagem de encaminhamento humano</Label><Textarea id="wa-reply" maxLength={4000} value={config.reply_template} onChange={event => update({ reply_template: event.target.value })} className="min-h-28" /></div><div className="space-y-2"><Label htmlFor="wa-followup-text">Mensagem de follow-up</Label><Textarea id="wa-followup-text" maxLength={4000} value={config.followup_template} onChange={event => update({ followup_template: event.target.value })} className="min-h-28" /></div></div>
-      <p className="text-xs text-muted-foreground">As respostas são geradas pelo modelo Ollama configurado no computador executor. Se o modelo estiver indisponível, a Kiara não envia nada e pausa o contato. Quando não houver informação suficiente, usa a mensagem de encaminhamento e pausa para atendimento humano. Use {'{name}'} nessa mensagem para inserir o nome do contato.</p>
-      <div className="space-y-3"><h3 className="font-semibold">Selecionar contatos do CRM</h3><div className="space-y-2"><Label htmlFor="wa-lead-search">Buscar por nome ou telefone</Label><Input id="wa-lead-search" value={leadSearch} maxLength={200} onChange={event => setLeadSearch(event.target.value)} placeholder="Digite nome ou telefone do lead autorizado" />{leadSearch.trim() ? matchingLeads.length ? <ul className="max-h-56 divide-y overflow-y-auto rounded-xl border">{matchingLeads.map(entry => <li key={entry.id} className="flex flex-wrap items-center gap-3 p-3"><div className="min-w-0 flex-1"><p className="truncate font-medium">{leadDisplayName(entry.consumer)}</p><p className="text-sm text-muted-foreground">{entry.consumer.phone}</p></div><Button type="button" variant="outline" onClick={() => selectPilotLead(entry)}>Adicionar à operação</Button></li>)}</ul> : <p className="text-sm text-muted-foreground">Nenhum lead com telefone válido corresponde à busca.</p> : <p className="text-xs text-muted-foreground">Busque leads autorizados para esta operação. No modo piloto, somente um contato fica habilitado.</p>}</div>
-      <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-medium">Adicionar contato manualmente</summary><div className="mt-3 grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]"><div className="space-y-2"><Label htmlFor="wa-name">Nome</Label><Input id="wa-name" value={name} maxLength={120} onChange={event => setName(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="wa-phone">Telefone com DDD</Label><Input id="wa-phone" type="tel" placeholder="(11) 99999-9999" value={phone} onChange={event => setPhone(event.target.value)} /></div><Button type="button" variant="outline" onClick={addContact}>Adicionar contato</Button></div></details>
-      {config.contacts.length ? <ul className="divide-y rounded-xl border">{config.contacts.map((contact, index) => <li key={contact.phone} className="flex flex-wrap items-center gap-4 p-3"><div className="min-w-0 flex-1"><p className="break-words font-medium">{contact.name}</p><p className="text-sm text-muted-foreground">+{contact.phone}</p></div><label className="flex items-center gap-2 text-sm"><input type={config.pilot_mode ? "radio" : "checkbox"} name="wa-pilot-contact" aria-label={`Selecionar ${contact.name} para o piloto`} checked={contact.enabled} onChange={() => updateContact(index, { enabled: !contact.enabled })} />Contato habilitado</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={`Atendimento humano para ${contact.name}`} checked={contact.handoff} onChange={event => updateContact(index, { handoff: event.target.checked })} />Atendimento humano</label><Button type="button" variant="ghost" aria-label={`Remover ${contact.name}`} onClick={() => update({ enabled: false, pilot_consent_confirmed: false, contacts: config.contacts.filter((_, position) => position !== index) })}>Remover</Button></li>)}</ul> : <p className="text-sm text-muted-foreground">Nenhum contato selecionado. Adicione um contato autorizado do CRM.</p>}</div>
-      <Button type="button" onClick={() => void save()}>{saving ? "Salvando…" : "Salvar automação do WhatsApp"}</Button>
-    </fieldset>}
+    </Section>
+
+    {!config ? <p className="rounded-2xl border p-5 text-sm text-muted-foreground">{configError || "Carregando configuração…"}</p> : <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void save() }}>
+      <fieldset disabled={saving} className="min-w-0 space-y-5 disabled:opacity-60">
+        <legend className="sr-only">Configuração da Kiara no WhatsApp</legend>
+
+        <Section icon={Bot} title="Responder" description="A Kiara responde quem escreve, usando só as informações que você aprovar. Sem informação suficiente, ela passa para um humano.">
+          <Toggle checked={config.auto_reply_enabled ?? true} onChange={(value) => update({ auto_reply_enabled: value })} label="Responder mensagens com IA" />
+          <Field id="wa-ai-context" label="O que a Kiara pode dizer sobre sua empresa" hint="Serviços, preços aprovados, horários e limites. Não inclua senhas nem dados de clientes.">
+            <Textarea id="wa-ai-context" maxLength={6000} value={config.ai_context} onChange={(event) => update({ ai_context: event.target.value })} className="min-h-28" placeholder="Ex.: Criamos sites para clínicas. Plano mensal a partir de R$ 189. Atendemos de seg. a sex., 9h às 18h." />
+          </Field>
+          <Field id="wa-reply" label="Mensagem ao passar para um humano" hint="Use {name} para o nome do contato.">
+            <Textarea id="wa-reply" maxLength={4000} value={config.reply_template} onChange={(event) => update({ reply_template: event.target.value })} className="min-h-20" />
+          </Field>
+        </Section>
+
+        <Section icon={Megaphone} title="Prospectar" description="Primeira abordagem e follow-up para contatos autorizados. Uma abordagem por contato, sempre dentro do horário e do limite diário.">
+          <Toggle checked={config.initial_outreach_enabled ?? false} onChange={(value) => update({ initial_outreach_enabled: value })} label="Enviar primeira mensagem a contatos sem conversa" />
+          <Field id="wa-outreach" label="Mensagem de abordagem" hint="Use {name} para o nome do contato.">
+            <Textarea id="wa-outreach" maxLength={4000} value={config.outreach_template ?? ""} onChange={(event) => update({ outreach_template: event.target.value })} className="min-h-20" placeholder="Olá {name}, tudo bem? …" />
+          </Field>
+          <Toggle checked={config.followup_enabled ?? false} onChange={(value) => update({ followup_enabled: value })} label="Fazer follow-up quando o contato não responder" />
+          <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+            <Field id="wa-followup" label="Após (horas)"><Input id="wa-followup" type="number" min={1} max={720} value={config.followup_hours} onChange={(event) => update({ followup_hours: Number(event.target.value) })} /></Field>
+            <Field id="wa-followup-text" label="Mensagem de follow-up"><Textarea id="wa-followup-text" maxLength={4000} value={config.followup_template} onChange={(event) => update({ followup_template: event.target.value })} className="min-h-20" /></Field>
+          </div>
+        </Section>
+
+        <Section icon={Users} title="Contatos autorizados" description="A Kiara só responde e prospecta os contatos habilitados aqui. Pedidos para parar e atendimento humano pausam a IA no contato.">
+          <Field id="wa-lead-search" label="Adicionar do CRM">
+            <Input id="wa-lead-search" value={leadSearch} maxLength={200} onChange={(event) => setLeadSearch(event.target.value)} placeholder="Buscar lead por nome ou telefone" />
+          </Field>
+          {search ? matchingLeads.length ? <ul className="divide-y rounded-xl border">{matchingLeads.map((entry) => <li key={entry.id} className="flex items-center gap-3 px-3 py-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{leadDisplayName(entry.consumer)}</p><p className="text-xs text-muted-foreground">{entry.consumer.phone}</p></div><Button type="button" size="sm" variant="outline" onClick={() => addLead(entry)}><UserPlus />Adicionar</Button></li>)}</ul> : <p className="text-sm text-muted-foreground">Nenhum lead com telefone válido nessa busca.</p> : null}
+          <details className="rounded-xl border px-3 py-2"><summary className="cursor-pointer text-sm">Adicionar manualmente</summary>
+            <div className="mt-3 grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+              <Field id="wa-name" label="Nome"><Input id="wa-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></Field>
+              <Field id="wa-phone" label="Telefone com DDD"><Input id="wa-phone" type="tel" placeholder="(11) 99999-9999" value={phone} onChange={(event) => setPhone(event.target.value)} /></Field>
+              <Button type="button" variant="outline" onClick={addManual}>Adicionar</Button>
+            </div>
+          </details>
+          {config.contacts.length ? <ul className="divide-y rounded-xl border">{config.contacts.map((contact, index) => <li key={contact.phone} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{contact.name}</p><p className="text-xs text-muted-foreground">+{contact.phone}</p></div>
+            <label className="flex items-center gap-2 text-sm"><input type={config.pilot_mode ? "radio" : "checkbox"} name="wa-pilot-contact" checked={contact.enabled} onChange={() => updateContact(index, { enabled: !contact.enabled })} aria-label={`Habilitar ${contact.name}`} />Habilitado</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={contact.handoff} onChange={(event) => updateContact(index, { handoff: event.target.checked })} aria-label={`Atendimento humano para ${contact.name}`} />Humano</label>
+            <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`Remover ${contact.name}`} onClick={() => update({ ...deauthorize, contacts: config.contacts.filter((_, position) => position !== index) })}><Trash2 /></Button>
+          </li>)}</ul> : <p className="text-sm text-muted-foreground">Nenhum contato autorizado ainda.</p>}
+        </Section>
+
+        <Section icon={ShieldCheck} title="Limites e ativação" description="Horários, limite diário e a confirmação de que os contatos autorizaram receber mensagens.">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field id="wa-daily-limit" label="Envios por dia"><Input id="wa-daily-limit" type="number" min={1} max={200} value={config.daily_limit ?? 50} onChange={(event) => update({ daily_limit: Number(event.target.value) })} /></Field>
+            <Field id="wa-start" label="Início (horário de Brasília)"><Input id="wa-start" type="time" value={config.contact_start} onChange={(event) => update({ contact_start: event.target.value })} /></Field>
+            <Field id="wa-end" label="Fim (horário de Brasília)"><Input id="wa-end" type="time" value={config.contact_end} onChange={(event) => update({ contact_end: event.target.value })} /></Field>
+          </div>
+          <Toggle checked={config.pilot_mode} onChange={(value) => update({ pilot_mode: value, ...deauthorize, contacts: value ? config.contacts.map((contact, index) => ({ ...contact, enabled: index === 0 && contact.enabled })) : config.contacts })} label="Modo piloto" hint="Testar com um único contato antes de liberar para todos." />
+          <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+            <Toggle checked={config.pilot_consent_confirmed} onChange={(value) => update({ pilot_consent_confirmed: value })} label="Confirmo que os contatos habilitados autorizaram receber mensagens" />
+            <Toggle checked={config.enabled} onChange={(value) => update({ enabled: value })} label="Ativar a Kiara no WhatsApp" hint={`${enabledCount} contato(s) habilitado(s). A automação depende do WhatsApp Web e do computador ligados.`} />
+          </div>
+        </Section>
+      </fieldset>
+
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t bg-background/95 py-3 backdrop-blur">
+        <Button type="submit" disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : null}Salvar</Button>
+        {formError ? <p role="alert" className="text-sm text-destructive">{formError}</p> : formNotice ? <p role="status" className="text-sm text-muted-foreground">{formNotice}</p> : null}
       </div>
+    </form>}
+
+    <details className="rounded-2xl border bg-card px-5 py-4">
+      <summary className="cursor-pointer font-medium">Histórico <span className="text-sm font-normal text-muted-foreground">· {activity.length} registro(s)</span></summary>
+      {activity.length ? <ol className="mt-4 max-h-96 space-y-2 overflow-y-auto">{activity.map((event) => <li key={event.id} className="rounded-xl border p-3 text-sm">
+        <div className="flex flex-wrap justify-between gap-2"><strong>{event.phone || "WhatsApp"} · {activityLabels[event.kind] ?? event.kind}</strong><time dateTime={event.occurred_at} className="text-xs text-muted-foreground">{dateLabel(event.occurred_at)}</time></div>
+        {event.text ? <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">{event.text}</p> : null}
+        <p className="mt-1 text-xs text-muted-foreground">{activityLabels[event.status] ?? event.status}</p>
+      </li>)}</ol> : <p className="mt-3 text-sm text-muted-foreground">Nenhuma atividade ainda.</p>}
     </details>
-    <details id="atividade" className={styles.settingsPanel} open>
-      <summary><span><ActivityIcon aria-hidden="true" /><span><strong>Histórico do atendimento</strong><small>{activity.length} registro(s) carregado(s)</small></span></span><ChevronDown aria-hidden="true" /></summary>
-      <div className="border-t p-5">{eventError ? <p className="text-sm text-muted-foreground">O histórico está indisponível no momento.</p> : activity.length ? <ol className="max-h-96 space-y-3 overflow-y-auto">{activity.map(event => <li key={event.id} className="rounded-xl border p-3 text-sm"><div className="flex flex-wrap justify-between gap-2"><strong>{event.phone || "Atendimento"} · {activityLabels[event.kind] ?? event.kind}</strong><time dateTime={event.occurred_at} className="text-xs text-muted-foreground">{dateLabel(event.occurred_at)}</time></div><p className="mt-2 whitespace-pre-wrap break-words">{event.text}</p><p className="mt-2 text-xs text-muted-foreground">{activityLabels[event.status] ?? event.status}</p></li>)}</ol> : <p className="text-sm text-muted-foreground">{events ? "Nenhuma atividade de atendimento ainda." : "Carregando histórico…"}</p>}</div>
-    </details>
-    <details id="ajuda" className={styles.settingsPanel}>
-      <summary><span><CircleHelp aria-hidden="true" /><span><strong>Ajuda com a conexão</strong><small>Extensão, executor e diagnóstico</small></span></span><ChevronDown aria-hidden="true" /></summary>
-      <div className="space-y-4 border-t p-5 text-sm text-muted-foreground">
-        <ol className="list-decimal space-y-2 pl-5"><li>Abra a Kiara e o WhatsApp Web no mesmo Chrome.</li><li>Ative a extensão Kiara. Se acabou de instalá-la ou atualizá-la, recarregue as duas guias.</li><li>Clique em Analisar conversas. A conexão usa seu login atual da Kiara, sem pedir outra senha.</li></ol>
-        <p>Mantenha o computador ligado e o Ollama disponível durante a análise. Conversas sem número verificável são ignoradas.</p>
-        <details className="rounded-xl border p-3"><summary className="cursor-pointer font-medium text-foreground">Diagnóstico da conexão<span className="ml-2 text-xs font-normal text-muted-foreground">{diagnostics.length} registro(s)</span></summary><div className="mt-3 space-y-3">
-          <p>{eventError ? "Não foi possível verificar o computador." : events?.online ? "O computador está conectado. Isso não confirma o login no WhatsApp Web." : events ? "O computador não está conectado." : "Verificando conexão…"}</p>
-          {events?.last_heartbeat_at ? <p>Última sincronização: {dateLabel(events.last_heartbeat_at)}</p> : null}
-          {configError ? <p>Configuração: {configError}</p> : null}
-          {diagnostics.length ? <ol className="max-h-56 space-y-2 overflow-y-auto">{diagnostics.map(event => <li key={event.id} className="rounded-lg border p-3"><time dateTime={event.occurred_at} className="text-xs">{dateLabel(event.occurred_at)}</time><p className="mt-1">{activityLabels[event.status] ?? event.status}</p></li>)}</ol> : <p>Nenhum registro de conexão disponível.</p>}
-        </div></details>
-      </div>
-    </details>
-  </section>
+  </div>
 }
