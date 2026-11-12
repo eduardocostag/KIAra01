@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, ArrowUp, Bot, Cable, Hand, Info, LoaderCircle, MessageCircle, RefreshCw, Search, Workflow } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel } from "@/components/app-shell/whatsapp-gateway-workspace"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -30,12 +29,11 @@ function WhatsAppFooter({ onConnection }: { onConnection: () => void }) {
 function ConnectionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-      <DialogHeader><DialogTitle>Conexão do WhatsApp</DialogTitle><DialogDescription>Escolha como a Kiara acessa o seu WhatsApp.</DialogDescription></DialogHeader>
-      {open ? <Tabs defaultValue="web" className="gap-4">
-        <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="web">WhatsApp Web</TabsTrigger><TabsTrigger value="openwa">OpenWA</TabsTrigger></TabsList>
-        <TabsContent value="web"><WhatsAppWebConnectionPanel /></TabsContent>
-        <TabsContent value="openwa"><p className="mb-4 text-sm text-muted-foreground">Sessão mantida por um serviço (computador ou servidor), sem depender do navegador aberto.</p><WhatsAppConnectionPanel /></TabsContent>
-      </Tabs> : null}
+      <DialogHeader><DialogTitle>Conectar WhatsApp</DialogTitle><DialogDescription>Escaneie o QR Code com o celular, como no WhatsApp Web. Sem extensão.</DialogDescription></DialogHeader>
+      {open ? <div className="space-y-5">
+        <WhatsAppConnectionPanel />
+        <details className="border-t pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Outra forma: extensão do Chrome (opcional)</summary><div className="mt-3"><WhatsAppWebConnectionPanel /></div></details>
+      </div> : null}
     </DialogContent>
   </Dialog>
 }

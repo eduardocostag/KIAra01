@@ -1,14 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import { ArrowUpRight, LoaderCircle, RefreshCw, Sparkles } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { CheckCircle2, LoaderCircle, RefreshCw, Smartphone, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { connectWhatsAppWeb, whatsappWebRequest, type WhatsAppEvents } from "@/lib/whatsapp-web-client"
 
 const BRIDGE_URL = "http://127.0.0.1:3007"
+const PAIRING_TIMEOUT_MS = 3 * 60_000
 
-type BridgeStatus = { connected: boolean; phone: string; model: string }
+type BridgeStatus = { connected: boolean; state: string; phone: string; model: string }
+type ConnectResult = { connected: boolean; state: string; qr: string }
 type Analysis = { summary: string; messages_analyzed: number; phone: string }
 
 async function getSiteAccessToken(signal?: AbortSignal) {
@@ -17,13 +19,13 @@ async function getSiteAccessToken(signal?: AbortSignal) {
   if (!response.ok || typeof payload?.access_token !== "string") {
     throw new Error(response.status === 401
       ? "Entre novamente na Kiara para acessar o WhatsApp."
-      : "Sua conta não tem autorização para analisar a conversa.")
+      : "Sua conta não tem permissão para conectar o WhatsApp (owner ou admin).")
   }
   return payload.access_token as string
 }
 
-async function bridgeRequest<T>(action: "status" | "analyze", signal?: AbortSignal): Promise<T> {
-  const timeout = AbortSignal.timeout(action === "analyze" ? 135_000 : 15_000)
+async function bridgeRequest<T>(action: "status" | "connect" | "analyze", signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(action === "analyze" ? 135_000 : 30_000)
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
   const token = await getSiteAccessToken(requestSignal)
   let response: Response
@@ -34,12 +36,15 @@ async function bridgeRequest<T>(action: "status" | "analyze", signal?: AbortSign
       body: JSON.stringify({ action }), signal: requestSignal,
     })
   } catch {
-    throw new Error("O serviço do WhatsApp não está ativo neste computador.")
+    throw new Error("O serviço do WhatsApp da Kiara não está ativo neste computador.")
   }
   const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Não foi possível acessar a conversa.")
-  if (action === "status" && (typeof payload?.connected !== "boolean" || typeof payload?.phone !== "string" || typeof payload?.model !== "string")) {
+  if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Não foi possível acessar o WhatsApp.")
+  if (action === "status" && (typeof payload?.connected !== "boolean" || typeof payload?.state !== "string" || typeof payload?.phone !== "string" || typeof payload?.model !== "string")) {
     throw new Error("O serviço retornou um estado inválido. Atualize e tente novamente.")
+  }
+  if (action === "connect" && (typeof payload?.connected !== "boolean" || typeof payload?.state !== "string" || typeof payload?.qr !== "string" || (payload.qr && !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(payload.qr)))) {
+    throw new Error("O serviço retornou um QR inválido. Tente novamente.")
   }
   if (action === "analyze" && (typeof payload?.summary !== "string" || !payload.summary.trim() || typeof payload?.phone !== "string" || !Number.isInteger(payload?.messages_analyzed) || payload.messages_analyzed < 0)) {
     throw new Error("A análise não retornou um resumo válido. Tente novamente.")
@@ -47,7 +52,112 @@ async function bridgeRequest<T>(action: "status" | "analyze", signal?: AbortSign
   return payload as T
 }
 
-/** WhatsApp Web logged in this Chrome, reached through the Kiara extension and the local executor. */
+const stateLabels: Record<string, string> = {
+  ready: "WhatsApp conectado", qr_ready: "Escaneie o QR Code", initializing: "Preparando a conexão…",
+  authenticating: "Confirmando no celular…", created: "Desconectado", disconnected: "Desconectado",
+  failed: "A conexão falhou", action_required: "O WhatsApp pediu uma ação no celular", not_created: "Desconectado",
+}
+
+/** Connects WhatsApp by QR Code, like WhatsApp Web, without any browser extension. */
+export function WhatsAppConnectionPanel() {
+  const [status, setStatus] = useState<BridgeStatus | null>(null)
+  const [checking, setChecking] = useState(true)
+  const [pairing, setPairing] = useState<ConnectResult | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [error, setError] = useState("")
+  const pollRef = useRef<AbortController | null>(null)
+
+  const check = useCallback(async (signal?: AbortSignal) => {
+    setChecking(true); setError("")
+    try { setStatus(await bridgeRequest<BridgeStatus>("status", signal)) }
+    catch (reason) { if (!signal?.aborted) { setStatus(null); setError(reason instanceof Error ? reason.message : "Não foi possível verificar a conexão.") } }
+    finally { if (!signal?.aborted) setChecking(false) }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    // Initial status probe of the WhatsApp session.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void check(controller.signal)
+    return () => { controller.abort(); pollRef.current?.abort() }
+  }, [check])
+
+  async function connect() {
+    pollRef.current?.abort()
+    const controller = new AbortController()
+    pollRef.current = controller
+    setConnecting(true); setError(""); setPairing(null)
+    const deadline = Date.now() + PAIRING_TIMEOUT_MS
+    try {
+      // Poll the session: it starts once, then shows each fresh QR until the phone confirms.
+      while (!controller.signal.aborted && Date.now() < deadline) {
+        const result = await bridgeRequest<ConnectResult>("connect", controller.signal)
+        if (controller.signal.aborted) return
+        setPairing(result)
+        if (result.connected) { await check(); return }
+        if (result.state === "failed" || result.state === "action_required") throw new Error(stateLabels[result.state])
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+      }
+      if (!controller.signal.aborted) setError("O QR Code expirou. Clique em Conectar para gerar outro.")
+    } catch (reason) {
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Não foi possível conectar.")
+    } finally { if (!controller.signal.aborted) setConnecting(false) }
+  }
+
+  async function analyze() {
+    setAnalyzing(true); setError(""); setAnalysis(null)
+    try { setAnalysis(await bridgeRequest<Analysis>("analyze")) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível analisar a conversa.") }
+    finally { setAnalyzing(false) }
+  }
+
+  const connected = Boolean(status?.connected || pairing?.connected)
+  const state = pairing?.state ?? status?.state ?? ""
+  const headline = checking && !pairing ? "Verificando…" : connected ? "WhatsApp conectado" : stateLabels[state] ?? "Desconectado"
+
+  return <div className="space-y-5">
+    <div className="flex items-center gap-3 rounded-xl border p-4">
+      <span className={cn("size-2.5 shrink-0 rounded-full", connected ? "bg-emerald-400" : checking || connecting ? "bg-amber-400" : "bg-muted-foreground")} aria-hidden="true" />
+      <div className="min-w-0 flex-1" role="status">
+        <p className="font-medium">{headline}</p>
+        <p className="text-sm text-muted-foreground">{error || (connected ? "A Kiara já reconhece o seu WhatsApp." : "Conecte uma vez pelo celular; a sessão fica salva.")}</p>
+      </div>
+      <Button type="button" variant="outline" size="icon" aria-label="Atualizar conexão" onClick={() => void check()} disabled={checking || connecting}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button>
+    </div>
+
+    {connected ? <p className="flex items-center gap-2 text-sm text-emerald-400"><CheckCircle2 className="size-4" aria-hidden="true" />Tudo certo. Você pode fechar esta janela.</p>
+      : pairing?.qr ? <div className="flex flex-col items-center gap-4 rounded-xl border bg-white p-4 sm:flex-row sm:items-start">
+        {/* eslint-disable-next-line @next/next/no-img-element -- data URL from the local session, not an optimizable asset */}
+        <img src={pairing.qr} alt="QR Code para conectar o WhatsApp" className="size-52 shrink-0" />
+        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-neutral-800">
+          <li>Abra o WhatsApp no celular.</li>
+          <li>Toque em <strong>Mais opções</strong> ou <strong>Configurações</strong> e em <strong>Aparelhos conectados</strong>.</li>
+          <li>Toque em <strong>Conectar um aparelho</strong> e aponte para este QR Code.</li>
+        </ol>
+      </div>
+      : <Button type="button" className="w-full" size="lg" onClick={() => void connect()} disabled={connecting || checking}>{connecting ? <LoaderCircle className="animate-spin" /> : <Smartphone />}{connecting ? "Gerando QR Code…" : "Conectar WhatsApp"}</Button>}
+
+    {status?.phone && connected ? <div className="space-y-3">
+      <Button type="button" variant="outline" onClick={() => void analyze()} disabled={analyzing}>{analyzing ? <LoaderCircle className="animate-spin" /> : <Sparkles />}{analyzing ? "Resumindo…" : `Resumir conversa de ${status.phone}`}</Button>
+      {analysis ? <article className="rounded-xl border bg-muted/30 p-4" aria-label="Resumo da conversa">
+        <p className="text-xs text-muted-foreground">{analysis.messages_analyzed} mensagens · {analysis.phone} · não salvo no site</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{analysis.summary}</p>
+      </article> : null}
+    </div> : null}
+
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer">Detalhes técnicos</summary>
+      <div className="mt-2 space-y-2">
+        <p>A sessão é mantida pelo OpenWA (porta 3006) e acessada pela ponte da Kiara: <code>python scripts/run_whatsapp_local_bridge.py</code> (porta 3007). No servidor, os dois rodam como serviço.</p>
+        <p>Exige conta owner/admin. O navegador pode pedir acesso à rede local.</p>
+      </div>
+    </details>
+  </div>
+}
+
+/** Optional alternative: WhatsApp Web open in this Chrome, read through the Kiara extension and the local executor. */
 export function WhatsAppWebConnectionPanel() {
   const [events, setEvents] = useState<WhatsAppEvents | null>(null)
   const [checking, setChecking] = useState(true)
@@ -77,94 +187,12 @@ export function WhatsAppWebConnectionPanel() {
   }
 
   const online = Boolean(events?.online)
-  return <div className="space-y-5">
-    <div className="flex items-center gap-3 rounded-xl border p-4">
-      <span className={cn("size-2.5 shrink-0 rounded-full", checking || connecting ? "bg-amber-400" : online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />
-      <div className="min-w-0 flex-1" role="status">
-        <p className="font-medium">{connecting ? "Conectando…" : checking ? "Verificando…" : online ? "WhatsApp Web conectado" : "WhatsApp Web desconectado"}</p>
-        <p className="text-sm text-muted-foreground">{error || (online ? "A Kiara pode identificar, entender, prospectar e responder pelos contatos autorizados." : "Abra o WhatsApp Web logado no Chrome e clique em Conectar.")}</p>
-      </div>
-      <Button type="button" variant="outline" size="icon" aria-label="Atualizar conexão" onClick={() => void check()} disabled={checking || connecting}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button>
+  return <div className="space-y-3">
+    <p className="text-sm text-muted-foreground">Usa o WhatsApp Web aberto neste Chrome, por meio da extensão Kiara WhatsApp.</p>
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="inline-flex items-center gap-1.5 text-sm"><span className={cn("size-2 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{checking ? "Verificando…" : online ? "Extensão conectada" : "Extensão não conectada"}</span>
+      <Button type="button" size="sm" variant="outline" onClick={() => void connect()} disabled={connecting}>{connecting ? <LoaderCircle className="animate-spin" /> : null}Conectar pela extensão</Button>
     </div>
-    <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-      <li>Faça login no <a href="https://web.whatsapp.com" target="_blank" rel="noopener noreferrer" className="text-foreground underline">WhatsApp Web</a> neste Chrome.</li>
-      <li>Deixe a extensão Kiara WhatsApp ativa.</li>
-      <li>Clique em Conectar e mantenha as duas abas abertas.</li>
-    </ol>
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" onClick={() => void connect()} disabled={connecting}>{connecting ? <LoaderCircle className="animate-spin" /> : null}Conectar</Button>
-      <Button asChild variant="outline"><a href="/app/whatsapp/automacao">Configurar o que a Kiara faz</a></Button>
-    </div>
-    <details className="text-xs text-muted-foreground">
-      <summary className="cursor-pointer">Detalhes técnicos</summary>
-      <div className="mt-2 space-y-2">
-        <p>Extensão: pasta <code>extensions/kiara-whatsapp</code>, carregada no Chrome em modo de desenvolvedor.</p>
-        <p>Executor: <code>scripts/launch_whatsapp_executor.ps1</code>. Análise e respostas usam o modelo do Ollama configurado em <code>KIARA_WHATSAPP_OLLAMA_MODEL</code>.</p>
-        <p>{events?.last_heartbeat_at ? `Último sinal do executor: ${new Date(events.last_heartbeat_at).toLocaleString("pt-BR")}.` : "Nenhum sinal do executor ainda."} Conectado aqui não confirma o login no WhatsApp Web.</p>
-      </div>
-    </details>
-  </div>
-}
-
-/** Connection state of the WhatsApp session plus the read-only analysis of the authorized contact. */
-export function WhatsAppConnectionPanel() {
-  const [status, setStatus] = useState<BridgeStatus | null>(null)
-  const [checking, setChecking] = useState(true)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [error, setError] = useState("")
-
-  const check = useCallback(async (signal?: AbortSignal) => {
-    setChecking(true); setError("")
-    try { setStatus(await bridgeRequest<BridgeStatus>("status", signal)) }
-    catch (reason) { if (!signal?.aborted) { setStatus(null); setError(reason instanceof Error ? reason.message : "Não foi possível verificar a conexão.") } }
-    finally { if (!signal?.aborted) setChecking(false) }
-  }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    // Initial status probe of the local session.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void check(controller.signal)
-    return () => controller.abort()
-  }, [check])
-
-  async function analyze() {
-    setAnalyzing(true); setError(""); setAnalysis(null)
-    try { setAnalysis(await bridgeRequest<Analysis>("analyze")) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível analisar a conversa.") }
-    finally { setAnalyzing(false) }
-  }
-
-  const connected = Boolean(status?.connected)
-  return <div className="space-y-5">
-    <div className="flex items-center gap-3 rounded-xl border p-4">
-      <span className={cn("size-2.5 shrink-0 rounded-full", checking ? "bg-amber-400" : connected ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />
-      <div className="min-w-0 flex-1" role="status">
-        <p className="font-medium">{checking ? "Verificando…" : connected ? "WhatsApp conectado" : "WhatsApp desconectado"}</p>
-        <p className="truncate text-sm text-muted-foreground">{status?.phone ? `Contato autorizado: ${status.phone}` : error || "Abra a sessão do WhatsApp e atualize."}</p>
-      </div>
-      <Button type="button" variant="outline" size="icon" aria-label="Atualizar conexão" onClick={() => void check()} disabled={checking || analyzing}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button>
-    </div>
-
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" onClick={() => void analyze()} disabled={!connected || checking || analyzing}>{analyzing ? <LoaderCircle className="animate-spin" /> : <Sparkles />}{analyzing ? "Analisando…" : "Resumir conversa autorizada"}</Button>
-      <Button asChild variant="outline"><a href="http://127.0.0.1:3006" target="_blank" rel="noopener noreferrer">Abrir sessão do WhatsApp<ArrowUpRight /></a></Button>
-    </div>
-
-    {error && status ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    {analysis ? <article className="rounded-xl border bg-muted/30 p-4" aria-label="Resumo da conversa">
-      <p className="text-xs text-muted-foreground">{analysis.messages_analyzed} mensagens · {analysis.phone} · não salvo no site</p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{analysis.summary}</p>
-    </article> : null}
-
-    <details className="text-xs text-muted-foreground">
-      <summary className="cursor-pointer">Detalhes técnicos</summary>
-      <div className="mt-2 space-y-2">
-        <p>Contato autorizado: <code>KIARA_WHATSAPP_ANALYSIS_PHONE</code> no <code>.env.local</code>.</p>
-        <p>Serviço: <code>python scripts/run_whatsapp_local_bridge.py</code> (porta 3007), usando a sessão OpenWA (porta 3006) e o Ollama local.</p>
-        <p>Exige conta owner/admin. O navegador pode pedir acesso à rede local.</p>
-      </div>
-    </details>
+    {error ? <p className="text-sm text-destructive">{error}</p> : null}
   </div>
 }

@@ -107,6 +107,14 @@ class OpenWAClient:
         identifier = session_id(identifier)
         return self._session(await self._request("GET", f"/api/sessions/{identifier}"), identifier)
 
+    async def find_session(self, name: str) -> dict[str, Any] | None:
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9-]{3,50}", name):
+            raise ValueError("Nome de sessão OpenWA inválido.")
+        data = await self._request("GET", "/api/sessions?" + urlencode({"name": name}))
+        if not isinstance(data, list) or len(data) > 1:
+            raise OpenWAError("Lista de sessões OpenWA incompatível.")
+        return self._session(data[0]) if data else None
+
     async def create_session(self, name: str) -> dict[str, Any]:
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9-]{3,50}", name):
             raise ValueError("Nome de sessão OpenWA inválido.")

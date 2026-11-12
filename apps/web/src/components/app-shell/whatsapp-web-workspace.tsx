@@ -194,10 +194,10 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="text-2xl font-medium tracking-tight">Kiara no WhatsApp</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Funciona com o WhatsApp Web logado no seu Chrome, com a extensão Kiara.</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Defina o que a Kiara faz no seu WhatsApp. Por enquanto, a execução automática roda pelo executor do WhatsApp Web; com a conexão por QR Code, ela passa a valer quando o executor do OpenWA estiver ligado ao site.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1"><span className={cn("size-1.5 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{events ? online ? "WhatsApp Web conectado" : "WhatsApp Web desconectado" : "Verificando…"}</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1"><span className={cn("size-1.5 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{events ? online ? "Executor conectado" : "Executor desconectado" : "Verificando…"}</span>
         <span className={cn("rounded-full border px-2.5 py-1", savedEnabled ? "border-emerald-400/40 text-emerald-400" : "text-muted-foreground")}>{config ? savedEnabled ? "Kiara ativa" : "Kiara pausada" : "—"}</span>
         {savedEnabled ? <Button type="button" size="sm" variant="outline" onClick={() => void save(true)} disabled={saving}>{saving ? "Pausando…" : "Pausar"}</Button> : null}
       </div>

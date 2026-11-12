@@ -1,4 +1,4 @@
-"""Serve one-contact, read-only WhatsApp analysis to the authenticated Kiara site."""
+"""Serve the WhatsApp session (connect by QR, status) and one-contact read-only analysis to the Kiara site."""
 from __future__ import annotations
 
 import argparse
@@ -189,10 +189,16 @@ def _model_request(messages: list[dict[str, str]], model: str, endpoint: str, ap
 class WhatsAppLocalBridge:
     def __init__(self):
         self.origins = configured_origins()
-        self.phone = _configured_phone()
-        self.session_id = session_id(
-            _config_value("OPENWA_SESSION_ID", ROOT / ".env.local", default="kiara")
-        )
+        # The single analysis contact is optional: connecting the session does not need it.
+        try:
+            self.phone = _configured_phone()
+        except RuntimeError:
+            self.phone = None
+        configured_id = _config_value("OPENWA_SESSION_ID", ROOT / ".env.local", default="")
+        self.session_id = session_id(configured_id) if configured_id else None
+        self.session_name = _config_value("OPENWA_SESSION_NAME", ROOT / ".env.local", default="kiara")
+        if not re.fullmatch(r"[A-Za-z0-9-]{3,50}", self.session_name):
+            raise RuntimeError("OPENWA_SESSION_NAME is invalid.")
         self.model = _config_value(
             "KIARA_WHATSAPP_ANALYSIS_MODEL",
             ROOT / ".env.local",
@@ -219,25 +225,66 @@ class WhatsAppLocalBridge:
             allow_private_hosts=True,
         )
 
-    def _session(self) -> tuple[str, dict]:
+    async def _resolve(self, create: bool) -> tuple[str | None, dict | None]:
+        """Finds the Kiara session by configured id or by name; optionally creates it."""
+        if self.session_id:
+            try:
+                return self.session_id, await self.client.status(self.session_id)
+            except OpenWAError:
+                pass  # Stale or unknown id: fall back to the session name.
+        found = await self.client.find_session(self.session_name)
+        if found is None and create:
+            found = await self.client.create_session(self.session_name)
+        if found is None:
+            return None, None
+        self.session_id = found["id"]
+        return found["id"], found
+
+    def _session(self) -> tuple[str | None, dict | None]:
         try:
-            state = asyncio.run(self.client.status(self.session_id))
-        except (OpenWAError, RuntimeError):
-            raise BridgeError(503, "Não foi possível consultar a sessão local do WhatsApp.") from None
-        return self.session_id, state
+            return asyncio.run(self._resolve(create=False))
+        except (OpenWAError, RuntimeError, ValueError):
+            raise BridgeError(503, "O serviço do WhatsApp (OpenWA) não respondeu neste computador.") from None
+
+    @staticmethod
+    def _ready(state: dict | None) -> bool:
+        return bool(state) and state.get("status") == "ready" and state.get("engineLoaded") is True
 
     def status(self) -> dict:
         _, state = self._session()
-        ready = state.get("status") == "ready" and state.get("engineLoaded") is True
         return {
-            "connected": ready,
-            "phone": mask_phone(self.phone),
+            "connected": self._ready(state),
+            "state": state.get("status", "unknown") if state else "not_created",
+            "phone": mask_phone(self.phone) if self.phone else "",
             "model": self.model,
         }
 
+    def connect(self) -> dict:
+        """Creates/starts the session when needed and returns its state, with the QR while pairing."""
+        async def run() -> dict:
+            identifier, state = await self._resolve(create=True)
+            if state and state.get("status") in {"created", "disconnected", "failed"}:
+                try:
+                    state = await self.client.start_session(identifier)
+                except OpenWAError:
+                    state = await self.client.status(identifier)  # Already starting elsewhere.
+            qr = ""
+            if state and state.get("status") == "qr_ready":
+                try:
+                    qr = (await self.client.qr_code(identifier))["qrCode"]
+                except OpenWAError:
+                    qr = ""  # QR rotates; the next poll fetches a fresh one.
+            return {"connected": self._ready(state), "state": state.get("status", "unknown") if state else "not_created", "qr": qr}
+        try:
+            return asyncio.run(run())
+        except (OpenWAError, RuntimeError, ValueError):
+            raise BridgeError(503, "Não foi possível iniciar a sessão do WhatsApp neste computador.") from None
+
     def analyze(self) -> dict:
+        if not self.phone:
+            raise BridgeError(409, "Defina o contato autorizado para o resumo em KIARA_WHATSAPP_ANALYSIS_PHONE.")
         session_id, state = self._session()
-        if state.get("status") != "ready" or state.get("engineLoaded") is not True:
+        if not self._ready(state):
             raise BridgeError(409, "Conecte o WhatsApp no OpenWA antes de analisar.")
         try:
             history = asyncio.run(OpenWABrowser(self.client, session_id).read(self.phone))
@@ -336,6 +383,8 @@ def handler_for(bridge: WhatsAppLocalBridge):
                 action = payload.get("action")
                 if action == "status" and self.path == "/api/status":
                     result = bridge.status()
+                elif action == "connect" and self.path == "/api/connect":
+                    result = bridge.connect()
                 elif action == "analyze" and self.path == "/api/analyze":
                     result = self._analyze()
                 else:
@@ -381,7 +430,7 @@ def main():
         print("WhatsApp bridge configuration is valid; no session or model was contacted.")
         return
     server = ThreadingHTTPServer((args.host, args.port), handler_for(bridge))
-    print(f"Kiara WhatsApp bridge listening on {args.host}:{args.port}; one contact, read-only.")
+    print(f"Kiara WhatsApp bridge listening on {args.host}:{args.port}; connect by QR and read-only analysis.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -46,3 +46,62 @@ def test_bridge_exposes_only_read_operations():
     assert not hasattr(handler, "do_GET")
     assert not hasattr(handler, "do_PUT")
     assert not hasattr(handler, "do_DELETE")
+
+
+class _FakeOpenWA:
+    def __init__(self, sessions=None, after_start="qr_ready"):
+        self.sessions = dict(sessions or {})
+        self.after_start = after_start
+        self.calls = []
+
+    async def status(self, identifier):
+        self.calls.append(("status", identifier))
+        if identifier not in self.sessions:
+            raise bridge.OpenWAError("not found")
+        return self.sessions[identifier]
+
+    async def find_session(self, name):
+        self.calls.append(("find", name))
+        return next((item for item in self.sessions.values() if item["name"] == name), None)
+
+    async def create_session(self, name):
+        self.calls.append(("create", name))
+        self.sessions["uuid-1"] = {"id": "uuid-1", "name": name, "status": "created"}
+        return self.sessions["uuid-1"]
+
+    async def start_session(self, identifier):
+        self.calls.append(("start", identifier))
+        self.sessions[identifier] = {**self.sessions[identifier], "status": self.after_start}
+        return self.sessions[identifier]
+
+    async def qr_code(self, identifier):
+        return {"qrCode": "data:image/png;base64,QUJD", "status": "qr_ready"}
+
+
+def _bridge(client, phone=None):
+    instance = object.__new__(bridge.WhatsAppLocalBridge)
+    instance.client, instance.phone, instance.model = client, phone, "kiara-stable:latest"
+    instance.session_id, instance.session_name = None, "kiara"
+    return instance
+
+
+def test_connect_creates_and_starts_the_session_and_returns_the_qr():
+    client = _FakeOpenWA()
+    result = _bridge(client).connect()
+    assert result == {"connected": False, "state": "qr_ready", "qr": "data:image/png;base64,QUJD"}
+    assert ("create", "kiara") in client.calls and ("start", "uuid-1") in client.calls
+
+
+def test_connect_reuses_a_ready_session_without_restarting_it():
+    client = _FakeOpenWA({"abc": {"id": "abc", "name": "kiara", "status": "ready", "engineLoaded": True}})
+    result = _bridge(client).connect()
+    assert result == {"connected": True, "state": "ready", "qr": ""}
+    assert not any(call[0] in {"create", "start"} for call in client.calls)
+
+
+def test_status_without_session_and_analysis_without_contact():
+    instance = _bridge(_FakeOpenWA())
+    assert instance.status() == {"connected": False, "state": "not_created", "phone": "", "model": "kiara-stable:latest"}
+    with pytest.raises(bridge.BridgeError) as error:
+        instance.analyze()
+    assert error.value.status == 409
