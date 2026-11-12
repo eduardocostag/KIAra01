@@ -208,7 +208,26 @@ async def test_freellmapi_mode_reports_router_and_hides_failures():
     status = service.status()
     chat = next(item for item in status["capabilities"] if item["id"] == "chat")
     assert status["provider"] == "freellmapi" and chat["available"] is False
-    assert "Cadastre uma chave de provedor" in chat["detail"]
+    assert "FreeLLMAPI sem o modelo configurado" in chat["detail"]
     with pytest.raises(ChatError) as error:
         await service.chat({"messages": [{"role": "user", "content": "Oi"}]})
     assert "FreeLLMAPI" in str(error.value) and "freellmapi-secret" not in str(error.value)
+
+
+@pytest.mark.parametrize(("ids", "model", "ready"), [
+    (["gemini/gemini-2.5-flash", "openai/gpt-4o-mini"], "gemini/gemini-2.5-flash", True),
+    (["openai/gpt-4o-mini"], "gemini/gemini-2.5-flash", False),
+    ([], "gemini/gemini-2.5-flash", False),
+])
+def test_omniroute_health_requires_the_configured_model(ids, model, ready):
+    from app.chat.service import router_health
+
+    opener = _ModelsOpener(ids)
+    assert router_health("http://127.0.0.1:20128/v1", "omni-test", model=model, opener=opener)() is ready
+    assert opener.requests[0].full_url == "http://127.0.0.1:20128/v1/models"
+
+
+def test_omniroute_mode_names_the_router():
+    service = LocalChatService(model="gemini/gemini-2.5-flash", provider=FakeProvider(), provider_name="omniroute", health=lambda: True)
+    chat = next(item for item in service.status()["capabilities"] if item["id"] == "chat")
+    assert chat["available"] is True and "OmniRoute pronto" in chat["detail"]

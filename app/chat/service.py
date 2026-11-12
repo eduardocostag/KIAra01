@@ -47,19 +47,33 @@ def _text(value: Any, name: str, maximum: int, *, optional: bool = False) -> str
 FREELLMAPI_VIRTUAL_MODELS = frozenset({"auto", "fusion"})
 
 
-def freellmapi_health(base_url: str, api_key: str, *, opener=None):
-    """Readiness probe: the router lists real models only when a provider key is usable."""
+ROUTER_PROVIDERS = {"freellmapi": "FreeLLMAPI", "omniroute": "OmniRoute"}
+
+
+def router_health(base_url: str, api_key: str, *, model: str | None = None,
+                  query: str = "", virtual: frozenset[str] = frozenset(), opener=None):
+    """Readiness probe for an OpenAI-compatible router (FreeLLMAPI, OmniRoute).
+
+    With an explicit model, it must be listed; with a virtual one (e.g. "auto"),
+    at least one real model must be listed, which happens only with a usable provider.
+    """
     def check() -> bool:
-        request = Request(base_url.rstrip("/") + "/models?available=true",
+        request = Request(base_url.rstrip("/") + "/models" + query,
                           headers={"Accept": "application/json", "Authorization": "Bearer " + api_key})
         with (opener or build_opener(_NoRedirect())).open(request, timeout=5) as response:
-            raw = response.read(512_001)
-        if len(raw) > 512_000:
+            raw = response.read(2_000_001)
+        if len(raw) > 2_000_000:
             raise ValueError("oversized model list")
         payload = json.loads(raw)
-        ids = {item.get("id") for item in payload.get("data", []) if isinstance(item, dict)}
-        return bool(ids - FREELLMAPI_VIRTUAL_MODELS - {None})
+        ids = {item.get("id") for item in payload.get("data", []) if isinstance(item, dict)} - {None}
+        if model and model not in virtual:
+            return model in ids
+        return bool(ids - virtual)
     return check
+
+
+def freellmapi_health(base_url: str, api_key: str, *, opener=None):
+    return router_health(base_url, api_key, query="?available=true", virtual=FREELLMAPI_VIRTUAL_MODELS, opener=opener)
 
 
 class LocalChatService:
@@ -111,9 +125,10 @@ class LocalChatService:
         model_ready = self._model_ready()
         stt = importlib.util.find_spec("faster_whisper") is not None
         tts = importlib.util.find_spec("edge_tts") is not None
-        if self.provider_name == "freellmapi":
-            chat_detail = ("FreeLLMAPI com provedores ativos; as mensagens podem ser enviadas a provedores externos."
-                           if model_ready else "FreeLLMAPI sem provedor ativo. Cadastre uma chave de provedor no painel do FreeLLMAPI.")
+        router = ROUTER_PROVIDERS.get(self.provider_name)
+        if router:
+            chat_detail = (f"{router} pronto; as mensagens podem ser enviadas a provedores externos."
+                           if model_ready else f"{router} sem o modelo configurado disponível. Verifique o servidor, a chave e o modelo no painel do {router}.")
         else:
             chat_detail = "Modelo local verificado." if model_ready else "Inicie o Ollama e instale o modelo configurado."
         capabilities = [
@@ -136,8 +151,8 @@ class LocalChatService:
         except ChatError:
             raise
         except Exception:  # noqa: BLE001 - provider failure must not expose request contents
-            raise ChatError(503, "O modelo não respondeu. Verifique o FreeLLMAPI e seus provedores e tente novamente."
-                            if self.provider_name == "freellmapi" else
+            raise ChatError(503, f"O modelo não respondeu. Verifique o {ROUTER_PROVIDERS[self.provider_name]} e seus provedores e tente novamente."
+                            if self.provider_name in ROUTER_PROVIDERS else
                             "O modelo local não respondeu. Verifique o Ollama e tente novamente.") from None
 
     async def chat(self, payload: dict) -> dict:

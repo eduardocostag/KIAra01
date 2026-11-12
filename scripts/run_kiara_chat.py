@@ -13,8 +13,9 @@ sys.path.insert(0, str(ROOT))
 from app.chat.auth import SupabaseAuthorizationVerifier
 from app.chat.automation import ControlledAutomation
 from app.chat.bridge import ChatBridge, serve, validate_origins
-from app.chat.service import LocalChatService, freellmapi_health
+from app.chat.service import LocalChatService, freellmapi_health, router_health
 from app.providers.freellmapi import FreeLLMAPIProvider
+from app.providers.omniroute import OmniRouteProvider
 from app.providers.remote import ProviderConfigurationError
 
 
@@ -38,7 +39,18 @@ def create_bridge() -> ChatBridge:
     )
     voice = values.get("KIARA_CHAT_VOICE", "pt-BR-FranciscaNeural")
     whisper_model = values.get("KIARA_CHAT_WHISPER_MODEL", "base")
-    if values.get("KIARA_CHAT_PROVIDER", "ollama").strip().lower() == "freellmapi":
+    selected = values.get("KIARA_CHAT_PROVIDER", "ollama").strip().lower()
+    if selected == "omniroute":
+        # OmniRoute requires an explicit model or combo, chosen in its dashboard.
+        base_url = values.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")
+        api_key = values.get("OMNIROUTE_API_KEY", "")
+        model = values.get("OMNIROUTE_MODEL", "")
+        provider = OmniRouteProvider(api_key=api_key, model=model, base_url=base_url,
+                                     timeout_seconds=110, max_output_tokens=4096)
+        service = LocalChatService(model=model, provider=provider, provider_name="omniroute",
+                                   health=router_health(base_url, api_key, model=model),
+                                   voice=voice, whisper_model=whisper_model)
+    elif selected == "freellmapi":
         # Router may forward messages to external providers; selected explicitly only.
         base_url = values.get("FREELLMAPI_BASE_URL", "http://127.0.0.1:3001/v1")
         api_key = values.get("FREELLMAPI_API_KEY", "")
