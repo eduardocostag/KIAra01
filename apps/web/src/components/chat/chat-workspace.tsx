@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { blobBase64, chatRequest, isolatedHtml, parseChatReply, parseChatStatus, validateChatAudio, type ChatArtifact, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { cn } from "@/lib/utils"
+import { VoiceConversation, type VoiceBackends } from "./voice-conversation"
 
 type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan }
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
@@ -95,6 +96,10 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
   const [audioUrl, setAudioUrl] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [copied, setCopied] = useState("")
+  const [voiceOpen, setVoiceOpen] = useState(false)
+  // Voice turns run outside React's render cycle; refs give them the latest conversation.
+  const conversationsRef = useRef<Conversation[]>([])
+  const activeIdRef = useRef("")
   const abortRef = useRef<AbortController | null>(null)
   const statusAbortRef = useRef<AbortController | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -115,7 +120,8 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
 
   // History lives in this browser only, separated per signed-in user.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setConversations(readHistory(storageKey)) }, [storageKey])
+  useEffect(() => { const history = readHistory(storageKey); conversationsRef.current = history; setConversations(history) }, [storageKey])
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }) }, [messages.length, busy])
 
   useEffect(() => {
@@ -159,6 +165,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
     setConversations((current) => {
       const next = update(current).sort((left, right) => right.updatedAt - left.updatedAt)
       writeHistory(storageKey, next)
+      conversationsRef.current = next
       return next
     })
   }
@@ -292,6 +299,34 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
     } catch (reason) { setSpeaking(false); setError(reason instanceof Error ? reason.message : "Não foi possível gerar a voz.") }
   }
 
+  /** One spoken turn: same conversation history as the written chat. */
+  async function askByVoice(content: string): Promise<string> {
+    const conversationId = activeIdRef.current || crypto.randomUUID()
+    const previous = conversationsRef.current.find((item) => item.id === conversationId)?.messages ?? []
+    const userMessage: Message = { id: crypto.randomUUID(), role: "user", content }
+    activeIdRef.current = conversationId
+    setActiveId(conversationId)
+    appendMessage(conversationId, userMessage, content.replace(/\s+/g, " ").slice(0, 60))
+    const reply = parseChatReply(await chatRequest(transport, "chat", { messages: boundedHistory([...previous, userMessage]) }))
+    appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text })
+    return reply.text
+  }
+
+  const voiceBackends: VoiceBackends = {
+    ask: askByVoice,
+    synthesize: capability("speech")?.available ? async (text) => {
+      const payload = await chatRequest(transport, "speech", { text: text.slice(0, 5000) }) as { audio_base64?: unknown; mime?: unknown }
+      if (typeof payload.audio_base64 !== "string" || typeof payload.mime !== "string" || !payload.mime.startsWith("audio/") || payload.audio_base64.length > 15_000_000) throw new Error("Voz inválida.")
+      return new Blob([Uint8Array.from(atob(payload.audio_base64), (char) => char.charCodeAt(0))], { type: payload.mime })
+    } : undefined,
+    transcribe: canTranscribe ? async (audio) => {
+      const mime = audio.type.split(";", 1)[0] || "audio/webm"
+      const payload = await chatRequest(transport, "transcribe", { audio_base64: await blobBase64(audio), mime, filename: "voz-kiara.webm" }) as { text?: unknown }
+      return typeof payload?.text === "string" ? payload.text : ""
+    } : undefined,
+  }
+  const voiceReady = Boolean(status?.connected && capability("chat")?.available)
+
   async function copy(message: Message) {
     try { await navigator.clipboard.writeText(message.content); setCopied(message.id); setTimeout(() => setCopied(""), 1500) } catch { setError("Não foi possível copiar.") }
   }
@@ -317,6 +352,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
         <Button type="button" variant="ghost" size="icon" className={cn("size-8 rounded-full text-muted-foreground", recording && "bg-destructive/15 text-destructive")} onClick={() => void startRecording()} disabled={busy || !canTranscribe} aria-label={recording ? "Parar gravação" : "Gravar áudio"} aria-pressed={recording}>{recording ? <Square /> : <Mic />}</Button>
         <div className="ml-auto">
           {busy ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => abortRef.current?.abort()} aria-label="Interromper"><Square className="fill-current" /></Button>
+            : !draft.trim() && !recording ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => { stopSpeech(); setVoiceOpen(true) }} disabled={!voiceReady || checking} aria-label="Conversar por voz" title={voiceReady ? "Conversar por voz" : "Conecte a IA para conversar por voz"}><AudioLines /></Button>
             : <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => void send()} disabled={!draft.trim() || !available || checking || recording} aria-label={mode === "automation" ? "Preparar plano" : "Enviar"}><ArrowUp /></Button>}
         </div>
       </div>
@@ -379,6 +415,8 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
         <div className="mt-6 grid gap-2 sm:grid-cols-2">{suggestions.map((item) => <button key={item.title} type="button" onClick={() => { setMode(item.mode); setDraft(item.text); draftRef.current?.focus() }} className="rounded-2xl border px-4 py-3 text-left transition hover:bg-muted/50"><p className="text-sm font-medium">{item.title}</p><p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{item.text}</p></button>)}</div>
       </div>
     </div>}
+
+    {voiceOpen ? <VoiceConversation backends={voiceBackends} onClose={() => setVoiceOpen(false)} /> : null}
 
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
