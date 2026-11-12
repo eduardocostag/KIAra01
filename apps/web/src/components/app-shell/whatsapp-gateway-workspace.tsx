@@ -24,8 +24,8 @@ async function getSiteAccessToken(signal?: AbortSignal) {
   return payload.access_token as string
 }
 
-async function bridgeRequest<T>(action: "status" | "connect" | "analyze", signal?: AbortSignal): Promise<T> {
-  const timeout = AbortSignal.timeout(action === "analyze" ? 135_000 : 30_000)
+async function bridgeRequest<T>(action: "status" | "connect" | "analyze" | "scan", signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(action === "scan" ? 900_000 : action === "analyze" ? 135_000 : 30_000)
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
   const token = await getSiteAccessToken(requestSignal)
   let response: Response
@@ -49,7 +49,17 @@ async function bridgeRequest<T>(action: "status" | "connect" | "analyze", signal
   if (action === "analyze" && (typeof payload?.summary !== "string" || !payload.summary.trim() || typeof payload?.phone !== "string" || !Number.isInteger(payload?.messages_analyzed) || payload.messages_analyzed < 0)) {
     throw new Error("A análise não retornou um resumo válido. Tente novamente.")
   }
+  if (action === "scan" && (!Array.isArray(payload?.leads) || !Number.isInteger(payload?.scanned) || !Number.isInteger(payload?.skipped))) {
+    throw new Error("A análise das conversas não retornou um resultado válido.")
+  }
   return payload as T
+}
+
+export type WhatsAppScanResult = { leads: { phone: string; name: string; stage: string; summary: string; next_action: string; confidence: number }[]; scanned: number; skipped: number }
+
+/** Reads and understands the most recent chats of the QR-connected session (read-only, nothing is sent). */
+export function scanWhatsAppConversations() {
+  return bridgeRequest<WhatsAppScanResult>("scan")
 }
 
 const stateLabels: Record<string, string> = {

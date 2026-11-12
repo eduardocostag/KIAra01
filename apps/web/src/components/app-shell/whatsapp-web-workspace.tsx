@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { leadDisplayName, normalizeWhatsAppPhone, type PipelineEntry } from "@/lib/api/pipeline"
 import { connectWhatsAppWeb, whatsappWebRequest as request, type WhatsAppAnalysisJob as AnalysisJob, type WhatsAppConfig as Config, type WhatsAppContact as Contact, type WhatsAppEvents as Events } from "@/lib/whatsapp-web-client"
 import { cn } from "@/lib/utils"
+import { scanWhatsAppConversations } from "./whatsapp-gateway-workspace"
 
 const activityLabels: Record<string, string> = {
   inbound: "Mensagem recebida", outbound_observed: "Mensagem enviada", reply: "Resposta automática",
@@ -156,17 +157,30 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
   const matchingLeads = search ? entries.filter((entry) => !["won", "lost"].includes(entry.stage) && normalizeWhatsAppPhone(entry.consumer.phone) !== null
     && `${leadDisplayName(entry.consumer)} ${entry.consumer.phone}`.toLocaleLowerCase("pt-BR").includes(search)).slice(0, 8) : []
 
+  /** QR session first (no extension): the local bridge reads the chats and the result is saved to the CRM. */
   async function startAnalysis() {
-    setAnalysisStarting(true); setAnalysisError(""); setAnalysisNotice("Conectando ao WhatsApp Web…")
+    setAnalysisStarting(true); setAnalysisError(""); setAnalysisNotice("Lendo e entendendo as conversas recentes… isso pode levar alguns minutos.")
     try {
-      await connectWhatsAppWeb()
-      const job = await request<AnalysisJob>("analysis", { method: "POST", body: JSON.stringify({ limit: 30 }) })
-      setAnalysis(job)
-      extensionRequestIdRef.current = job.id
-      window.postMessage({ source: "kiara-app", type: "whatsapp-analysis", jobId: job.id, limit: 30 }, window.location.origin)
-      setAnalysisNotice("Lendo as conversas recentes…")
+      const job = await request<AnalysisJob>("analysis", { method: "POST", body: JSON.stringify({ limit: 20 }) })
+      try {
+        const scan = await scanWhatsAppConversations()
+        const result = await request<NonNullable<AnalysisJob["result"]>>(`analysis/${encodeURIComponent(job.id)}/complete`, { method: "POST", body: JSON.stringify(scan), signal: AbortSignal.timeout(60_000) })
+        setAnalysis({ id: job.id, status: "completed", result })
+        setAnalysisNotice(`Pronto: ${result.imported ?? 0} contatos novos no CRM, ${result.duplicates ?? 0} atualizados, ${result.skipped ?? 0} conversas ignoradas.`)
+        router.refresh()
+      } catch (bridgeError) {
+        // Without the QR bridge, fall back to the optional Chrome extension executor.
+        if (!(bridgeError instanceof Error) || !bridgeError.message.includes("não está ativo neste computador")) throw bridgeError
+        setAnalysisNotice("Conectando pela extensão do Chrome…")
+        await connectWhatsAppWeb()
+        setAnalysis(job)
+        extensionRequestIdRef.current = job.id
+        window.postMessage({ source: "kiara-app", type: "whatsapp-analysis", jobId: job.id, limit: 20 }, window.location.origin)
+      }
     } catch (reason) {
-      setAnalysisNotice(""); setAnalysisError(reason instanceof Error ? reason.message : "Não foi possível iniciar a análise.")
+      setAnalysisNotice(""); setAnalysisError(reason instanceof Error && reason.message.startsWith("Extensão Kiara não encontrada")
+        ? "Conecte o WhatsApp pelo QR Code (Conexão) e mantenha o serviço do WhatsApp da Kiara ligado neste computador."
+        : reason instanceof Error ? reason.message : "Não foi possível analisar as conversas.")
     } finally { setAnalysisStarting(false) }
   }
 
@@ -194,7 +208,7 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="text-2xl font-medium tracking-tight">Kiara no WhatsApp</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Defina o que a Kiara faz no seu WhatsApp. Por enquanto, a execução automática roda pelo executor do WhatsApp Web; com a conexão por QR Code, ela passa a valer quando o executor do OpenWA estiver ligado ao site.</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Defina o que a Kiara faz no seu WhatsApp. A análise de conversas já funciona pela conexão por QR Code; respostas e prospecção automáticas rodam pelo executor do WhatsApp Web até o executor do OpenWA ser ligado ao site.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1"><span className={cn("size-1.5 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{events ? online ? "Executor conectado" : "Executor desconectado" : "Verificando…"}</span>

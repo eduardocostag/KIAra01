@@ -105,3 +105,34 @@ def test_status_without_session_and_analysis_without_contact():
     with pytest.raises(bridge.BridgeError) as error:
         instance.analyze()
     assert error.value.status == 409
+
+
+class _ScanOpenWA(_FakeOpenWA):
+    def __init__(self):
+        super().__init__({"s1": {"id": "s1", "name": "kiara", "status": "ready", "engineLoaded": True}})
+
+    async def list_chats(self, identifier, *, limit=200):
+        return [
+            {"id": "5511999990001@c.us", "name": "Clínica Antiga", "isGroup": False, "timestamp": 10},
+            {"id": "5511999990002@c.us", "name": "Clínica Nova", "isGroup": False, "timestamp": 99},
+            {"id": "120363000@g.us", "name": "Grupo", "isGroup": True, "timestamp": 100},
+            {"id": "5511999990003@c.us", "name": "Arquivada", "isGroup": False, "timestamp": 98, "archived": True},
+        ]
+
+    async def read_messages(self, identifier, phone, *, limit=20):
+        return [{"waMessageId": f"{phone}-1", "body": "Quanto custa o site?", "direction": "incoming", "timestamp": 1}]
+
+
+def test_scan_reads_recent_people_only_and_lowers_unsure_stages(monkeypatch):
+    answers = iter(['{"stage": "opportunity", "summary": "Pediu preço", "next_action": "Enviar proposta", "confidence": 0.9}',
+                    '{"stage": "qualified", "summary": "Curioso", "next_action": "", "confidence": 0.3}'])
+    seen = []
+    monkeypatch.setattr(bridge, "_model_request", lambda messages, *args, **kwargs: (seen.append(messages[1]["content"]), next(answers))[1])
+    instance = _bridge(_ScanOpenWA())
+    instance.endpoint, instance.api_key = "http://127.0.0.1:11434/api/chat", ""
+    result = instance.scan()
+    assert result["scanned"] == 2 and result["skipped"] == 0
+    assert [lead["phone"] for lead in result["leads"]] == ["5511999990002", "5511999990001"]
+    assert result["leads"][0]["stage"] == "opportunity" and result["leads"][0]["next_action"] == "Enviar proposta"
+    assert result["leads"][1]["stage"] == "new" and result["leads"][1]["summary"].startswith("[Baixa confiança")
+    assert "Clínica Nova" in seen[0] and not any("Grupo" in prompt or "Arquivada" in prompt for prompt in seen)

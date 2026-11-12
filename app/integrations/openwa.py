@@ -133,6 +133,15 @@ class OpenWAClient:
             raise OpenWAError("QR do OpenWA indisponível ou inválido.")
         return {"qrCode": data["qrCode"], "status": data["status"]}
 
+    async def list_chats(self, identifier: str, *, limit: int = 200) -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Limite deve estar entre 1 e 1000.")
+        data = await self._request("GET", f"/api/sessions/{session_id(identifier)}/chats?{urlencode({'limit': limit})}")
+        if not isinstance(data, list) or any(not isinstance(row, dict) or not isinstance(row.get("id"), str) for row in data):
+            raise OpenWAError("Lista de conversas OpenWA incompatível.")
+        allowed = {"id", "name", "isGroup", "kind", "timestamp", "archived", "unreadCount"}
+        return [{k: v for k, v in row.items() if k in allowed} for row in data[:limit]]
+
     async def read_messages(self, identifier: str, phone: str, *, limit: int = 20) -> list[dict]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("Limite deve estar entre 1 e 100.")
