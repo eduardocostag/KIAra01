@@ -145,19 +145,63 @@
 .flowNode { position: absolute; display: flex; align-items: center; gap: .4rem; padding: .4rem .55rem; border: 1px solid rgb(255 255 255 / .1); border-top: 2px solid var(--tone); border-radius: 10px; background: rgb(20 17 36 / .95); color: white; font-size: .66rem; white-space: nowrap; }
 .flowNode svg { width: .8rem; height: .8rem; color: var(--tone); }
 
+/* ---------- Steps timeline ---------- */
+.timeline { position: relative; display: grid; gap: 2.5rem; }
+@media (min-width: 900px) { .timeline { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; } }
+.timelineTrack { position: absolute; top: 1.2rem; right: 16%; left: 16%; display: none; height: 1px; background: rgb(255 255 255 / .08); }
+@media (min-width: 900px) { .timelineTrack { display: block; } }
+.timelineFill { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #a78bfa, #38bdf8, transparent); box-shadow: 0 0 18px rgb(167 139 250 / .8); transform: scaleX(0); transform-origin: left; transition: transform 1.6s cubic-bezier(.2,.7,.2,1) .2s; }
+.revealed .timelineFill { transform: scaleX(1); }
+.timelineStep { position: relative; text-align: center; }
+.timelineDot { position: relative; z-index: 1; display: grid; width: 2.4rem; height: 2.4rem; margin: 0 auto 1.25rem; place-items: center; border: 1px solid rgb(167 139 250 / .45); border-radius: 50%; background: #120f22; color: #d6c4ff; font-size: .85rem; font-weight: 700; box-shadow: 0 0 0 6px rgb(124 77 255 / .06), 0 0 24px rgb(124 77 255 / .35); }
+.timelineStep h3 { color: white; font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 600; letter-spacing: -.04em; }
+.timelineStep p { max-width: 17rem; margin: .5rem auto 0; color: rgb(255 255 255 / .45); font-size: .9rem; line-height: 1.5; }
+
+/* ---------- Control statement ---------- */
+.statement { font-size: clamp(2.2rem, 6vw, 4.5rem); font-weight: 600; letter-spacing: -.05em; line-height: 1; }
+.statement span { background: linear-gradient(90deg, #c4a1ff, #7dd3fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: .6rem; }
+.chip { display: inline-flex; align-items: center; gap: .45rem; border: 1px solid rgb(255 255 255 / .1); border-radius: 999px; padding: .5rem .9rem; background: rgb(255 255 255 / .03); color: rgb(255 255 255 / .7); font-size: .82rem; transition: border-color .3s, background .3s, transform .3s; }
+.chip:hover { border-color: rgb(167 139 250 / .5); background: rgb(124 77 255 / .1); transform: translateY(-2px); }
+.chip svg { width: .9rem; height: .9rem; color: #c4a1ff; }
+
+/* ---------- Rotating segment word ---------- */
+.rotator { position: relative; display: inline-block; min-width: 6ch; }
+.rotatorWord { display: inline-block; background: linear-gradient(90deg, #c4a1ff, #f0abfc); -webkit-background-clip: text; background-clip: text; color: transparent; animation: wordIn .6s cubic-bezier(.2,.7,.2,1); }
+@keyframes wordIn { from { opacity: 0; filter: blur(8px); transform: translateY(.35em); } }
+
+/* ---------- Minimal FAQ ---------- */
+.faq details { border-bottom: 1px solid rgb(255 255 255 / .08); }
+.faq summary { display: flex; cursor: pointer; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 0; color: white; font-size: 1.05rem; font-weight: 500; list-style: none; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { width: 1.6rem; height: 1.6rem; flex-shrink: 0; border: 1px solid rgb(255 255 255 / .12); border-radius: 50%; color: rgb(255 255 255 / .6); content: "+"; display: grid; place-items: center; transition: transform .3s; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq p { padding-bottom: 1.25rem; color: rgb(255 255 255 / .5); font-size: .95rem; line-height: 1.6; }
+
+/* ---------- Final CTA ---------- */
+.cta { position: relative; overflow: hidden; padding: clamp(4rem, 9vw, 7rem) 1.25rem; text-align: center; }
+.cta::before { position: absolute; top: 50%; left: 50%; width: min(900px, 120vw); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgb(124 77 255 / .28), transparent 60%); content: ""; transform: translate(-50%, -50%); }
+.ctaOrb {
+  position: relative;
+  display: grid;
+  width: 5.5rem;
+  aspect-ratio: 1;
+  margin: 0 auto 2rem;
+  place-items: center;
+  border: 1px solid rgb(212 157 255 / .55);
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 16%, rgb(249 220 255 / .85), transparent 16%), radial-gradient(circle at 39% 30%, #c698ff 1%, #a061ef 25%, #6522bf 56%, #2e135e 86%);
+  box-shadow: inset -14px -16px 26px rgb(26 5 59 / .7), 0 0 40px rgb(127 56 242 / .8), 0 0 100px rgb(95 38 187 / .5);
+  transform: translate(calc(var(--px, 0) * 8px), calc(var(--py, 0) * 8px));
+  transition: transform .3s ease-out;
+  animation: float 5s ease-in-out infinite;
+  --px: 0;
+  --py: 0;
+}
+
 /* ---------- Reveal on scroll ---------- */
 .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s cubic-bezier(.2,.7,.2,1); }
 .revealed { opacity: 1; transform: none; }
-
-/* ---------- Control section ---------- */
-.controlGrid { display: grid; gap: 1rem; }
-@media (min-width: 768px) { .controlGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1100px) { .controlGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.controlCard { padding: 1.25rem; border: 1px solid rgb(255 255 255 / .07); border-radius: 18px; background: rgb(255 255 255 / .02); }
-.controlCard svg { width: 1.2rem; height: 1.2rem; color: var(--primary); }
-
-.step { position: relative; padding: 1.4rem; border: 1px solid rgb(255 255 255 / .08); border-radius: 20px; background: linear-gradient(170deg, rgb(28 22 50 / .7), rgb(12 11 22 / .7)); }
-.stepNumber { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; border: 1px solid rgb(167 139 250 / .4); border-radius: 50%; background: rgb(124 77 255 / .14); color: #d6c4ff; font-weight: 700; box-shadow: 0 0 22px rgb(124 77 255 / .35); }
 
 @keyframes spin { to { rotate: 360deg; } }
 @keyframes float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
@@ -173,7 +217,8 @@
 @keyframes dash { to { stroke-dashoffset: -12; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .halo, .ring, .orb, .orb::before, .face i, .card, .live, .marqueeTrack, .leadRow, .bubble, .typing i, .voiceOrb, .voiceOrb::before, .voiceOrb::after, .wave i, .flowPath { animation: none !important; }
+  .ctaOrb, .rotatorWord, .halo, .ring, .orb, .orb::before, .face i, .card, .live, .marqueeTrack, .leadRow, .bubble, .typing i, .voiceOrb, .voiceOrb::before, .voiceOrb::after, .wave i, .flowPath { animation: none !important; }
   .stage, .face, .tiltInner { transform: none !important; transition: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
+  .timelineFill { transform: scaleX(1); transition: none; }
 }

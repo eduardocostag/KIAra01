@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Bot, MessageCircle, Search, Workflow } from "lucide-react"
 import { cn } from "@/lib/utils"
 import styles from "./landing.module.css"
@@ -55,6 +55,40 @@ export function TiltCard({ children, className }: { children: ReactNode; classNa
   }
   function leave() { ref.current?.style.setProperty("--rx", "0deg"); ref.current?.style.setProperty("--ry", "0deg") }
   return <div className={cn(styles.tilt, className)} onPointerMove={move} onPointerLeave={leave}><div ref={ref} className={styles.tiltInner}>{children}</div></div>
+}
+
+/** Cycles one highlighted word in place (e.g. market segments). */
+export function WordRotator({ words, interval = 2200 }: { words: string[]; interval?: number }) {
+  const [index, setIndex] = useState(0)
+  useEffect(() => {
+    if (reducedMotion()) return
+    const timer = setInterval(() => setIndex((current) => (current + 1) % words.length), interval)
+    return () => clearInterval(timer)
+  }, [words.length, interval])
+  return <span className={styles.rotator}>
+    <span className="sr-only">{words.join(", ")}</span>
+    <span key={index} className={styles.rotatorWord} aria-hidden="true">{words[index]}</span>
+  </span>
+}
+
+/** Final call-to-action orb: glows and leans toward the pointer. */
+export function CtaOrb() {
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    let frame = 0
+    function move(event: PointerEvent) {
+      const orb = ref.current
+      if (!orb || event.pointerType === "touch" || reducedMotion()) return
+      const bounds = orb.getBoundingClientRect()
+      const x = Math.max(-1, Math.min(1, (event.clientX - (bounds.left + bounds.width / 2)) / 500))
+      const y = Math.max(-1, Math.min(1, (event.clientY - (bounds.top + bounds.height / 2)) / 500))
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => { orb.style.setProperty("--px", x.toFixed(3)); orb.style.setProperty("--py", y.toFixed(3)) })
+    }
+    window.addEventListener("pointermove", move, { passive: true })
+    return () => { window.removeEventListener("pointermove", move); cancelAnimationFrame(frame) }
+  }, [])
+  return <span ref={ref} className={styles.ctaOrb} aria-hidden="true"><span className={styles.face}><i /><i /></span></span>
 }
 
 /** Fades content in once it scrolls into view. */
