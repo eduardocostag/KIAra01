@@ -277,7 +277,7 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
         {savedEnabled ? <Button type="button" variant="outline" onClick={() => void save(true)} disabled={saving}>{saving ? "Pausando…" : "Pausar automação"}</Button> : null}
       </div>
     </header>
-    <nav className={styles.legacyNav} aria-label="Seções da automação do WhatsApp"><Link href="/app/whatsapp"><ArrowLeft aria-hidden="true" />Central do WhatsApp</Link><a href="#executor"><Link2 aria-hidden="true" />Conexão do executor</a><a href="#automacao"><Settings2 aria-hidden="true" />Configurar operação</a><a href="#atividade"><ActivityIcon aria-hidden="true" />Histórico</a></nav>
+    <nav className={styles.legacyNav} aria-label="Seções da automação do WhatsApp"><Link href="/app/whatsapp"><ArrowLeft aria-hidden="true" />Conversas</Link><a href="#executor"><Link2 aria-hidden="true" />Conexão do executor</a><a href="#automacao"><Settings2 aria-hidden="true" />Configurar operação</a><a href="#atividade"><ActivityIcon aria-hidden="true" />Histórico</a></nav>
     <div className={styles.automationOverview} aria-label="Resumo da configuração"><div><p>Contatos habilitados</p><strong>{config ? config.contacts.filter(contact => contact.enabled && !contact.handoff).length : "—"}</strong></div><div><p>Modo de operação</p><strong>{config ? config.pilot_mode ? "Piloto · um contato" : "Contatos autorizados" : "Não verificado"}</strong></div><div><p>Limite diário configurado</p><strong>{config ? `${config.daily_limit ?? 50} envios` : "—"}</strong></div></div>
     <div id="executor" className={styles.panel}>
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">

@@ -1,3 +1,4 @@
+import type { InboxConversationDTO } from "@/lib/api/inbox-contract"
 import type { PipelineEntry } from "@/lib/api/pipeline"
 
 const now = Date.now()
@@ -34,4 +35,27 @@ export const previewEntries: PipelineEntry[] = [
   entry("5", "Sorria Mais Zona Sul", "opportunity", { next_action: "Reunião sexta 10h", next_action_at: hoursAgo(-30) }, { notes: "Prefere contato pela manhã." }),
   entry("6", "Clínica Bem Estar Bucal", "won"),
   entry("7", "Dental Point Cidade Baixa", "lost"),
+]
+
+const conversation = (id: string, name: string, phone: string, temperature: string, automationEnabled: boolean, unread: number, messages: [("lead" | "operator"), string, string][]): InboxConversationDTO => ({
+  id, consumerId: `lead-${id}`, channel: "whatsapp", name, handle: phone, excerpt: messages.at(-1)?.[1] ?? "Sem mensagens", time: messages.at(-1)?.[2] ?? "—",
+  unread, status: "open", score: temperature === "hot" ? 84 : 52, temperature, intent: "Qualificação comercial", confidence: "78% de confiança", owner: "Equipe",
+  qualifiedAt: null, facts: ["Pediu valores do plano mensal", "Atende em Porto Alegre"], gaps: [], nextAction: "Enviar proposta com o plano mensal.",
+  suggestedDraft: "", savedDraft: null, automationEnabled, handoff: !automationEnabled,
+  messages: messages.map(([from, text, time], index) => ({ id: `${id}-${index}`, from, text, time, status: from === "operator" ? "confirmed" : undefined })),
+})
+
+/** Preview-only WhatsApp conversations. */
+export const previewConversations: InboxConversationDTO[] = [
+  conversation("c1", "Clínica Sorriso Vivo", "+55 51 99999-0001", "hot", true, 2, [
+    ["lead", "Olá! Vi o anúncio de vocês. Quanto custa o site com agendamento?", "09:12"],
+    ["operator", "Olá! O plano com agendamento online custa R$ 189/mês e inclui domínio e suporte. Posso enviar a proposta?", "09:13"],
+    ["lead", "Pode sim. Vocês atendem em Porto Alegre?", "09:20"],
+    ["lead", "E qual o prazo para ficar pronto?", "09:21"],
+  ]),
+  conversation("c2", "Odonto Centro POA", "+55 51 99999-0002", "warm", false, 0, [
+    ["lead", "Bom dia, gostaria de falar com um atendente.", "Ontem"],
+    ["operator", "Claro! Já vou te atender pessoalmente.", "Ontem"],
+  ]),
+  conversation("c3", "Dra. Marina Lopes", "+55 51 99999-0003", "unknown", true, 0, [["lead", "Obrigada pelas informações!", "Seg"]]),
 ]

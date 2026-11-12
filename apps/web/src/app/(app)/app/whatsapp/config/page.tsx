@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
-export default function WhatsAppConfigPage() {
-  redirect("/app/whatsapp#configuracoes")
+export default function Page() {
+  redirect("/app/whatsapp")
 }

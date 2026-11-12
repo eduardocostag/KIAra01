@@ -1,28 +1,33 @@
 "use client"
 
-import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
-import { AudioLines, Bot, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, Download, FileAudio, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Plus, RefreshCw, Send, Settings2, ShieldCheck, Sparkles, Square, Video, Volume2, Workflow, X } from "lucide-react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, Copy, Download, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, Video, Volume2, Workflow } from "lucide-react"
+import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { blobBase64, chatRequest, isolatedHtml, parseChatReply, parseChatStatus, validateChatAudio, type ChatArtifact, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
-import styles from "./chat.module.css"
+import { cn } from "@/lib/utils"
 
 type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan }
+type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
+
 const modes = [
-  { id: "chat", label: "Conversar", icon: MessageCircle, placeholder: "Converse com a Kiara, analise uma ideia ou descreva uma tarefa…" },
-  { id: "image", label: "Imagem", icon: ImagePlus, placeholder: "Descreva a imagem, composição, iluminação, estilo e detalhes…" },
-  { id: "video", label: "Vídeo", icon: Video, placeholder: "Descreva o vídeo, cenas, movimento de câmera e direção visual…" },
-  { id: "website", label: "Site", icon: Globe2, placeholder: "Descreva o site, público, páginas, conteúdo e identidade visual…" },
-  { id: "dashboard", label: "Dashboard", icon: ChartNoAxesCombined, placeholder: "Descreva os indicadores, filtros e dados que seu dashboard deve apresentar…" },
-  { id: "automation", label: "Tarefas", icon: Workflow, placeholder: "Descreva o objetivo e os passos que deseja planejar com a Kiara…" },
+  { id: "chat", label: "Conversar", icon: MessageCircle, placeholder: "Pergunte qualquer coisa à Kiara" },
+  { id: "image", label: "Imagem", icon: ImagePlus, placeholder: "Descreva a imagem que você quer criar" },
+  { id: "video", label: "Vídeo", icon: Video, placeholder: "Descreva o vídeo: cenas, movimento e estilo" },
+  { id: "website", label: "Site", icon: Globe2, placeholder: "Descreva o site: público, páginas e identidade" },
+  { id: "dashboard", label: "Dashboard", icon: ChartNoAxesCombined, placeholder: "Descreva os indicadores e filtros do dashboard" },
+  { id: "automation", label: "Tarefa", icon: Workflow, placeholder: "Descreva o objetivo e a Kiara prepara um plano" },
 ] satisfies { id: ChatMode; label: string; icon: typeof MessageCircle; placeholder: string }[]
-const capabilityLabels: Record<string, string> = { chat: "Conversa e análise", speech: "Voz da Kiara", transcribe: "Receber áudio", image: "Geração de imagens", video: "Geração de vídeos", website: "Criação de sites", dashboard: "Criação de dashboards", automation: "Automação da máquina" }
-const prompts = [
-  { mode: "chat" as const, icon: Sparkles, title: "Pense comigo", text: "Ajude a organizar as prioridades da minha operação e sugira próximos passos." },
-  { mode: "website" as const, icon: Globe2, title: "Crie algo completo", text: "Crie um site institucional responsivo com apresentação, serviços, perguntas frequentes e contato." },
-  { mode: "dashboard" as const, icon: ChartNoAxesCombined, title: "Transforme dados em visão", text: "Crie um dashboard comercial com indicadores e filtros. Identifique claramente todos os dados de demonstração." },
-  { mode: "automation" as const, icon: Workflow, title: "Planeje uma tarefa", text: "Prepare um plano revisável para organizar arquivos e automatizar tarefas recorrentes no computador." },
+const capabilityLabels: Record<string, string> = { chat: "Conversa e análise", speech: "Voz da Kiara", transcribe: "Receber áudio", image: "Imagens", video: "Vídeos", website: "Sites", dashboard: "Dashboards", automation: "Automação" }
+const suggestions = [
+  { mode: "chat" as const, title: "Organizar prioridades", text: "Ajude a organizar as prioridades da minha operação e sugira próximos passos." },
+  { mode: "website" as const, title: "Criar um site", text: "Crie um site institucional responsivo com apresentação, serviços, perguntas frequentes e contato." },
+  { mode: "dashboard" as const, title: "Montar um dashboard", text: "Crie um dashboard comercial com indicadores e filtros. Identifique claramente os dados de demonstração." },
+  { mode: "automation" as const, title: "Planejar uma tarefa", text: "Prepare um plano revisável para organizar arquivos e automatizar tarefas recorrentes no computador." },
 ]
+const HISTORY_LIMIT = 30
 
 function boundedHistory(messages: Message[]): ChatMessage[] {
   let remaining = 35_000
@@ -32,6 +37,19 @@ function boundedHistory(messages: Message[]): ChatMessage[] {
     remaining -= content.length
     return [{ role: message.role, content }]
   }).reverse()
+}
+
+function readHistory(key: string): Conversation[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? "[]")
+    return Array.isArray(value) ? value.filter((item): item is Conversation => typeof item?.id === "string" && Array.isArray(item?.messages)) : []
+  } catch { return [] }
+}
+
+function writeHistory(key: string, conversations: Conversation[]) {
+  // Generated HTML can be large; history keeps the text and plans only.
+  const slim = conversations.slice(0, HISTORY_LIMIT).map((conversation) => ({ ...conversation, messages: conversation.messages.map(({ artifact, ...message }) => artifact ? { ...message, content: `${message.content}\n\n[Arquivo gerado: ${artifact.name}]` } : message) }))
+  try { localStorage.setItem(key, JSON.stringify(slim)) } catch { /* Storage full or blocked: history stays in memory. */ }
 }
 
 function saveArtifact(artifact: ChatArtifact) {
@@ -45,13 +63,22 @@ function saveArtifact(artifact: ChatArtifact) {
 
 function Artifact({ artifact }: { artifact: ChatArtifact }) {
   const [preview, setPreview] = useState(false)
-  return <section className={styles.artifact} aria-label="Arquivo gerado">
-    <div><span className={styles.artifactIcon}><Globe2 aria-hidden="true" /></span><div><strong>{artifact.name}</strong><p>HTML para revisar e baixar</p></div><Button type="button" variant="outline" onClick={() => setPreview(!preview)}>{preview ? "Fechar prévia" : "Ver prévia"}</Button><Button type="button" variant="outline" onClick={() => saveArtifact(artifact)} aria-label={`Baixar ${artifact.name}`}><Download aria-hidden="true" />Baixar</Button></div>
-    {preview && <><p className={styles.previewNote}>Prévia isolada, sem acesso à sua conta ou a serviços externos.</p><iframe title={`Prévia de ${artifact.name}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={isolatedHtml(artifact.content)} /></>}
+  return <section className="mt-3 overflow-hidden rounded-2xl border" aria-label="Arquivo gerado">
+    <div className="flex flex-wrap items-center gap-3 p-3">
+      <Globe2 className="size-5 text-primary" aria-hidden="true" />
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{artifact.name}</p><p className="text-xs text-muted-foreground">HTML para revisar e baixar</p></div>
+      <Button type="button" size="sm" variant="outline" onClick={() => setPreview(!preview)}>{preview ? "Fechar" : "Prévia"}</Button>
+      <Button type="button" size="sm" variant="outline" onClick={() => saveArtifact(artifact)} aria-label={`Baixar ${artifact.name}`}><Download aria-hidden="true" />Baixar</Button>
+    </div>
+    {preview && <iframe className="h-[480px] w-full border-t bg-white" title={`Prévia de ${artifact.name}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={isolatedHtml(artifact.content)} />}
   </section>
 }
 
-export function ChatWorkspace() {
+const noop = () => () => {}
+
+export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
+  const storageKey = `kiara-chat-history:${userId}`
+  const browserVoice = useSyncExternalStore(noop, () => "speechSynthesis" in window, () => false)
   const [transport, setTransport] = useState<ChatTransport>("cloud")
   const [status, setStatus] = useState<ChatStatus | null>(null)
   const [checking, setChecking] = useState(true)
@@ -60,12 +87,14 @@ export function ChatWorkspace() {
   const [notice, setNotice] = useState("")
   const [mode, setMode] = useState<ChatMode>("chat")
   const [draft, setDraft] = useState("")
-  const [messages, setMessages] = useState<Message[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeId, setActiveId] = useState("")
   const [busy, setBusy] = useState(false)
   const [recording, setRecording] = useState(false)
   const [speaking, setSpeaking] = useState(false)
-  const [browserVoice, setBrowserVoice] = useState(false)
   const [audioUrl, setAudioUrl] = useState("")
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [copied, setCopied] = useState("")
   const abortRef = useRef<AbortController | null>(null)
   const statusAbortRef = useRef<AbortController | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -74,16 +103,23 @@ export function ChatWorkspace() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const draftRef = useRef<HTMLTextAreaElement>(null)
+  const endRef = useRef<HTMLDivElement>(null)
   const recordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
   const activeMode = modes.find((item) => item.id === mode)!
+  const active = conversations.find((item) => item.id === activeId)
+  const messages = active?.messages ?? []
   const capability = (id: string) => status?.capabilities.find((item) => item.id === id)
   const available = Boolean(status?.connected && capability(mode === "automation" ? "chat" : mode)?.available)
   const canTranscribe = Boolean(status?.connected && capability("transcribe")?.available)
 
+  // History lives in this browser only, separated per signed-in user.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setConversations(readHistory(storageKey)) }, [storageKey])
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }) }, [messages.length, busy])
+
   useEffect(() => {
     mountedRef.current = true
-    setBrowserVoice("speechSynthesis" in window)
     const controller = new AbortController()
     statusAbortRef.current = controller
     async function discover() {
@@ -119,6 +155,33 @@ export function ChatWorkspace() {
 
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl) }, [audioUrl])
 
+  function updateConversations(update: (current: Conversation[]) => Conversation[]) {
+    setConversations((current) => {
+      const next = update(current).sort((left, right) => right.updatedAt - left.updatedAt)
+      writeHistory(storageKey, next)
+      return next
+    })
+  }
+
+  function appendMessage(conversationId: string, message: Message, title?: string) {
+    updateConversations((current) => {
+      const existing = current.find((item) => item.id === conversationId)
+      const conversation = existing ?? { id: conversationId, title: title ?? "Nova conversa", updatedAt: Date.now(), messages: [] }
+      return [{ ...conversation, updatedAt: Date.now(), messages: [...conversation.messages, message] }, ...current.filter((item) => item.id !== conversationId)]
+    })
+  }
+
+  function newConversation() {
+    if (busy || recording) return
+    stopSpeech(); setActiveId(""); setDraft(""); setError(""); setNotice(""); setMode("chat")
+    draftRef.current?.focus()
+  }
+
+  function deleteConversation(id: string) {
+    updateConversations((current) => current.filter((item) => item.id !== id))
+    if (id === activeId) setActiveId("")
+  }
+
   async function refreshConnection(next: ChatTransport = transport) {
     statusAbortRef.current?.abort()
     const controller = new AbortController()
@@ -134,16 +197,19 @@ export function ChatWorkspace() {
   async function send() {
     const content = draft.trim()
     if (!content || busy || recording || !available) return
+    const conversationId = activeId || crypto.randomUUID()
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", content }
     const history = [...messages, userMessage]
-    setMessages(history); setDraft(""); setBusy(true); setError(""); setNotice("")
+    setActiveId(conversationId)
+    appendMessage(conversationId, userMessage, content.replace(/\s+/g, " ").slice(0, 60))
+    setDraft(""); setBusy(true); setError(""); setNotice("")
     const controller = new AbortController()
     abortRef.current = controller
     try {
       const action = mode === "chat" ? "chat" : mode === "website" || mode === "dashboard" ? "build" : mode === "automation" ? "plan" : mode
       const body = mode === "chat" ? { messages: boundedHistory(history) } : action === "build" ? { prompt: content, kind: mode } : { prompt: content }
       const reply = parseChatReply(await chatRequest(transport, action, body, controller.signal))
-      if (!controller.signal.aborted) setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan }])
+      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan })
     } catch (reason) {
       if (controller.signal.aborted) setNotice("Geração interrompida. A solicitação pode já ter sido recebida pelo serviço.")
       else { setError(reason instanceof Error ? reason.message : "Não foi possível concluir a resposta."); setDraft(content) }
@@ -154,14 +220,14 @@ export function ChatWorkspace() {
     if (busy || !canTranscribe) return
     try {
       const mime = validateChatAudio(file)
-      setBusy(true); setError(""); setNotice("Recebendo e transcrevendo seu áudio…")
+      setBusy(true); setError(""); setNotice("Transcrevendo seu áudio…")
       const controller = new AbortController()
       abortRef.current = controller
       const payload = await chatRequest(transport, "transcribe", { audio_base64: await blobBase64(file), mime, filename: file.name }, controller.signal) as { text?: unknown }
       if (controller.signal.aborted) return
       if (typeof payload?.text !== "string" || !payload.text.trim()) throw new Error("Não foi encontrada uma transcrição válida neste áudio.")
       setDraft((current) => `${current}${current ? "\n" : ""}${payload.text}`.slice(0, 10_000))
-      setNotice("Áudio transcrito. Revise o texto e envie quando quiser.")
+      setNotice("Áudio transcrito. Revise o texto e envie.")
       draftRef.current?.focus()
     } catch (reason) { if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(reason instanceof Error ? reason.message : "Não foi possível transcrever o áudio.") }
     finally { setBusy(false); abortRef.current = null; if (fileRef.current) fileRef.current.value = "" }
@@ -172,7 +238,7 @@ export function ChatWorkspace() {
     if (busy || !canTranscribe) return
     setError("")
     try {
-      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw new Error("Este navegador não oferece gravação. Use Anexar áudio para enviar um arquivo.")
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw new Error("Este navegador não oferece gravação. Anexe um arquivo de áudio.")
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       if (!mountedRef.current) { stream.getTracks().forEach((track) => track.stop()); return }
       streamRef.current = stream
@@ -190,7 +256,7 @@ export function ChatWorkspace() {
         void transcribe(new File([blob], "gravacao-kiara.webm", { type: blob.type }))
       }
       recorder.start(1000)
-      setRecording(true); setNotice("Gravando áudio. Clique em Parar gravação para transcrever. Limite de 60 segundos.")
+      setRecording(true); setNotice("Gravando… clique no quadrado para parar (até 60 segundos).")
       recordTimerRef.current = setTimeout(() => { if (recorder.state === "recording") recorder.stop() }, 60_000)
     } catch (reason) { streamRef.current?.getTracks().forEach((track) => track.stop()); setError(reason instanceof Error ? reason.message : "Não foi possível acessar o microfone.") }
   }
@@ -211,10 +277,9 @@ export function ChatWorkspace() {
         const binary = atob(payload.audio_base64)
         const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
         setAudioUrl(URL.createObjectURL(new Blob([bytes], { type: payload.mime })))
-        setNotice("Áudio da Kiara pronto. Use o player para ouvir.")
         setSpeaking(false)
       } else {
-        if (!browserVoice) throw new Error("Voz indisponível neste navegador. Configure o serviço de voz local.")
+        if (!browserVoice) throw new Error("Voz indisponível neste navegador.")
         const utterance = new SpeechSynthesisUtterance(text.slice(0, 5000))
         utterance.lang = "pt-BR"
         const voice = window.speechSynthesis.getVoices().find((item) => item.lang.toLowerCase() === "pt-br")
@@ -227,45 +292,114 @@ export function ChatWorkspace() {
     } catch (reason) { setSpeaking(false); setError(reason instanceof Error ? reason.message : "Não foi possível gerar a voz.") }
   }
 
-  return <section className={styles.workspace} aria-labelledby="kiara-chat-title">
-    <header className={styles.header}>
-      <div className={styles.identity}><span className={styles.logo}><AudioLines aria-hidden="true" /></span><div><p className={styles.eyebrow}>Seu espaço para pensar e criar</p><h1 id="kiara-chat-title">Kiara Chat<span>IA em ação, com contexto.</span></h1></div></div>
-      <Button type="button" variant="outline" className={styles.newChat} onClick={() => { stopSpeech(); setMessages([]); setDraft(""); setError(""); setNotice(""); setMode("chat") }} disabled={busy || recording}><Plus aria-hidden="true" />Nova conversa</Button>
-    </header>
+  async function copy(message: Message) {
+    try { await navigator.clipboard.writeText(message.content); setCopied(message.id); setTimeout(() => setCopied(""), 1500) } catch { setError("Não foi possível copiar.") }
+  }
 
-    <div className={styles.connectionBar}>
-      <span className={styles.connectionState} role="status"><i className={checking ? styles.pendingDot : status?.connected ? styles.onlineDot : styles.offlineDot} />{checking ? "Verificando IA…" : status?.connected ? `${transport === "local" ? "Serviço local" : "IA hospedada"} disponível` : "Aguardando conexão"}</span>
-      <span className={styles.model}>{status?.model || "Modelo não confirmado"}</span>
-      <label className={styles.transport}><span>Conexão</span><select value={transport} disabled={busy || recording || checking} onChange={(event) => void refreshConnection(event.target.value as ChatTransport)} aria-label="Conexão da inteligência"><option value="local">Neste computador</option><option value="cloud">Hospedada</option></select><ChevronDown aria-hidden="true" /></label>
-      <Button type="button" variant="ghost" size="icon" aria-label="Verificar conexão da IA" onClick={() => void refreshConnection()} disabled={checking || busy || recording}>{checking ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}</Button>
-    </div>
-    {connectionError && <div className={styles.connectionError} role="status"><CircleHelp aria-hidden="true" /><div><strong>A conexão precisa de atenção</strong><p>{connectionError}</p><a href="#configuracoes">Como preparar a Kiara</a></div></div>}
-
-    <div className={styles.workGrid}>
-      <div id="conversa" className={styles.conversation}>
-        <div className={styles.conversationTop}><span><MessageCircle aria-hidden="true" />Conversa atual</span><small>Histórico somente nesta página</small></div>
-        <div className={styles.messageArea} role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions">
-          {!messages.length ? <div className={styles.welcome}><span className={styles.welcomeMark}><Sparkles aria-hidden="true" /></span><p className={styles.eyebrow}>Inteligência que acompanha seu trabalho</p><h2>O que vamos construir hoje?</h2><p>Converse, explore ideias, crie projetos e prepare tarefas. Os recursos disponíveis dependem dos serviços conectados à sua Kiara.</p><div className={styles.suggestions}>{prompts.map((prompt) => <button key={prompt.title} type="button" onClick={() => { setMode(prompt.mode); setDraft(prompt.text); draftRef.current?.focus() }}><prompt.icon aria-hidden="true" /><strong>{prompt.title}</strong><span>{prompt.text}</span></button>)}</div></div> : messages.map((message) => <article key={message.id} className={message.role === "assistant" ? styles.assistantMessage : styles.userMessage} aria-label={message.role === "assistant" ? "Resposta da Kiara" : "Sua mensagem"}><div className={styles.messageIdentity}><span>{message.role === "assistant" ? <Bot aria-hidden="true" /> : "V"}</span><strong>{message.role === "assistant" ? "Kiara" : "Você"}</strong></div><div className={styles.messageText}>{message.content}</div>{message.artifact && <Artifact artifact={message.artifact} />}{message.plan && <section className={styles.plan}><div><Workflow aria-hidden="true" /><strong>Plano para revisão</strong><span>Aguardando executor autorizado</span></div><ol>{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p>Este plano ainda não foi executado. Ações na máquina ou em sites dependem do executor e da autorização correspondente.</p></section>}{message.role === "assistant" && <button type="button" className={styles.speakButton} onClick={() => void speak(message.content)} disabled={speaking || busy}><Volume2 aria-hidden="true" />{capability("speech")?.available ? "Ouvir com a voz da Kiara" : "Ouvir com voz do navegador"}</button>}</article>)}
-          {busy && <div className={styles.thinking} role="status"><LoaderCircle className="animate-spin motion-reduce:animate-none" /><span>{notice.startsWith("Recebendo") ? "Transcrevendo áudio…" : "A Kiara está trabalhando na sua solicitação…"}</span></div>}
-        </div>
-        <div className={styles.composerArea}>
-          <div className={styles.modePicker} role="group" aria-label="Tipo de criação">{modes.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-pressed={mode === id} onClick={() => setMode(id)} disabled={busy || recording}><Icon aria-hidden="true" />{label}</button>)}</div>
-          {!checking && !available && <p className={styles.modeUnavailable}>{mode === "automation" ? "Conecte um modelo de conversa para preparar um plano. A execução depende de um executor autorizado." : capability(mode)?.detail || `${activeMode.label}: recurso ainda não disponível nesta conexão.`}</p>}
-          {mode === "automation" && available && <p className={styles.modeUnavailable}>A Kiara prepara o plano para revisão. Nenhuma ação na máquina será executada por esta conversa.</p>}
-          <label className="sr-only" htmlFor="kiara-chat-message">Sua mensagem para a Kiara</label>
-          <div className={styles.composer}><textarea ref={draftRef} id="kiara-chat-message" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={10_000} rows={3} placeholder={activeMode.placeholder} disabled={busy || recording} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} /><div className={styles.composerBottom}><div className={styles.inputActions}><input ref={fileRef} className="sr-only" type="file" accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,audio/aac,audio/flac" onChange={(event) => { const file = event.target.files?.[0]; if (file) void transcribe(file) }} aria-label="Arquivo de áudio para transcrever" tabIndex={-1} /><button type="button" onClick={() => fileRef.current?.click()} disabled={busy || recording || !canTranscribe} aria-label="Anexar áudio" title={canTranscribe ? "Anexar áudio de até 5 MB" : "Conecte a transcrição de áudio para usar este recurso"}><Paperclip aria-hidden="true" /></button><button type="button" onClick={() => void startRecording()} disabled={busy || !canTranscribe} className={recording ? styles.recordingButton : undefined} aria-label={recording ? "Parar gravação" : "Gravar áudio"} aria-pressed={recording}>{recording ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}</button><span>{recording ? "Gravando…" : "Áudio até 5 MB"}</span></div>{busy ? <Button type="button" variant="outline" onClick={() => abortRef.current?.abort()}><Square aria-hidden="true" />Interromper</Button> : <Button type="button" onClick={() => void send()} disabled={!draft.trim() || !available || checking || recording} className={styles.sendButton}><Send aria-hidden="true" />{mode === "automation" ? "Preparar plano" : "Enviar"}</Button>}</div></div>
-          <div className={styles.composerNote}><span>Enter envia · Shift + Enter quebra a linha</span><span>{draft.length.toLocaleString("pt-BR")}/10.000</span></div>
-          {error && <p role="alert" className={styles.error}><X aria-hidden="true" />{error}</p>}
-          {notice && <p role="status" className={styles.notice}>{notice}</p>}
-          {audioUrl && <div className={styles.audioPlayer}><AudioLines aria-hidden="true" /><audio ref={audioRef} controls src={audioUrl} onEnded={() => setSpeaking(false)}>Seu navegador não suporta reprodução de áudio.</audio></div>}
-          {speaking && <button className={styles.speakButton} type="button" onClick={stopSpeech}><Square aria-hidden="true" />Parar voz</button>}
+  const statusLabel = checking ? "Verificando…" : status?.connected ? (status.model || (transport === "local" ? "Neste computador" : "IA hospedada")) : "IA desconectada"
+  const composer = <div className="w-full">
+    <div className="rounded-3xl border bg-card px-3 pb-2 pt-3 shadow-sm focus-within:border-primary/40">
+      <label className="sr-only" htmlFor="kiara-chat-message">Sua mensagem para a Kiara</label>
+      <textarea ref={draftRef} id="kiara-chat-message" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={10_000} rows={1} placeholder={activeMode.placeholder} disabled={busy || recording}
+        onInput={(event) => { const element = event.currentTarget; element.style.height = "auto"; element.style.height = `${Math.min(element.scrollHeight, 208)}px` }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }}
+        className="max-h-52 min-h-7 w-full resize-none bg-transparent px-1 text-[15px] leading-6 outline-none placeholder:text-muted-foreground" />
+      <div className="mt-2 flex items-center gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 rounded-full px-2.5 text-muted-foreground" disabled={busy || recording} aria-label={`Modo: ${activeMode.label}`}><Plus className="size-4" /><activeMode.icon className="size-4" /><span className="hidden sm:inline">{activeMode.label}</span></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>O que você quer fazer?</DropdownMenuLabel>
+            {modes.map(({ id, label, icon: Icon }) => <DropdownMenuItem key={id} onSelect={() => setMode(id)}><Icon />{label}{mode === id ? <Check className="ml-auto" /> : null}</DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <input ref={fileRef} className="sr-only" type="file" accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,audio/aac,audio/flac" onChange={(event) => { const file = event.target.files?.[0]; if (file) void transcribe(file) }} aria-label="Arquivo de áudio para transcrever" tabIndex={-1} />
+        <Button type="button" variant="ghost" size="icon" className="size-8 rounded-full text-muted-foreground" onClick={() => fileRef.current?.click()} disabled={busy || recording || !canTranscribe} aria-label="Anexar áudio" title={canTranscribe ? "Anexar áudio de até 5 MB" : "Transcrição de áudio não conectada"}><Paperclip /></Button>
+        <Button type="button" variant="ghost" size="icon" className={cn("size-8 rounded-full text-muted-foreground", recording && "bg-destructive/15 text-destructive")} onClick={() => void startRecording()} disabled={busy || !canTranscribe} aria-label={recording ? "Parar gravação" : "Gravar áudio"} aria-pressed={recording}>{recording ? <Square /> : <Mic />}</Button>
+        <div className="ml-auto">
+          {busy ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => abortRef.current?.abort()} aria-label="Interromper"><Square className="fill-current" /></Button>
+            : <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => void send()} disabled={!draft.trim() || !available || checking || recording} aria-label={mode === "automation" ? "Preparar plano" : "Enviar"}><ArrowUp /></Button>}
         </div>
       </div>
-
-      <aside id="capacidades" className={styles.capabilityPanel} aria-labelledby="chat-capabilities-title"><div className={styles.capabilityHeading}><span><Sparkles aria-hidden="true" /></span><div><p className={styles.eyebrow}>Seu estúdio de possibilidades</p><h2 id="chat-capabilities-title">Recursos da Kiara</h2></div></div><p className={styles.capabilityIntro}>Cada recurso mostra o estado informado pelo serviço conectado.</p><ul>{Object.entries(capabilityLabels).map(([id, label]) => { const item = capability(id); return <li key={id}><span className={item?.available && status?.connected ? styles.capabilityReady : styles.capabilityPending}>{item?.available && status?.connected ? <Check aria-hidden="true" /> : <span aria-hidden="true">·</span>}</span><div><strong>{label}</strong><p>{checking ? "Verificando…" : item?.detail || "Serviço não conectado"}</p></div></li> })}</ul><div id="voz" className={styles.voiceInfo}><Volume2 aria-hidden="true" /><div><strong>{capability("speech")?.available ? "Voz da Kiara conectada" : browserVoice ? "Leitura com voz do navegador" : "Voz ainda não disponível"}</strong><p>O microfone só é acessado quando você inicia a gravação. Áudios transcritos ficam disponíveis para revisão antes do envio.</p></div></div><div className={styles.siteContext}><h3>A Kiara no seu site</h3><p>Abra o módulo para consultar os dados atuais da sua operação.</p><Link href="/app/leads">Leads e CRM<Globe2 aria-hidden="true" /></Link><Link href="/app/whatsapp">Central do WhatsApp<AudioLines aria-hidden="true" /></Link><Link href="/app/inbox">Caixa de entrada<MessageCircle aria-hidden="true" /></Link></div></aside>
     </div>
+    {!checking && !available ? <p className="mt-2 px-3 text-center text-xs text-muted-foreground">{status?.connected ? capability(mode)?.detail || `${activeMode.label} ainda não está disponível nesta conexão.` : "A IA não está conectada. Abra os ajustes para verificar a conexão."}</p> : null}
+    {error ? <p role="alert" className="mt-2 px-3 text-center text-sm text-destructive">{error}</p> : notice ? <p role="status" className="mt-2 px-3 text-center text-xs text-muted-foreground">{notice}</p> : null}
+  </div>
 
-    <details id="configuracoes" className={styles.settings}><summary><span><Settings2 aria-hidden="true" /><strong>Conexão e configuração</strong></span><ChevronDown aria-hidden="true" /></summary><div><section><h2>IA neste computador</h2><p>Inicie a ponte local com <code>python scripts/run_kiara_chat.py</code>. Ela conecta os modelos e ferramentas instalados ao seu login Kiara. O navegador pode solicitar acesso à rede local.</p></section><section><h2>Recursos multimodais</h2><p>Voz, transcrição, imagem e vídeo precisam de seus modelos ou provedores configurados. A presença de um repositório não significa que ele está pronto para executar.</p></section><section><h2>Execução de tarefas</h2><p>Planos são apresentados para revisão. Operações no computador ou em sites dependem de um executor autorizado, dos limites de acesso e dos controles locais.</p></section><section><h2>Memória desta conversa</h2><p>O histórico desta tela fica em memória e é limpo ao recarregar ou iniciar uma nova conversa. Consulte a configuração do provedor conectado para conhecer sua política de dados.</p></section></div></details>
-    <p className={styles.footerNote}><ShieldCheck aria-hidden="true" />Revise respostas, dados e arquivos antes de utilizá-los. A Kiara apresenta resultados e limites do serviço conectado.</p>
-  </section>
+  return <ImmersiveShell
+    label="Conversas da Kiara"
+    sidebar={(close) => <nav aria-label="Histórico de conversas" className="space-y-4">
+      <Button type="button" variant="ghost" className="w-full justify-start gap-2 px-2" onClick={() => { newConversation(); close() }} disabled={busy || recording}><Plus />Nova conversa</Button>
+      {conversations.length ? <div>
+        <p className="px-2 pb-1 text-xs font-medium text-sidebar-foreground/50">Recentes</p>
+        <ul className="space-y-0.5">{conversations.map((conversation) => <li key={conversation.id} className="group relative">
+          <button type="button" onClick={() => { setActiveId(conversation.id); setError(""); setNotice(""); close() }} aria-current={conversation.id === activeId ? "true" : undefined} disabled={busy}
+            className={cn("block w-full truncate rounded-lg px-2 py-2 pr-8 text-left text-sm text-sidebar-foreground/80 hover:bg-sidebar-foreground/5", conversation.id === activeId && "bg-sidebar-foreground/10 text-sidebar-foreground")}>{conversation.title}</button>
+          <button type="button" onClick={() => deleteConversation(conversation.id)} disabled={busy} aria-label={`Excluir ${conversation.title}`} className="absolute right-1 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-sidebar-foreground/50 opacity-0 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"><Trash2 className="size-3.5" /></button>
+        </li>)}</ul>
+      </div> : <p className="px-2 text-xs text-sidebar-foreground/50">Suas conversas aparecem aqui. Elas ficam salvas apenas neste navegador.</p>}
+    </nav>}
+    footer={<button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Settings2 className="size-4" aria-hidden="true" />Ajustes e recursos</button>}
+    topBar={<>
+      <span className="truncate font-medium">Kiara Chat</span>
+      <span className="ml-auto inline-flex items-center gap-1.5 truncate text-xs text-muted-foreground" role="status"><span className={cn("size-1.5 shrink-0 rounded-full", checking ? "bg-amber-400" : status?.connected ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{statusLabel}</span>
+      <Button type="button" variant="ghost" size="icon" aria-label="Ajustes e recursos" onClick={() => setSettingsOpen(true)}><Settings2 /></Button>
+    </>}
+  >
+    {messages.length ? <>
+      <div className="min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions">
+        <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
+          {messages.map((message) => message.role === "user"
+            ? <div key={message.id} className="flex justify-end"><div className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-6">{message.content}</div></div>
+            : <article key={message.id} className="flex gap-3" aria-label="Resposta da Kiara">
+              <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-card text-primary"><Bot className="size-4" aria-hidden="true" /></span>
+              <div className="min-w-0 flex-1">
+                <div className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</div>
+                {message.artifact && <Artifact artifact={message.artifact} />}
+                {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}
+                <div className="mt-1 flex gap-0.5 text-muted-foreground">
+                  <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void copy(message)} aria-label="Copiar resposta">{copied === message.id ? <Check /> : <Copy />}</Button>
+                  <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void speak(message.content)} disabled={speaking || busy} aria-label="Ouvir resposta"><Volume2 /></Button>
+                </div>
+              </div>
+            </article>)}
+          {busy ? <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status"><span className="grid size-7 place-items-center rounded-full border bg-card"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /></span>{notice.startsWith("Transcrevendo") ? "Transcrevendo áudio…" : "Pensando…"}</div> : null}
+          <div ref={endRef} />
+        </div>
+      </div>
+      <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+        {audioUrl || speaking ? <div className="mb-2 flex items-center gap-2">{audioUrl ? <audio ref={audioRef} controls src={audioUrl} onEnded={() => setSpeaking(false)} className="h-9 flex-1" /> : null}{speaking ? <Button type="button" size="sm" variant="outline" onClick={stopSpeech}><Square />Parar voz</Button> : null}</div> : null}
+        {composer}
+        <p className="mt-2 text-center text-[11px] text-muted-foreground">A Kiara pode errar. Revise respostas e arquivos antes de usar.</p>
+      </div>
+    </> : <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-10">
+      <div className="w-full max-w-3xl">
+        <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full border bg-card text-primary"><Sparkles className="size-5" aria-hidden="true" /></span>
+        <h1 className="mb-8 text-center text-2xl font-medium tracking-tight sm:text-3xl">Como posso ajudar hoje?</h1>
+        {composer}
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">{suggestions.map((item) => <button key={item.title} type="button" onClick={() => { setMode(item.mode); setDraft(item.text); draftRef.current?.focus() }} className="rounded-2xl border px-4 py-3 text-left transition hover:bg-muted/50"><p className="text-sm font-medium">{item.title}</p><p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{item.text}</p></button>)}</div>
+      </div>
+    </div>}
+
+    <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>Ajustes e recursos</DialogTitle><DialogDescription>Conexão da inteligência e recursos disponíveis.</DialogDescription></DialogHeader>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <label htmlFor="chat-transport" className="text-sm font-medium">Conexão</label>
+            <div className="flex gap-2">
+              <select id="chat-transport" value={transport} disabled={busy || recording || checking} onChange={(event) => void refreshConnection(event.target.value as ChatTransport)} className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"><option value="cloud">IA hospedada</option><option value="local">Neste computador</option></select>
+              <Button type="button" variant="outline" size="icon" className="size-10" aria-label="Verificar conexão" onClick={() => void refreshConnection()} disabled={checking || busy || recording}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">{checking ? "Verificando…" : status?.connected ? `Conectado${status.model ? ` · ${status.model}` : ""}` : connectionError || "Não conectado."}</p>
+          </div>
+          <div>
+            <p className="mb-2 text-sm font-medium">Recursos</p>
+            <ul className="divide-y rounded-xl border">{Object.entries(capabilityLabels).map(([id, label]) => { const item = capability(id); const ready = Boolean(item?.available && status?.connected); return <li key={id} className="flex items-start gap-3 px-3 py-2.5"><span className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", ready ? "bg-emerald-400" : "bg-muted-foreground/50")} aria-hidden="true" /><div className="min-w-0"><p className="text-sm">{label}</p><p className="text-xs text-muted-foreground">{checking ? "Verificando…" : ready ? "Disponível" : item?.detail || "Não conectado"}</p></div></li> })}</ul>
+          </div>
+          <p className="flex items-start gap-2 text-xs text-muted-foreground"><AudioLines className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{capability("speech")?.available ? "Voz da Kiara conectada." : browserVoice ? "Respostas lidas com a voz do navegador." : "Voz indisponível neste navegador."} O microfone só é usado quando você grava.</p>
+          <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Usar a IA deste computador</summary><p className="mt-2">Inicie a ponte local com <code>python scripts/run_kiara_chat.py</code> e escolha “Neste computador”. O navegador pode pedir acesso à rede local.</p></details>
+        </div>
+      </DialogContent>
+    </Dialog>
+  </ImmersiveShell>
 }
