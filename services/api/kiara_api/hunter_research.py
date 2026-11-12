@@ -10,7 +10,7 @@ import html
 import re
 import unicodedata
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 
 def folded(value: str) -> str:
@@ -265,18 +265,17 @@ def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
                 or (len(segments) >= 2 and segments[1].lower() in {"posts", "photos", "videos"})
             ):
                 data["content_kind"] = "publication"
+            elif first == "profile.php":
+                uid = (parse_qs(parts.query).get("id") or [""])[0]
+                if uid.isdigit():
+                    data["profile_handle"] = uid
+                    data["content_kind"] = "profile"
             elif len(segments) == 1 and re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", segments[0]):
                 data["profile_handle"] = segments[0]
                 data["content_kind"] = "profile"
             elif first in {"pages", "people"} and len(segments) >= 2:
                 data["profile_handle"] = segments[1]
                 data["content_kind"] = "profile"
-            elif first == "profile.php":
-                params = dict(parse_qs(parts.query))
-                uid = (params.get("id") or [""])[0]
-                if uid:
-                    data["profile_handle"] = uid
-                    data["content_kind"] = "profile"
     text = " ".join(str(value or "") for value in (data.pop("content", None), item.get("summary")))
     # User notes are not a verified source of public contact information.
     contacts = {"phone": None, "whatsapp_url": None, "email": None} if data.get("manual_import") else extract_contacts(text)
@@ -473,10 +472,17 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
                 counts["excluded"] += 1
                 continue
         source_parts = urlsplit(data["source_url"]) if data["source_url"] else None
-        normalized_source = (
-            f"{source_parts.scheme.lower()}://{(source_parts.hostname or '').lower()}"
-            f"{source_parts.path.rstrip('/').lower()}" if source_parts else ""
-        )
+        # Identity query parameters (Facebook id, Maps cid/place_id, etc.)
+        # distinguish real businesses. Drop tracking only; path-only keys used
+        # to collapse unrelated profiles into a single result.
+        normalized_source = urlunsplit((
+            "https", (source_parts.netloc or "").lower().removeprefix("www."),
+            source_parts.path.rstrip("/") or "/",
+            urlencode(sorted((key, value) for key, value in parse_qsl(source_parts.query)
+                             if not key.lower().startswith("utm_")
+                             and key.lower() not in {"fbclid", "gclid", "ref", "hl", "authuser", "entry", "g_ep"})),
+            "",
+        )) if source_parts else ""
         identities = {f"url:{normalized_source}"} if normalized_source else set()
         if data.get("place_id"):
             identities.add(f"place:{str(data['place_id']).lower()}")

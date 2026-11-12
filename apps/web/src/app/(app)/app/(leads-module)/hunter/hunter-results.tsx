@@ -1,38 +1,31 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowRight, AtSign, Check, Filter, Globe2, ListFilter, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, Radar, RefreshCw, Star, Trash2, TriangleAlert } from "lucide-react"
+import { BadgeCheck, Check, ExternalLink, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Star, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { hunterEvidenceLabel, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult, type HunterSource } from "@/lib/api/hunter-client"
-import { HunterActivity } from "./hunter-activity"
-import styles from "./hunter.module.css"
+import { hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
 
-const labels: Record<string, string> = { web: "Web pública", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
-const statuses: Record<string, string> = { completed: "Concluída", running: "Em execução", pending_confirmation: "Aguardando confirmação", failed: "Falhou", cancelled: "Cancelada" }
-const failureMessages: Record<string, string> = {
-  provider_timeout: "As fontes ultrapassaram o tempo de resposta. Aguarde alguns minutos, use Atualizar resultados e, se persistir, contate o administrador.",
-  provider_error: "As fontes selecionadas falharam. Veja abaixo qual fonte falhou e a ação necessária.",
-  exa_not_configured: "A busca Web não está configurada. Peça ao administrador para configurar EXA_API_KEY.",
-  firecrawl_not_configured: "A busca alternativa não está configurada. Peça ao administrador para configurar FIRECRAWL_API_KEY.",
-  public_index_unavailable: "Os provedores de busca pública estão indisponíveis. Tente novamente e, se persistir, peça ao administrador para revisar Exa e Firecrawl.",
-  browserbase_not_configured: "O Google Maps não está configurado. Peça ao administrador para configurar Browserbase ou Obscura.",
-  browser_provider_unavailable: "O navegador do Google Maps está indisponível. Tente novamente e, se persistir, peça ao administrador para revisar Browserbase ou Obscura.",
+const sourceLabels: Record<string, string> = { web: "Web", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
+const statusLabels: Record<string, string> = { completed: "Concluída", running: "Em andamento", pending_confirmation: "Não iniciada", failed: "Não concluída", cancelled: "Cancelada" }
+
+/** Client-facing explanations; configuration details stay in the collapsed technical section. */
+function failureMessage(code: string | null | undefined) {
+  if (code === "provider_timeout") return "As fontes demoraram demais para responder. Tente novamente em alguns minutos."
+  if (code?.endsWith("_not_configured")) return "Uma das fontes escolhidas ainda não está disponível na sua conta. Desmarque-a nos filtros ou fale com o suporte."
+  if (code === "public_index_unavailable" || code === "browser_provider_unavailable") return "As fontes estão indisponíveis agora. Tente novamente em alguns minutos."
+  return "A busca não foi concluída. Tente novamente."
 }
 
 function resultDisplayName(result: HunterResult) {
-  if (result.source === "instagram") {
-    const handle = result.public_data?.profile_handle?.trim().replace(/^@/, "") || result.title.match(/@([A-Za-z0-9._]{1,30})/)?.[1]
-    if (handle && /^[A-Za-z0-9._]{1,30}$/.test(handle)) return `@${handle}`
-    try {
-      const segment = new URL(result.url).pathname.split("/").filter(Boolean)[0]
-      if (segment && /^[A-Za-z0-9._]{1,30}$/.test(segment) && !["p", "reel", "reels"].includes(segment.toLowerCase())) return `@${segment}`
-    } catch { /* URL validity is enforced by parseHunterJob. */ }
-  }
-  if (result.source === "facebook") {
+  if (result.source === "instagram" || result.source === "facebook") {
     const handle = result.public_data?.profile_handle?.trim().replace(/^@/, "") || result.title.match(/@([A-Za-z0-9._-]{1,50})/)?.[1]
     if (handle && /^[A-Za-z0-9._-]{1,50}$/.test(handle)) return `@${handle}`
+    if (result.source === "instagram") {
+      try {
+        const segment = new URL(result.url).pathname.split("/").filter(Boolean)[0]
+        if (segment && /^[A-Za-z0-9._]{1,30}$/.test(segment) && !["p", "reel", "reels"].includes(segment.toLowerCase())) return `@${segment}`
+      } catch { /* URL validity is enforced by parseHunterJob. */ }
+    }
   }
   return result.title
     .replace(/\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$/i, "")
@@ -43,7 +36,7 @@ function resultDisplayName(result: HunterResult) {
     .replace(/\s+/g, " ").trim() || "Resultado sem nome"
 }
 
-function LeadRow({ result, searchId, location, historical }: { result: HunterResult; searchId: string; location: string | null; historical: boolean }) {
+function LeadRow({ result, searchId, location }: { result: HunterResult; searchId: string; location: string | null }) {
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(Boolean(result.public_data?.lead_id && result.public_data?.pipeline_entry_id))
   const [addError, setAddError] = useState("")
@@ -52,21 +45,18 @@ function LeadRow({ result, searchId, location, historical }: { result: HunterRes
   const phone = publicPhone(data?.phone)
   const email = publicEmail(data?.email)
   const website = publicWebsiteUrl(data?.website_url)
-  const whatsappNumber = whatsapp ? new URL(whatsapp).hostname === "wa.me" ? new URL(whatsapp).pathname.replace(/\//g, "") : new URL(whatsapp).searchParams.get("phone") : null
-  const contact = phone || (whatsappNumber ? `+${whatsappNumber}` : null)
   const publication = (result.source === "instagram" || result.source === "facebook") && data?.content_kind === "publication"
-  const evidenceConfirmed = !data?.manual_import && (
+  const verified = !data?.manual_import && (
     (result.source === "google_maps" && data?.detail_inspected === true) ||
     (result.source === "instagram" && data?.bio_status === "verified_public_profile") ||
-    (result.source === "facebook" && data?.page_status === "verified_public_page")
+    (result.source === "facebook" && data?.page_status === "verified_public_page") ||
+    (result.source === "web" && data?.enrichment === "completed")
   )
-  const evidenceLabel = hunterEvidenceLabel(result.source, data, historical)
-  const displayName = resultDisplayName(result)
-  const category = result.summary?.split(/[.!?\n]/)[0]?.trim().slice(0, 70) || "Categoria não informada"
-  const resolvedLocation = hunterResultLocation(result.source, data, location)
-  const websiteLabel = result.source === "web" && data?.website_evidence
-    ? "Página candidata"
-    : "Site público informado"
+  const name = resultDisplayName(result)
+  const summary = result.summary?.replace(/\s+/g, " ").trim()
+  const missing = hunterMissingEvidence(data)
+  const blocked = publication || missing.length > 0
+
   async function addLead() {
     if (adding || added) return
     setAdding(true); setAddError("")
@@ -79,76 +69,69 @@ function LeadRow({ result, searchId, location, historical }: { result: HunterRes
       setAddError(error instanceof Error ? error.message : "Não foi possível adicionar este lead.")
     } finally { setAdding(false) }
   }
-  return <article className={styles.hunterResultRow} aria-label={displayName}>
-    <div className={styles.hunterResultAvatar} aria-hidden="true">{displayName.replace(/^@/, "").slice(0, 1).toUpperCase()}</div>
-    <div className={styles.hunterResultBody}>
-      <div className={styles.hunterResultTop}>
-        <div className={styles.hunterIdentity}><h3>{displayName}</h3><p>{category}</p></div>
-        <div className={styles.hunterBadges}>
-          <span className={contact ? styles.badgePositive : styles.badgeMuted}>{contact ? <><Phone />Contato público listado</> : <>Telefone não encontrado</>}</span>
-          <span className={result.source === "instagram" ? styles.badgeInstagram : styles.badgeSource}>{labels[result.source]}</span>
-          <span className={evidenceConfirmed ? styles.badgeSource : styles.badgeWarning}>{publication ? "Publicação" : evidenceLabel}</span>
-        </div>
+
+  return <li className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start">
+    <div className="min-w-0 flex-1 space-y-1">
+      <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+        <span className="min-w-0 break-words">{name}</span>
+        <span className="text-xs font-normal text-muted-foreground">{sourceLabels[result.source]}</span>
+        {verified ? <span className="inline-flex items-center gap-1 text-xs font-normal text-emerald-400"><BadgeCheck className="size-3.5" aria-hidden="true" />Conferido</span> : null}
+      </h3>
+      <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {phone ? <span className="inline-flex items-center gap-1.5"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{phone}</span> : null}
+        {whatsapp ? <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-emerald-400 hover:underline"><MessageCircle className="size-3.5" aria-hidden="true" />WhatsApp</a> : null}
+        {email ? <a href={`mailto:${encodeURIComponent(email)}`} className="inline-flex items-center gap-1.5 hover:underline"><Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />{email}</a> : null}
+        {website ? <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:underline"><Globe2 className="size-3.5 text-muted-foreground" aria-hidden="true" />Site</a> : null}
+        {result.source === "google_maps" && data?.rating != null ? <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Star className="size-3.5" aria-hidden="true" />{data.rating.toFixed(1)} ({data.user_rating_count ?? 0})</span> : null}
+        {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}
       </div>
-      <div className={styles.hunterResultMeta}>
-        {phone && <span><Phone />{phone}</span>}
-        {whatsapp && <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle />Link público de WhatsApp</a>}
-        {email && <a href={`mailto:${encodeURIComponent(email)}`}><Mail />{email}</a>}
-        {website && <a href={website} target="_blank" rel="noopener noreferrer" title={data?.website_evidence || undefined}><Globe2 />{websiteLabel}</a>}
-        {result.source === "google_maps" && data?.rating != null && <span><Star />{data.rating.toFixed(1)} ({data.user_rating_count ?? 0} avaliações)</span>}
-      </div>
-      <div className={styles.hunterResultBottom}>
-        <span><MapPin />{resolvedLocation}</span>
-        <div className={styles.hunterResultActions}>
-          <Button type="button" size="sm" variant="outline" className={styles.hunterAddButton} disabled={adding || added} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "Adicionado" : "Adicionar lead"}</Button>
-          <Button asChild size="sm" className={styles.hunterDetailsButton}><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver detalhes de ${displayName}`}>Ver detalhes<ArrowRight /></a></Button>
-        </div>
-      </div>
-      {addError ? <p role="alert" className={styles.hunterAddError}>{addError}</p> : null}
+      {summary ? <p className="line-clamp-2 text-xs text-muted-foreground">{summary}</p> : null}
+      {blocked && !added ? <p className="text-xs text-amber-400">{publication ? "É uma publicação, não um perfil de negócio." : `Falta confirmar: ${missing.join(", ")}.`}</p> : null}
+      {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
     </div>
-  </article>
+    <div className="flex shrink-0 items-center gap-2">
+      <Button type="button" size="sm" variant={added ? "ghost" : "outline"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "Adicionado" : "Adicionar"}</Button>
+      <Button asChild size="icon" variant="ghost" className="size-8"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`} title="Abrir fonte"><ExternalLink /></a></Button>
+    </div>
+  </li>
 }
 
-export function HunterResults({ jobs, selected, busy, loading, stage, error, activeQuery, activeLocation, activeSources, onRefresh, onClear, onSelect, onBroaden }: {
-  jobs: HunterJob[]; selected?: HunterJob; busy: boolean; loading: boolean; stage: string; error: string
-  activeQuery: string; activeLocation: string; activeSources: HunterSource[]
+export function HunterResults({ jobs, selected, loading, onRefresh, onClear, onSelect, onBroaden }: {
+  jobs: HunterJob[]; selected?: HunterJob; loading: boolean
   onRefresh: () => void; onClear: () => void; onSelect: (id: string) => void; onBroaden: (job: HunterJob) => void
 }) {
-  const historical = Boolean(selected && !selected.validation)
-  const withContact = selected?.results.filter(result =>
-    publicPhone(result.public_data?.phone) || publicWhatsappUrl(result.public_data?.whatsapp_url),
-  ).length ?? 0
-  const discoveredLocations = selected?.results.flatMap((result) => result.public_data?.address ? [result.public_data.address] : []) ?? []
-  return <Card className={styles.resultsCard}>
-    <CardHeader className={styles.resultsHeader}>
-      <div className={styles.hunterResultsToolbar}>
-        <CardTitle className={styles.resultsTitle}>Resultados ({selected?.results.length ?? 0})</CardTitle>
-        <div className={styles.hunterSortControls}>
-          {jobs.length > 0 && <><span>Ordenar por</span><Select disabled={busy} value={selected?.id ?? jobs[0].id} onValueChange={onSelect}><SelectTrigger id="hunter-history" aria-label="Histórico e ordenação dos resultados" className={styles.hunterSortTrigger}><SelectValue /></SelectTrigger><SelectContent position="popper" className="max-w-[calc(100vw-3rem)]">{jobs.map((job) => <SelectItem key={job.id} value={job.id}><span className="block max-w-[60vw] truncate sm:max-w-lg">{job.query} · {statuses[job.status]} · {job.results.length} resultados</span></SelectItem>)}</SelectContent></Select></>}
-          {jobs.length > 0 && <Button variant="ghost" size="icon" className={styles.hunterToolbarButton} disabled={loading || busy} onClick={onClear} aria-label="Limpar resultados"><Trash2 /></Button>}
-          <Button variant="ghost" size="icon" className={styles.hunterToolbarButton} disabled={loading || busy} onClick={onRefresh} aria-label="Atualizar resultados">{loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}</Button>
-        </div>
+  if (loading && !selected) return <p role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Carregando buscas…</p>
+  if (!selected) return <p className="py-12 text-center text-sm text-muted-foreground">Os leads encontrados aparecem aqui.</p>
+
+  const withContact = selected.results.filter((result) => publicPhone(result.public_data?.phone) || publicWhatsappUrl(result.public_data?.whatsapp_url)).length
+
+  return <section aria-labelledby="hunter-results-title" className="overflow-hidden rounded-xl border bg-card">
+    <header className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center">
+      <div className="min-w-0 flex-1">
+        <h2 id="hunter-results-title" className="font-semibold">{selected.status === "completed" ? `${selected.results.length} resultado${selected.results.length === 1 ? "" : "s"}` : statusLabels[selected.status]}</h2>
+        <p className="truncate text-sm text-muted-foreground">{selected.query}{selected.location ? ` · ${selected.location}` : ""}{selected.status === "completed" && selected.results.length ? ` · ${withContact} com telefone` : ""}</p>
       </div>
-    </CardHeader>
-    <CardContent className="p-0">
-      {error && <div role="alert" className="m-4 flex gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm"><TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" /><div><strong className="block">Não foi possível concluir a consulta</strong><p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>{selected?.results.length ? <p className="mt-2 text-xs">Os resultados já carregados continuam disponíveis abaixo.</p> : null}</div></div>}
-      {busy ? <HunterActivity stage={stage} query={selected?.query || activeQuery} location={selected?.location || activeLocation} sources={selected?.sources || activeSources} foundCount={selected?.results.length ?? 0} discoveries={discoveredLocations} /> : loading && !selected ? <div role="status" className="grid min-h-80 place-items-center text-center text-sm text-muted-foreground"><div><Loader2 className="mx-auto mb-3 size-6 animate-spin motion-reduce:animate-none" />Carregando pesquisas salvas…</div></div> : !selected ? !error && <div className={styles.discoveryIntro}><div className={styles.discoveryScene} aria-hidden="true"><span className={styles.discoveryOrbit} /><span className={styles.discoveryOrbitAlt} /><span className={styles.discoveryOrb}><i /><i /></span><span className={`${styles.sourceBubble} ${styles.instagramBubble}`}><AtSign /></span><span className={`${styles.sourceBubble} ${styles.mapsBubble}`}><MapPin /></span><span className={`${styles.sourceBubble} ${styles.webBubble}`}><Globe2 /></span></div><h2>Defina o público e deixe que eu encontro as oportunidades para você.</h2><div className={styles.discoveryBenefits}><div><span><Globe2 /></span><strong>Múltiplas fontes</strong><small>Instagram, Maps, sites e mais</small></div><div><span><Filter /></span><strong>Filtros inteligentes</strong><small>Encontre exatamente o seu público</small></div><div><span><Radar /></span><strong>Resultados organizados</strong><small>Leads prontos para revisar</small></div></div></div> : <>
-        <div className={styles.summaryBlock} role="status" aria-live="polite">
-          <div className={styles.summaryIcon}>{selected.status === "completed" ? <Check /> : <Radar />}</div>
-          <div className={styles.summaryIdentity}><h2>{selected.status === "completed" ? "Pesquisa concluída" : statuses[selected.status]}</h2><p>{selected.query}{selected.location ? ` · ${selected.location}` : ""}</p></div>
-          <div className={styles.summaryMetrics}>
-            <span><strong>{selected.results.length}</strong> resultado{selected.results.length === 1 ? "" : "s"}</span>
-            {selected.validation && <span><strong>{withContact}</strong> com contato</span>}
-            {Boolean(selected.validation?.incomplete) && <span><strong>{selected.validation?.incomplete}</strong> incompletos descartados</span>}
-          </div>
-        </div>
-        {selected.status === "running" && <p className="p-5 text-sm leading-6 text-muted-foreground">A última atualização indica que a pesquisa está em execução. Use Atualizar resultados para consultar o estado atual.</p>}
-        {selected.status === "failed" && <div role="alert" className="p-5 text-sm text-destructive"><p className="font-semibold">A pesquisa falhou</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{failureMessages[selected.error_code ?? ""] ?? "A fonte externa não concluiu a pesquisa. Tente novamente e, se persistir, contate o administrador."} Código: {selected.error_code || "provider_error"}.</p>{selected.warnings?.length ? <ul className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">{selected.warnings.map((warning, index) => <li key={`${index}-${warning}`} className="rounded-md border border-destructive/15 bg-background/40 px-3 py-2">{warning}</li>)}</ul> : null}</div>}
-        {selected.status === "cancelled" && <p className="p-5 text-sm">Esta pesquisa foi cancelada.</p>}
-        {selected.status === "pending_confirmation" && <p className="p-5 text-sm text-muted-foreground">A pesquisa foi registrada, mas a execução ainda não foi confirmada. Prepare e confirme uma nova busca.</p>}
-        {selected.status === "completed" && !selected.results.length && <div className="flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center"><ListFilter className="size-7 text-muted-foreground" /><h3 className="mt-4 font-semibold">Nenhum resultado encontrado</h3><p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Nenhum contato atendeu aos filtros com evidência suficiente nas fontes consultadas. Revise a região ou os critérios; dados não confirmados não são apresentados como correspondências.</p><Button variant="outline" className="mt-5 h-10" onClick={() => onBroaden(selected)}>Ajustar pesquisa</Button></div>}
-        <div className={styles.leadsGrid}>{selected.results.map((result) => <LeadRow key={result.id} result={result} searchId={selected.id} location={selected.location} historical={historical} />)}</div>
-      </>}
-    </CardContent>
-  </Card>
+      <div className="flex items-center gap-1">
+        {jobs.length > 1 ? <select aria-label="Buscas anteriores" value={selected.id} onChange={(event) => onSelect(event.target.value)} className="h-9 max-w-56 truncate rounded-md border bg-background px-2 text-sm">
+          {jobs.map((job) => <option key={job.id} value={job.id}>{job.query}{job.location ? ` · ${job.location}` : ""}</option>)}
+        </select> : null}
+        <Button variant="ghost" size="icon" className="size-9" disabled={loading} onClick={onRefresh} aria-label="Atualizar resultados">{loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button>
+        <Button variant="ghost" size="icon" className="size-9" disabled={loading} onClick={onClear} aria-label="Limpar buscas"><Trash2 /></Button>
+      </div>
+    </header>
+
+    {selected.status === "failed" ? <div role="alert" className="space-y-3 px-5 py-6 text-sm">
+      <p className="flex items-start gap-2"><TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-400" aria-hidden="true" />{failureMessage(selected.error_code)}</p>
+      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Detalhes técnicos</summary><p className="mt-2">Código: {selected.error_code || "provider_error"}</p>{selected.warnings?.map((warning, index) => <p key={`${index}-${warning}`} className="mt-1">{warning}</p>)}</details>
+    </div> : null}
+    {selected.status === "running" ? <p className="px-5 py-6 text-sm text-muted-foreground">A busca ainda está em andamento. Atualize em instantes.</p> : null}
+    {selected.status === "cancelled" || selected.status === "pending_confirmation" ? <p className="px-5 py-6 text-sm text-muted-foreground">Esta busca não foi executada. Faça uma nova busca.</p> : null}
+    {selected.status === "completed" && !selected.results.length ? <div className="px-5 py-10 text-center">
+      <p className="font-medium">Nenhum lead atendeu aos critérios</p>
+      <p className="mt-1 text-sm text-muted-foreground">Tente outra região ou afrouxe os filtros.</p>
+      <Button variant="outline" className="mt-4" onClick={() => onBroaden(selected)}>Ajustar busca</Button>
+    </div> : null}
+    {selected.results.length ? <ul className="divide-y">{selected.results.map((result) => <LeadRow key={result.id} result={result} searchId={selected.id} location={selected.location} />)}</ul> : null}
+  </section>
 }

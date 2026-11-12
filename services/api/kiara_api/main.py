@@ -29,6 +29,7 @@ from .adapters.demo import (
 from .adapters.pipeline_memory import InMemoryPipelineRepository
 from .application.conversations import ConversationCommands
 from .channel_webhooks import create_channel_webhook_router
+from .chat import create_chat_router
 from .chatwoot import create_chatwoot_router
 from .competition import create_competition_router
 from .competition_store import CompetitionRepository
@@ -408,6 +409,7 @@ def create_app(
     )
     app.include_router(create_pipeline_router(pipeline_entries_repository))
     app.include_router(create_platform_router(database_url=config.database_url))
+    app.include_router(create_chat_router())
     app.include_router(create_instagram_content_router())
     app.include_router(create_whatsapp_web_router(WhatsAppWebRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_social_router(SocialRepository(PostgresRepository(config.database_url) if config.database_url else None)))

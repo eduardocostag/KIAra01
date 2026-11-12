@@ -15,8 +15,16 @@ def parse_with_scrapling(html: str, base_url: str) -> tuple[str, list[str]]:
     from scrapling.parser import Selector
 
     page = Selector(html)
-    text = page.css("body *:not(script):not(style):not(noscript) ::text").getall()
-    links = page.css("a::attr(href)").getall()
+    # Exclude the whole subtree: a CSS descendant text selector also includes
+    # script/style contents through their parent div and pollutes contact facts.
+    text = page.xpath(
+        "//body//text()[not(ancestor::script or ancestor::style or ancestor::noscript "
+        "or ancestor::template or ancestor::*[@hidden or @aria-hidden='true'])]"
+    ).getall()
+    links = page.xpath(
+        "//body//a[not(ancestor::script or ancestor::style or ancestor::noscript "
+        "or ancestor::template or ancestor-or-self::*[@hidden or @aria-hidden='true'])]/@href"
+    ).getall()
     visible = " ".join(re.sub(r"\s+", " ", part).strip() for part in text if isinstance(part, str) and part.strip())
     return visible[:40000], [urljoin(base_url, link) for link in links if isinstance(link, str)][:500]
 

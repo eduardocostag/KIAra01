@@ -1,5 +1,5 @@
 /** Read-only platform contracts. No tenant or permission is inferred in the browser. */
-export const moduleKeys = ["leads", "whatsapp", "atendimento", "ti"] as const
+export const moduleKeys = ["leads", "whatsapp", "atendimento", "ti", "intelligence"] as const
 export type ModuleKey = typeof moduleKeys[number]
 export type PlatformRole = "client" | "reseller" | "platform_admin"
 

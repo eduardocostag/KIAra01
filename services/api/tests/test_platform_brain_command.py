@@ -1,45 +1,14 @@
-import json
 
 import pytest
-from kiara_api.adapters.postgres import _uuid
-from kiara_api.http.context import RequestContext
-from kiara_api.main import create_app
-from kiara_api.platform.access import PlatformAccessRepository
-from kiara_api.platform.service import PLATFORM_ADMIN_EMAILS, PlatformService
-from kiara_api.ports.identity import IdentityPrincipal
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-
-class Connection:
-    def __init__(self, organizations, memberships):
-        self.organizations, self.memberships = organizations, memberships
-        self.calls = []
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        return False
-
-    def transaction(self):
-        return self
-
-    async def execute(self, query, params=()):
-        self.calls.append((query, params))
-        if "FROM organizations" in query:
-            return Cursor(self.organizations.get(params[0]))
-        if "FROM memberships" in query:
-            return Cursor(self.memberships.get(tuple(params)))
-        assert query == "SET TRANSACTION READ ONLY" or query.startswith("SELECT set_config(")
-        return Cursor(None)
-
-
-class Database:
-    def __init__(self, organizations, memberships):
-        self.connection = Connection(organizations, memberships)
-
-    async def _connect(self):
-        return self.connection
+from kiara_api.http.errors import ApiError
+from kiara_api.platform.access import PlatformAccessRepository
+from kiara_api.platform.executors.base import ExecutionResult
+from kiara_api.platform.executors.factory import ExecutorFactory
+from kiara_api.platform.router import create_platform_router
+from kiara_api.platform.service import PLATFORM_ADMIN_EMAILS
+from kiara_api.ports.identity import IdentityPrincipal
 
 
 def principal(user="alice", organization=None, role="owner", email=None):
@@ -57,10 +26,18 @@ def client(identity=None, db=None):
     class Verifier:
         async def verify(self, token):
             if token != "valid-token":
-                raise Exception("Invalid token")
+                raise ApiError(401, "invalid_token", "Invalid token")
             return identity
 
-    app = create_app(identity_verifier=Verifier())
+    app = FastAPI()
+    app.state.identity_verifier = Verifier()
+
+    @app.middleware("http")
+    async def correlation(request, call_next):
+        request.state.correlation_id = "brain-test"
+        return await call_next(request)
+
+    app.include_router(create_platform_router(PlatformAccessRepository(db)))
     return TestClient(app)
 
 
@@ -79,14 +56,14 @@ def test_brain_command_requires_admin_access():
     assert response.json()["error"]["code"] == "platform_admin_only"
 
 def test_brain_command_processes_video_intent(monkeypatch):
-    admin_identity = principal(email=list(PLATFORM_ADMIN_EMAILS)[0])
+    admin_identity = principal(email=next(iter(PLATFORM_ADMIN_EMAILS)))
     admin_client = client(identity=admin_identity)
 
     # Mock the executor to avoid actual external calls
     class MockWan2_1Executor:
-        async def execute(self, prompt: str, metadata: dict = None):
-            return {"success": True, "output_path": "mock_video.mp4", "message": "Simulated video generation"}
-    monkeypatch.setattr("kiara_api.platform.executors.factory.Wan2_1Executor", MockWan2_1Executor)
+        async def execute(self, prompt: str, metadata: dict | None = None):
+            return ExecutionResult(True, "mock_video.mp4", "Test video generation")
+    monkeypatch.setitem(ExecutorFactory._executors, "wan2_1", MockWan2_1Executor)
 
     response = admin_client.post("/v1/platform/brain/command", headers=AUTH, json={"prompt": "Gere um vídeo de um gato"})
     assert response.status_code == 200
@@ -102,18 +79,18 @@ def test_brain_command_processes_video_intent(monkeypatch):
     assert payload["results"][0]["output"] == "mock_video.mp4"
 
 def test_brain_command_processes_multimodal_intent(monkeypatch):
-    admin_identity = principal(email=list(PLATFORM_ADMIN_EMAILS)[0])
+    admin_identity = principal(email=next(iter(PLATFORM_ADMIN_EMAILS)))
     admin_client = client(identity=admin_identity)
 
     class MockVoiceStudioExecutor:
-        async def execute(self, prompt: str, metadata: dict = None):
-            return {"success": True, "output_path": "mock_audio.mp3", "message": "Simulated voice generation"}
+        async def execute(self, prompt: str, metadata: dict | None = None):
+            return ExecutionResult(True, "mock_audio.mp3", "Test voice generation")
     class MockMoneyPrinterTurboExecutor:
-        async def execute(self, prompt: str, metadata: dict = None):
-            return {"success": True, "output_path": "mock_viral_video.mp4", "message": "Simulated viral video generation"}
+        async def execute(self, prompt: str, metadata: dict | None = None):
+            return ExecutionResult(True, "mock_viral_video.mp4", "Test video generation")
 
-    monkeypatch.setattr("kiara_api.platform.executors.factory.VoiceStudioExecutor", MockVoiceStudioExecutor)
-    monkeypatch.setattr("kiara_api.platform.executors.factory.MoneyPrinterTurboExecutor", MockMoneyPrinterTurboExecutor)
+    monkeypatch.setitem(ExecutorFactory._executors, "voice_studio", MockVoiceStudioExecutor)
+    monkeypatch.setitem(ExecutorFactory._executors, "money_printer_turbo", MockMoneyPrinterTurboExecutor)
 
     response = admin_client.post("/v1/platform/brain/command", headers=AUTH, json={"prompt": "Crie um vídeo viral com voz sobre IA"})
     assert response.status_code == 200
@@ -126,3 +103,12 @@ def test_brain_command_processes_multimodal_intent(monkeypatch):
     assert len(payload["results"]) == 2
     assert payload["results"][0]["success"] is True
     assert payload["results"][1]["success"] is True
+
+
+@pytest.mark.parametrize("prompt", ["Gere um vídeo", "Fale com voz", "Abra o navegador"])
+def test_brain_command_reports_missing_integrations_without_fictional_artifacts(prompt):
+    result = client().post("/v1/platform/brain/command", headers=AUTH, json={"prompt": prompt})
+    assert result.status_code == 200
+    outcomes = result.json()["results"]
+    assert outcomes
+    assert all(item["success"] is False and item["output"] is None for item in outcomes)

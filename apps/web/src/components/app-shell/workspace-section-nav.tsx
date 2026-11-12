@@ -30,7 +30,7 @@ export function SupportSectionNav() {
 
   return <nav aria-label="Seções de atendimento" className="flex flex-wrap gap-2">
     <SectionLink href="/app/inbox" label="Caixa de entrada" active={onInbox} icon={MessagesSquare} />
-    <SectionLink href="/app/followups" label="WhatsApp" active={!onInbox} icon={MessageCircle} />
+    <SectionLink href="/app/whatsapp" label="WhatsApp" active={!onInbox} icon={MessageCircle} />
   </nav>
 }
 

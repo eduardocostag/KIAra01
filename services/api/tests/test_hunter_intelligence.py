@@ -23,6 +23,7 @@ def test_expands_professional_synonyms_without_requiring_an_llm():
     assert "educador fisico" in query
     assert "treinador pessoal" in query
     assert query.endswith("Canoas")
+    assert query.startswith("(") and ") Canoas" in query
 
 
 def test_understands_problem_based_commercial_intent():

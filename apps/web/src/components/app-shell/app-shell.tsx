@@ -2,15 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   House,
   Inbox,
   Menu,
   Radar,
+  Search,
   Settings2,
   ShieldCheck,
   UsersRound,
+  ArrowLeft,
+  Cable,
+  MessageCircle,
+  ScanText,
+  Workflow,
+  Sparkles,
+  SlidersHorizontal,
 } from "lucide-react";
 import { KiaraBrand } from "@/components/brand/kiara-brand";
 import { Button } from "@/components/ui/button";
@@ -23,39 +31,77 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { isModuleNavActive, modulePrefixForPath } from "@/lib/module-navigation";
 
-const nav = [
-  { href: "/app/leads", label: "Visão geral", icon: House },
-  { href: "/app/hunter", label: "Hunter", icon: UsersRound },
-  { href: "/app/inbox", label: "Atendimento", icon: Inbox },
-  { href: "/app/pipeline", label: "Leads e CRM", icon: Inbox },
-  { href: "/app/concorrencia", label: "Concorrência", icon: Radar },
-  { href: "/app/settings", label: "Configurações", icon: Settings2 },
-];
+function subscribeHash(listener: () => void) {
+  window.addEventListener("hashchange", listener);
+  window.addEventListener("popstate", listener);
+  return () => {
+    window.removeEventListener("hashchange", listener);
+    window.removeEventListener("popstate", listener);
+  };
+}
+
+function currentHash() { return window.location.hash; }
+function emptyHash() { return ""; }
+
+const navConfigs = {
+  "/app/leads": [
+    { href: "/app/leads", label: "Visão geral", icon: House },
+    { href: "/app/hunter", label: "Buscar leads", icon: Search },
+    { href: "/app/pipeline", label: "Contatos", icon: UsersRound },
+    { href: "/app/concorrencia", label: "Concorrência", icon: Radar },
+    { href: "/app/settings", label: "Configurações", icon: Settings2 },
+  ],
+  "/app/whatsapp": [
+    { href: "/app/whatsapp", label: "Visão geral", icon: House },
+    { href: "/app/whatsapp#conexao", label: "Conexão", icon: Cable },
+    { href: "/app/whatsapp#analise", label: "Análise da conversa", icon: ScanText },
+    { href: "/app/whatsapp/automacao", label: "Automação e contatos", icon: Workflow },
+    { href: "/app/inbox", label: "Caixa de entrada", icon: Inbox },
+    { href: "/app/whatsapp#configuracoes", label: "Configuração local", icon: Settings2 },
+  ],
+  "/app/atendimento": [
+    { href: "/app/atendimento/inbox", label: "Inbox Unificado", icon: Inbox },
+    { href: "/app/atendimento/followups", label: "Follow-ups", icon: UsersRound },
+  ],
+  "/app/chat": [
+    { href: "/app/chat", label: "Conversa", icon: MessageCircle },
+    { href: "/app/chat#capacidades", label: "Recursos e conexões", icon: Sparkles },
+    { href: "/app/chat#configuracoes", label: "Preferências", icon: SlidersHorizontal },
+    { href: "/app/inbox", label: "Caixa de entrada", icon: Inbox },
+    { href: "/app/whatsapp", label: "WhatsApp", icon: Cable },
+  ],
+  "/app/ti": [
+    { href: "/app/ti/logs", label: "Logs do Sistema", icon: ShieldCheck },
+    { href: "/app/ti/config", label: "Infraestrutura", icon: Settings2 },
+  ]
+};
 
 function Navigation({
   onNavigate,
   isSystemAdmin,
+  modulePrefix,
 }: {
   onNavigate?: () => void;
   isSystemAdmin: boolean;
+  modulePrefix: string;
 }) {
   const pathname = usePathname();
-  const items = isSystemAdmin
-    ? [
-        ...nav,
-        { href: "/app/admin", label: "Administração", icon: ShieldCheck },
-      ]
-    : nav;
+  const hash = useSyncExternalStore(subscribeHash, currentHash, emptyHash);
+  let items = navConfigs[modulePrefix as keyof typeof navConfigs] || [];
+
+  if (isSystemAdmin && modulePrefix === "/app/leads") {
+     items = [...items, { href: "/app/admin", label: "Administração", icon: ShieldCheck }];
+  }
+
   return (
-    <nav aria-label="Navegação principal" className="kiara-shell-nav space-y-2">
+    <nav aria-label="Navegação do módulo" className="kiara-shell-nav space-y-2">
       {items.map(({ href, label, icon: Icon }) => {
-        const active =
-          href === "/app" ? pathname === href
-            : href === "/app/inbox" ? pathname.startsWith("/app/inbox") || pathname.startsWith("/app/followups")
-              : pathname.startsWith(href);
+        const active = isModuleNavActive(pathname, hash, href);
+        const NavigationLink = href.includes("#") ? "a" : Link;
         return (
-          <Link
+          <NavigationLink
             key={href}
             href={href}
             onClick={onNavigate}
@@ -67,13 +113,9 @@ function Navigation({
                 : "text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground",
             )}
           >
-            <Icon
-              className="kiara-shell-nav-icon size-[18px] shrink-0"
-              strokeWidth={active ? 2.3 : 1.9}
-              aria-hidden="true"
-            />
+            <Icon className="size-[18px] shrink-0" strokeWidth={active ? 2.3 : 1.9} aria-hidden="true" />
             <span className="flex-1">{label}</span>
-          </Link>
+          </NavigationLink>
         );
       })}
     </nav>
@@ -89,41 +131,39 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const isLeadsModule = pathname.startsWith("/app/leads") || 
-                        pathname.startsWith("/app/hunter") || 
-                        pathname.startsWith("/app/inbox") || 
-                        pathname.startsWith("/app/pipeline") || 
-                        pathname.startsWith("/app/concorrencia") || 
-                        pathname.startsWith("/app/settings") || 
-                        pathname.startsWith("/app/admin") ||
-                        pathname.startsWith("/app/followups") ||
-                        pathname.startsWith("/app/conteudo") ||
-                        pathname.startsWith("/app/integrations");
+  
+  // Detecta o módulo ativo
+  const modulePrefix = modulePrefixForPath(pathname);
+  const isModuleActive = !!modulePrefix && pathname !== '/app';
+  const isWhatsApp = modulePrefix === "/app/whatsapp";
+  const isChat = modulePrefix === "/app/chat";
 
 
   return (
-    <div className="kiara-workspace min-h-screen bg-background text-foreground">
+    <div className={cn("kiara-workspace min-h-screen bg-background text-foreground", isWhatsApp && "kiara-whatsapp-shell")}>
       <a href="#conteudo" className="skip-link">
         Pular para o conteúdo
       </a>
       
-      {/* Sidebar Comercial apenas para Leads */}
-      {isLeadsModule && (
+      {/* Sidebar Modular */}
+      {isModuleActive && (
         <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-[202px] flex-col border-r border-sidebar-border bg-sidebar px-3 py-6 md:flex">
           <Link href="/app" className="kiara-shell-brand mb-8 flex min-h-12 items-center px-2" aria-label="Kiara, início">
             <KiaraBrand inverse />
           </Link>
-          <Navigation isSystemAdmin={isSystemAdmin} />
-          {isSystemAdmin ? <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
-            <Link href="/app/platform" aria-label="Abrir plataforma KIARA" className="inline-flex min-h-11 items-center text-[10px] font-semibold tracking-[.18em] text-sidebar-foreground/60 hover:text-sidebar-foreground">
-              Plataforma KIARA
-            </Link>
-          </div> : null}
+          {isWhatsApp && <div className="mb-5 flex items-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-3 py-3 text-sm font-semibold text-emerald-300"><MessageCircle className="size-4" aria-hidden="true" />WhatsApp</div>}
+          {isChat && <div className="mb-5 flex items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/5 px-3 py-3 text-sm font-semibold text-violet-200"><Sparkles className="size-4" aria-hidden="true" />Kiara Chat</div>}
+          <Navigation isSystemAdmin={isSystemAdmin} modulePrefix={modulePrefix!} />
+          <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
+            {isWhatsApp && <p className="mb-3 text-xs leading-5 text-sidebar-foreground/60">Conexão e análise local.<br />Automação em área própria.</p>}
+            {isChat && <p className="mb-3 text-xs leading-5 text-sidebar-foreground/60">Converse, crie e planeje.<br />Recursos conforme conexão.</p>}
+            <Link href="/app" className="inline-flex min-h-11 items-center gap-2 text-xs font-medium text-sidebar-foreground/65 hover:text-sidebar-foreground"><ArrowLeft className="size-4" aria-hidden="true" />Trocar módulo</Link>
+          </div>
         </aside>
       )}
 
       {/* Header simplificado para Plataforma/Selector */}
-      {!isLeadsModule && pathname !== "/app" && (
+      {!isModuleActive && pathname !== "/app" && (
         <header className="fixed top-0 left-0 z-30 flex w-full items-center border-b border-border bg-background/80 px-6 py-4 backdrop-blur-xl">
            <Link href="/app" className="flex items-center gap-2 font-medium text-muted-foreground hover:text-foreground">
              <Menu className="size-4" /> Voltar ao Início
@@ -144,32 +184,36 @@ export function AppShell({
         </SheetTrigger>
         <SheetContent
           side="left"
-          className="flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground"
+          className={cn("flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground", isWhatsApp && "kiara-whatsapp-shell")}
         >
           {/* Menu Mobile unificado */}
           <SheetHeader className="p-0 text-left">
             <SheetTitle>
               <KiaraBrand inverse />
             </SheetTitle>
+            <SheetDescription>{isWhatsApp ? "WhatsApp · conexão, análise e automação" : isChat ? "Kiara Chat · conversa e criação" : "Navegue pelas áreas da Kiara"}</SheetDescription>
           </SheetHeader>
           <div className="mt-7">
-            <Navigation
-              isSystemAdmin={isSystemAdmin}
-              onNavigate={() => setMenuOpen(false)}
-            />
-            <Link href="/app/platform" onClick={() => setMenuOpen(false)} className="mt-6 block rounded-xl p-3 text-sm font-medium text-sidebar-foreground/60 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground">
-              Plataforma KIARA
+            {isModuleActive && (
+                <Navigation
+                    isSystemAdmin={isSystemAdmin}
+                    modulePrefix={modulePrefix!}
+                    onNavigate={() => setMenuOpen(false)}
+                />
+            )}
+            <Link href="/app" onClick={() => setMenuOpen(false)} className="mt-6 block rounded-xl p-3 text-sm font-medium text-sidebar-foreground/60 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground">
+              Trocar módulo
             </Link>
           </div>
         </SheetContent>
       </Sheet>
-      <div className={cn("min-w-0", isLeadsModule && "md:pl-[202px]")}>
+      <div className={cn("min-w-0", isModuleActive && "md:pl-[202px]")}>
         <main
           id="conteudo"
           tabIndex={-1}
           className={cn(
             "relative mx-auto min-h-screen w-full min-w-0 max-w-[1540px] outline-none sm:p-7",
-            isLeadsModule ? "p-4 pt-20 md:pt-7 lg:p-8" : "p-0"
+            isModuleActive ? "p-4 pt-20 md:pt-7 lg:p-8" : "p-0"
           )}
         >
           {children}

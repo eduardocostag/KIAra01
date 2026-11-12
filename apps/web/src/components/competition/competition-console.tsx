@@ -44,7 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import styles from "@/app/(app)/app/concorrencia/competition-reference.module.css";
+import styles from "@/app/(app)/app/(leads-module)/concorrencia/competition-reference.module.css";
 
 import { filterProspects, prospectsCsv } from "@/lib/competition/export";
 

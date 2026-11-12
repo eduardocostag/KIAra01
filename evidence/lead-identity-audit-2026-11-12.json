@@ -1,0 +1,111 @@
+{
+  "mode": "live_local_configuration_no_persistence",
+  "samples": [
+    {
+      "source": "google_maps",
+      "name": "Dentista Porto Alegre Clínica Dental Center",
+      "source_url": "https://www.google.com/maps/place/Dentista+Porto+Alegre+%7C+Cl%C3%ADnica+Dental+Center/data=!4m7!3m6!1s0x95197907cbf5f4bd:0x8350219c9edd8058!8m2!3d-30.030598!4d-51.223675!16s%2Fg%2F1tfv68zn!19sChIJvfT1ywd5GZURWIDdnpwhUIM?authuser=0&hl=pt-BR&g_ep=EgoyMDI2MTEwOS4wIJJjKgBIAVAD&rclk=1",
+      "checked_page": "https://clinicadentalcenter.com.br/",
+      "detail_inspected": true,
+      "enrichment": "completed",
+      "address_evidence": "verified_maps_detail",
+      "address": "R. Gen. Vitorino, 305 - 7 andar - Centro Histórico, Porto Alegre - RS, 90020-171, Brasil",
+      "phone_present": true,
+      "whatsapp_present": true,
+      "name_tokens": [
+        "dental",
+        "center"
+      ],
+      "name_tokens_on_page": [
+        "dental",
+        "center"
+      ],
+      "phone_matches_page": false,
+      "whatsapp_matches_page": false,
+      "address_text_on_page": false
+    },
+    {
+      "source": "google_maps",
+      "name": "Sorridents Porto Alegre Clinica Odontológica / Dentista",
+      "source_url": "https://www.google.com/maps/place/Sorridents+Porto+Alegre+Clinica+Odontol%C3%B3gica+%2F+Dentista/data=!4m7!3m6!1s0x9519793d86ce2e57:0x4949903179dcdf30!8m2!3d-30.0297628!4d-51.224009!16s%2Fg%2F11ry3rbqw0!19sChIJVy7Ohj15GZURMN_ceTGQSUk?authuser=0&hl=pt-BR&g_ep=EgoyMDI2MTEwOS4wIJJjKgBIAVAD&rclk=1",
+      "checked_page": "https://sorridentsportoalegre.com.br/",
+      "detail_inspected": true,
+      "enrichment": "completed",
+      "address_evidence": "verified_maps_detail",
+      "address": "R. dos Andradas, 1745 - Centro Histórico, Porto Alegre - RS, 90020-013, Brasil",
+      "phone_present": true,
+      "whatsapp_present": true,
+      "name_tokens": [
+        "sorridents"
+      ],
+      "name_tokens_on_page": [],
+      "phone_matches_page": false,
+      "whatsapp_matches_page": true,
+      "address_text_on_page": false
+    },
+    {
+      "source": "web",
+      "name": "Rede de Clínicas Médicas, Grande Porto Alegre - RS Salute Saúde e Odontologia",
+      "source_url": "https://clinicasalute.com.br/",
+      "checked_page": "https://clinicasalute.com.br/",
+      "detail_inspected": null,
+      "enrichment": "completed",
+      "address_evidence": "verified_public_page",
+      "address": "Av. Borges de Medeiros, 645 - Centro, Porto Alegre - RS",
+      "phone_present": true,
+      "whatsapp_present": true,
+      "name_tokens": [
+        "rede",
+        "medicas",
+        "grande",
+        "salute",
+        "saude"
+      ],
+      "name_tokens_on_page": [
+        "rede",
+        "medicas",
+        "grande",
+        "salute",
+        "saude"
+      ],
+      "phone_matches_page": true,
+      "whatsapp_matches_page": true,
+      "address_text_on_page": true
+    }
+  ],
+  "comparison_caveat": "Boolean comparisons use exact extracted values; false does not establish an incorrect contact when multiple numbers or address formatting variants exist.",
+  "confirmed_code_defects": [
+    {
+      "field": "phone",
+      "input": "tel:(51)%203225-1122",
+      "actual": "512032251122",
+      "expected": "5132251122",
+      "cause": "Percent-encoded whitespace is not decoded before removing non-digits."
+    }
+  ],
+  "name_validation_limit": "Minimum requirement checks the presence of a title or handle, not proof of the legal or trading name. Web names may still be full search document titles.",
+  "production_records_audited": false,
+  "manual_source_review": [
+    {
+      "business": "Cl?nica Dental Center",
+      "name": "confirmed_with_commercial_terms_in_title",
+      "phone": "confirmed_Maps_number_matches_visible_site_number_with_country_code",
+      "address": "confirmed_street_and_number_305",
+      "url": "https://clinicadentalcenter.com.br/"
+    },
+    {
+      "business": "Sorridents Porto Alegre",
+      "name": "confirmed",
+      "phone": "confirmed_landline_33405959_and_separate_whatsapp_985631234",
+      "address": "confirmed_street_and_number_1745",
+      "url": "https://sorridentsportoalegre.com.br/contato/"
+    },
+    {
+      "business": "Salute Sa?de e Odontologia",
+      "name": "confirmed_brand_but_returned_name_is_full_document_title",
+      "phone": "confirmed_site_central_contact",
+      "address": "confirmed_on_site_but_brand_has_multiple_units",
+      "url": "https://www.clinicasalute.com.br/"
+    }
+  ]
+}

@@ -1,10 +1,14 @@
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
-
+from kiara_api.http.context import RequestContext
+from kiara_api.http.dependencies import authenticated_context
+from kiara_api.http.errors import ApiError
 from kiara_api.whatsapp_web import (
     AnalysisCompletion,
     AnalysisRequest,
@@ -13,13 +17,11 @@ from kiara_api.whatsapp_web import (
     WhatsAppWebRepository,
     create_whatsapp_web_router,
 )
-from kiara_api.http.context import RequestContext
-from kiara_api.http.dependencies import authenticated_context
-from kiara_api.http.errors import ApiError
+from pydantic import ValidationError
 
 
 def batch(event_id="one", kind="heartbeat"):
-    return EventBatch(events=[dict(id=event_id, kind=kind, occurred_at=datetime.now(UTC), text="hello")])
+    return EventBatch(events=[{"id": event_id, "kind": kind, "occurred_at": datetime.now(UTC), "text": "hello"}])
 
 
 @pytest.mark.asyncio
@@ -42,6 +44,50 @@ async def test_isolation_idempotency_and_heartbeat():
     assert (await repo.history("a"))["online"] is False
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_config_removal_disables_stale_thread_automation_for_same_tenant(enabled):
+    """Exercise allowlist reconciliation at the SQL boundary, without a live DB."""
+    organization, other_organization = uuid4(), uuid4()
+    threads = [
+        {"organization": organization, "phone": "5511999999999", "channel": "whatsapp", "automation": True, "handoff": False, "status": "open"},
+        {"organization": organization, "phone": "5511888888888", "channel": "whatsapp", "automation": True, "handoff": False, "status": "open"},
+        {"organization": organization, "phone": "5511777777777", "channel": "instagram", "automation": True, "handoff": False, "status": "open"},
+        {"organization": other_organization, "phone": "5511888888888", "channel": "whatsapp", "automation": True, "handoff": False, "status": "open"},
+    ]
+
+    class Connection:
+        async def execute(self, sql, params):
+            if sql.startswith("INSERT INTO whatsapp_web_config"):
+                return
+            if "SET automation_enabled=false" in sql:
+                assert "organization_id=%s" in sql and "channel='whatsapp'" in sql
+                for thread in threads:
+                    if thread["organization"] == params[0] and thread["channel"] == "whatsapp":
+                        thread["automation"] = False
+            else:
+                automation, handoff, org, phone = params
+                for thread in threads:
+                    if thread["organization"] == org and thread["channel"] == "whatsapp" and thread["phone"] == phone and thread["status"] != "blocked":
+                        thread.update(automation=automation, handoff=handoff)
+
+    @asynccontextmanager
+    async def transaction(org):
+        assert str(org) == str(organization)
+        yield Connection()
+
+    repository = WhatsAppWebRepository(SimpleNamespace(_transaction=transaction))
+    config = WhatsAppConfig(
+        enabled=enabled, pilot_consent_confirmed=True, ai_context="Empresa de teste.",
+        contacts=[{"phone": "5511999999999", "enabled": True}] if enabled else [],
+    )
+    await repository.save_config(str(organization), config)
+    assert threads[0]["automation"] is enabled
+    assert threads[1]["automation"] is False  # Removed from the authorization list.
+    assert threads[2]["automation"] is True  # Another channel is unaffected.
+    assert threads[3]["automation"] is True  # Another tenant is unaffected.
+
+
 @pytest.mark.parametrize("payload", [
     {"contacts": [{"phone": "bad"}]},
     {"contact_start": "23:00", "contact_end": "09:00"},
@@ -60,7 +106,8 @@ def test_config_rejects_invalid_settings(payload):
 
 def test_events_require_timezone_and_bounded_batches():
     with pytest.raises(ValidationError):
-        EventBatch(events=[dict(id="a", kind="outbound", occurred_at=datetime.now())])
+        naive_timestamp = datetime.now(UTC).replace(tzinfo=None)
+        EventBatch(events=[{"id": "a", "kind": "outbound", "occurred_at": naive_timestamp}])
     with pytest.raises(ValidationError):
         EventBatch(events=[])
 
@@ -127,3 +174,53 @@ def test_analysis_limits_batches_and_rejects_invalid_phone():
         AnalysisCompletion(leads=[{
             "phone": "not-a-phone", "name": "Lead", "confidence": 0.5,
         }])
+
+
+def test_phone_match_keys_cover_brazilian_formats():
+    from kiara_api.whatsapp_web import phone_match_keys
+
+    assert phone_match_keys("5551999998888") == ["051999998888", "51999998888", "5551999998888"]
+    assert phone_match_keys("14155550123") == ["14155550123"]
+
+
+@pytest.mark.asyncio
+async def test_analysis_matches_formatted_hunter_phone_and_keeps_human_stage():
+    """A formatted CRM phone is the same contact; the AI stage only fills a 'new' lead."""
+    organization = uuid4()
+    consumer_id = uuid4()
+    stored_phone = "(51) 99999-8888"
+    statements = []
+
+    class Cursor:
+        def __init__(self, row):
+            self.row = row
+
+        async def fetchone(self):
+            return self.row
+
+    class Connection:
+        async def execute(self, sql, params=()):
+            statements.append(sql)
+            if "FROM whatsapp_web_analysis_jobs" in sql and "FOR UPDATE" in sql:
+                return Cursor({"status": "running"})
+            if sql.lstrip().startswith("SELECT id FROM consumers"):
+                digits = "".join(character for character in stored_phone if character.isdigit())
+                assert "regexp_replace" in sql
+                return Cursor({"id": consumer_id} if digits in params[1] else None)
+            return Cursor(None)
+
+    @asynccontextmanager
+    async def transaction(org):
+        yield Connection()
+
+    repository = WhatsAppWebRepository(SimpleNamespace(_transaction=transaction))
+    result = await repository.complete_analysis(str(organization), "job-1", AnalysisCompletion(
+        leads=[{"phone": "5551999998888", "name": "Cliente", "stage": "qualified", "confidence": 0.9}],
+        scanned=1,
+    ))
+
+    assert result["imported"] == 0 and result["duplicates"] == 1
+    assert not any(sql.lstrip().startswith("INSERT INTO consumers") for sql in statements)
+    update = next(sql for sql in statements if "UPDATE pipeline_entries" in sql)
+    assert "CASE WHEN stage='new' THEN %s ELSE stage END" in update
+    assert "COALESCE(NULLIF(next_action,''),%s)" in update

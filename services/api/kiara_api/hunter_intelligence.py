@@ -145,6 +145,10 @@ def expand_provider_query(query: str, location: str | None = None) -> str:
             seen.add(key); unique.append(term)
     # Quoted alternatives work for web indexes and remain readable to Maps.
     expanded = " OR ".join(f'"{term}"' if " " in term else term for term in unique[:8])
+    # Apply the location to every synonym. Without grouping, web indexes can
+    # interpret A OR B City as A OR (B City), returning unrelated regions.
+    if len(unique[:8]) > 1:
+        expanded = f"({expanded})"
     return " ".join(filter(None, [expanded, plan["location"]]))
 
 

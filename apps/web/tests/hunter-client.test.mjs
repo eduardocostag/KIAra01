@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   hunterEvidenceLabel,
+  hunterMissingEvidence,
   hunterResultLocation,
   parseHunterJob,
   parseHunterHistory,
@@ -11,6 +12,11 @@ import {
 } from "../src/lib/api/hunter-client.ts"
 
 const job = { id: "saved-search", market: "b2b", query: "clínicas", location: "SP", sources: ["web"], result_limit: 10, status: "completed", results: [{ id: "lead-1", source: "web", title: "Clínica", url: "https://example.com", summary: "Informação pública" }] }
+
+test("explains missing lead evidence without implying missing data was verified", () => {
+  assert.deepEqual(hunterMissingEvidence(undefined), [])
+  assert.deepEqual(hunterMissingEvidence({ lead_requirements_missing: ["phone_or_whatsapp", "verified_location", "verified_location"] }), ["telefone ou WhatsApp público", "localização confirmada"])
+})
 
 test("accepts completed results and a genuine empty history", () => {
   assert.equal(parseHunterJob(job).results.length, 1)

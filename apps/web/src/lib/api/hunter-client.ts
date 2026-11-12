@@ -2,6 +2,7 @@ export type HunterSource = "web" | "google_maps" | "instagram" | "facebook"
 export type WebsiteFilter = "any" | "without_website" | "with_website"
 export type ContactFilter = "any" | "phone" | "whatsapp"
 export type HunterPublicData = {
+  crm_skip_reason?: string | null
   criterion_status?: "verified" | "not_verified" | "not_requested" | "manual_review"
   manual_import?: boolean
   profile_handle?: string
@@ -154,6 +155,16 @@ export function hunterEvidenceLabel(
   return source === "web"
     ? "Página indexada · vínculo com o negócio não confirmado"
     : "Perfil público não confirmado"
+}
+
+export function hunterMissingEvidence(data: HunterPublicData | undefined): string[] {
+  const labels: Record<string, string> = {
+    name: "nome do negócio",
+    phone_or_whatsapp: "telefone ou WhatsApp público",
+    verified_location: "localização confirmada",
+    source_url: "fonte pública válida",
+  }
+  return [...new Set(data?.lead_requirements_missing ?? [])].map((field) => labels[field] ?? field)
 }
 
 export function hunterResultLocation(

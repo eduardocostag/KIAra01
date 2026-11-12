@@ -563,6 +563,31 @@ def test_browserbase_open_circuit_uses_local_maps_before_public_index(monkeypatc
     assert calls[0] == ("local", "pet shops Belém PA", 30)
 
 
+def test_facebook_numeric_profiles_keep_distinct_identity_parameters():
+    rows = [{"source": "facebook", "title": f"Clínica {uid}",
+             "url": f"https://facebook.com/profile.php?id={uid}",
+             "public_data": {"phone": f"+5511999990{uid}",
+                             "bio_status": "verified_public_profile", "page_status": "verified_public_page",
+                             "profile_bio": "Dentista em Curitiba", "bio_niche_evidence": True,
+                             "bio_location_evidence": True}} for uid in (123, 456)]
+    kept, stats = filter_results(rows, search("dentistas", location="Curitiba"))
+    assert stats["accepted"] == 2
+    assert [row["public_data"]["profile_handle"] for row in kept] == ["123", "456"]
+
+
+def test_web_identity_path_remains_case_sensitive_and_tracking_is_ignored():
+    rows = [{"source": "web", "title": f"Clínica {index}",
+             "url": f"https://clinic.example/{path}",
+             "public_data": {"phone": "+5511999990000", "address": "Curitiba",
+                             "address_evidence": "verified_public_page"}}
+            for index, path in enumerate(("DoctorA", "doctora"))]
+    kept, _ = filter_results(rows, search("dentistas", location="Curitiba"))
+    assert len(kept) == 2
+    duplicate = {**rows[0], "url": "http://www.clinic.example/DoctorA/?utm_source=ad"}
+    kept, _ = filter_results([rows[0], duplicate], search("dentistas", location="Curitiba"))
+    assert len(kept) == 1
+
+
 def test_cross_source_identity_deduplication_is_conservative():
     duplicated = [
         {"source": "web", "title": "Clínica Aurora", "url": "https://aurora.example", "summary": "Telefone: +55 51 99999-0000", "public_data": {"address": "Porto Alegre", "address_evidence": "verified_public_page"}},

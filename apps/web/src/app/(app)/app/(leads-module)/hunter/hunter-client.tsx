@@ -2,29 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Check, CheckCircle2, ChevronRight, ExternalLink, Globe2, Loader2, MapPinned, MessagesSquare, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react"
+import { ChevronDown, Loader2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { HunterActivity } from "./hunter-activity"
 import { HunterResults } from "./hunter-results"
 import { inferredWebsiteFilter, parseHunterHistory, parseHunterJob, requestHunter, type ContactFilter, type WebsiteFilter, type HunterSource as Source, type HunterJob as Job } from "@/lib/api/hunter-client"
 import { cn } from "@/lib/utils"
-import styles from "./hunter.module.css"
 
-const sourceInfo = {
-  web: { label: "Web", detail: "Sites e páginas públicas indexadas", icon: Globe2 },
-  google_maps: { label: "Google Maps", detail: "Estabelecimentos e contatos locais", icon: MapPinned },
-  instagram: { label: "Instagram", detail: "Perfis e posts públicos indexados", icon: Users },
-  facebook: { label: "Facebook", detail: "Páginas e perfis públicos indexados", icon: MessagesSquare },
-} satisfies Record<Source, { label: string; detail: string; icon: typeof Globe2 }>
-
-const websiteLabels = { any: "Qualquer presença digital", without_website: "Sem site informado no Maps", with_website: "Com site identificado" }
-const contactLabels = { any: "Telefone ou WhatsApp (qualquer um)", phone: "Somente com telefone público", whatsapp: "Somente com WhatsApp identificado" }
+const sourceLabels: Record<Source, string> = { google_maps: "Google Maps", web: "Web", instagram: "Instagram", facebook: "Facebook" }
+const websiteLabels: Record<WebsiteFilter, string> = { any: "Com ou sem site", without_website: "Sem site", with_website: "Com site" }
+const contactLabels: Record<ContactFilter, string> = { any: "Telefone ou WhatsApp", phone: "Somente com telefone", whatsapp: "Somente com WhatsApp" }
 
 const HUNTER_MAX_RESULTS = 100
+const selectClass = "h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
 
 export function HunterClient() {
   const router = useRouter()
@@ -34,36 +26,31 @@ export function HunterClient() {
   const [sources, setSources] = useState<Source[]>(["google_maps", "web"])
   const [websiteFilter, setWebsiteFilter] = useState<WebsiteFilter>("any")
   const [contactFilter, setContactFilter] = useState<ContactFilter>("any")
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
-  const [review, setReview] = useState(false)
   const [clearReview, setClearReview] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [stage, setStage] = useState("Preparando sua pesquisa…")
+  const [stage, setStage] = useState("Preparando a busca…")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const resultsPanel = useRef<HTMLDivElement>(null)
   const requestVersion = useRef(0)
   const inFlight = useRef(false)
+
   const processQueued = useCallback(async (id: string) => {
     for (let attempt = 0; attempt < 80; attempt += 1) {
       const current = parseHunterJob(await requestHunter(
         `/api/hunter/searches/${encodeURIComponent(id)}/process`, { method: "POST" }, 210_000,
       ))
       setJobs((items) => [current, ...items.filter((item) => item.id !== current.id)])
-      if (current.status !== "running") {
-        if (current.status === "completed" && current.results.length) {
-          setStage(`${current.results.length} resultado${current.results.length === 1 ? " encontrado" : "s encontrados"}`)
-          await new Promise((resolve) => setTimeout(resolve, 2_400))
-        }
-        return current
-      }
-      setStage("Pesquisa preservada na fila; aguardando a próxima tentativa…")
+      if (current.status !== "running") return current
+      setStage("Aguardando as fontes responderem…")
       await new Promise((resolve) => setTimeout(resolve, 15_000))
     }
     return parseHunterJob(await requestHunter(`/api/hunter/searches/${encodeURIComponent(id)}`))
   }, [])
+
   const load = useCallback(async () => {
     const version = ++requestVersion.current
     setLoading(true)
@@ -71,41 +58,38 @@ export function HunterClient() {
       const history = parseHunterHistory(await requestHunter("/api/hunter/searches"))
       if (version === requestVersion.current) { setJobs(history); setError("") }
     } catch (e) {
-      if (version === requestVersion.current) setError(e instanceof Error ? e.message : "Falha ao carregar as pesquisas.")
+      if (version === requestVersion.current) setError(e instanceof Error ? e.message : "Falha ao carregar as buscas.")
     } finally { if (version === requestVersion.current) setLoading(false) }
   }, [])
   // Synchronize persisted history without allowing an old GET to replace a new search.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
   useEffect(() => {
+    // A search left running (closed tab, reload) is resumed when the page opens again.
     const running = jobs.find((job) => job.status === "running")
     if (!running || inFlight.current || loading) return
     inFlight.current = true
-    setBusy(true); setStage("Retomando a pesquisa salva…")
+    setBusy(true); setStage("Retomando a busca salva…")
     void processQueued(running.id)
       .then(() => router.refresh())
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Não foi possível retomar a pesquisa."))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Não foi possível retomar a busca."))
       .finally(() => { inFlight.current = false; setBusy(false) })
   }, [jobs, loading, processQueued, router])
+
   const latest = jobs.find((job) => job.id === selectedId) ?? jobs[0]
-  function focusResults() {
-    requestAnimationFrame(() => {
-      resultsPanel.current?.focus({ preventScroll: true })
-      resultsPanel.current?.scrollIntoView({ block: "start", behavior: "instant" })
-    })
-  }
-  const market = /\b(?:empresas?|negócios?|clínicas?|lojas?|agências?|restaurantes?)\b/i.test(query) ? "b2b" : "b2c"
+  // The SDR module prospects businesses; only an explicit end-consumer target is B2C.
+  const market = /\b(?:consumidor(?:es|a|as)?|pessoas? f[ií]sicas?|clientes? finais?)\b/i.test(query) ? "b2c" : "b2b"
   const inferredWebsite = inferredWebsiteFilter(query, "")
   const effectiveWebsite = inferredWebsite !== "any" ? inferredWebsite : websiteFilter
   const requiresMaps = effectiveWebsite === "without_website"
-  const mentionsInstagram = /\b(?:instagram|insta|reels?)\b/i.test(query)
-  const mentionsFacebook = /\b(?:facebook|fb|p[aá]gina)\b/i.test(query)
   const sourceSet = new Set<Source>(sources)
   if (requiresMaps) sourceSet.add("google_maps")
-  if (mentionsInstagram) sourceSet.add("instagram")
-  if (mentionsFacebook) sourceSet.add("facebook")
+  if (/\b(?:instagram|insta|reels?)\b/i.test(query)) sourceSet.add("instagram")
+  if (/\b(?:facebook|fb)\b/i.test(query)) sourceSet.add("facebook")
   const effectiveSources = [...sourceSet]
-  const socialChecks = effectiveSources.filter((source): source is "instagram" | "facebook" => source === "instagram" || source === "facebook")
+  const canSearch = query.trim().length >= 2 && effectiveSources.length > 0 && !busy
+  const filterSummary = [effectiveSources.map((source) => sourceLabels[source]).join(", "), `até ${limit}`, websiteLabels[effectiveWebsite], contactLabels[contactFilter]].join(" · ")
+
   function toggle(source: Source) {
     if (source === "google_maps" && requiresMaps) return
     setSources((all) => all.includes(source) ? all.filter((item) => item !== source) : [...all, source])
@@ -115,12 +99,11 @@ export function HunterClient() {
     setWebsiteFilter("any"); setContactFilter("any")
     document.getElementById("hunter-query")?.focus()
   }
-  async function confirm() {
-    if (inFlight.current) return
+  async function search() {
+    if (inFlight.current || !canSearch) return
     inFlight.current = true
     ++requestVersion.current
-    setLoading(false); setReview(false); setStage("Registrando sua pesquisa…"); setBusy(true); setError("")
-    focusResults()
+    setLoading(false); setStage("Registrando a busca…"); setBusy(true); setError("")
     try {
       const job = parseHunterJob(await requestHunter("/api/hunter/searches", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -128,17 +111,15 @@ export function HunterClient() {
       }))
       setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
       setSelectedId(job.id)
-      setStage("Colocando a pesquisa na fila durável…")
       const queued = parseHunterJob(await requestHunter(`/api/hunter/searches/${encodeURIComponent(job.id)}/confirm`, { method: "POST" }))
       setJobs((current) => [queued, ...current.filter((item) => item.id !== queued.id)])
-      setStage("Consultando fontes e verificando os critérios…")
+      setStage("Consultando as fontes e conferindo os contatos…")
       const completed = await processQueued(job.id)
       setJobs((current) => [completed, ...current.filter((item) => item.id !== completed.id)])
-      // The same completion may have created/updated CRM rows. Invalidate any
-      // prefetched server pages so Dashboard, Pipeline and Inbox read them.
+      // The same completion may have created CRM rows; refresh server pages that read them.
       router.refresh()
-    } catch (e) { setError(e instanceof Error ? e.message : "Falha ao pesquisar. Atualize os resultados para consultar a pesquisa salva.") }
-    finally { setBusy(false); inFlight.current = false; focusResults() }
+    } catch (e) { setError(e instanceof Error ? e.message : "A busca falhou. Atualize os resultados para ver a busca salva.") }
+    finally { setBusy(false); inFlight.current = false }
   }
 
   async function clearHistory() {
@@ -149,94 +130,54 @@ export function HunterClient() {
       ++requestVersion.current
       setJobs([]); setSelectedId(null); setClearReview(false)
       router.refresh()
-    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível limpar as pesquisas.") }
+    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível limpar as buscas.") }
     finally { setClearing(false) }
   }
 
-  return <div className={styles.workspace}>
-    <header className="mb-6"><h1 id="hunter-title" className="kiara-editorial text-3xl sm:text-4xl">Encontrar contatos</h1><p className="mt-1 text-sm text-muted-foreground">Descreva o cliente ideal em linguagem natural e veja os resultados ao lado.</p></header>
+  return <div className="mx-auto w-full max-w-5xl space-y-6">
+    <header>
+      <h1 className="text-3xl font-medium tracking-tight">Buscar leads</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Descreva quem você procura. A Kiara confere contato e localização antes de mostrar.</p>
+    </header>
 
-    <Card className={cn(styles.searchPanel, "gap-0 self-start py-0 shadow-none")}>
-      <CardHeader className={cn(styles.panelHeader, "border-b p-5")}>
-        <div className="flex items-center gap-2"><SlidersHorizontal className="size-4 text-primary" aria-hidden="true" /><CardTitle className="text-sm font-semibold">Configurar pesquisa</CardTitle></div>
-        <p className="mt-1 text-xs text-muted-foreground">A Kiara entende segmento, serviço, localização e presença digital.</p>
-      </CardHeader>
-      <CardContent className={cn(styles.panelContent, "p-5")}>
-        <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); if (query.trim().length >= 2 && effectiveSources.length && !busy) setReview(true) }}>
-          <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
-            <div className="space-y-2">
-              <Label htmlFor="hunter-query">Descreva o cliente que você quer encontrar</Label>
-              <Input id="hunter-query" required minLength={2} maxLength={300} className="h-11 bg-background text-base sm:text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: Dentistas em Porto Alegre" />
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_80px] gap-3">
-              <div className="space-y-2"><Label htmlFor="hunter-location">Cidade ou região</Label><Input id="hunter-location" maxLength={160} className="h-10 text-base sm:text-sm" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Localização" /></div>
-              <div className="space-y-2"><Label htmlFor="hunter-limit">Limite</Label><Input id="hunter-limit" className="h-10 text-base sm:text-sm" type="number" min={1} max={HUNTER_MAX_RESULTS} value={limit} onChange={(event) => setLimit(Math.max(1, Math.min(HUNTER_MAX_RESULTS, Number(event.target.value) || 1)))} /></div>
-            </div>
-            <div className="space-y-4 border-y py-4">
-              <div className="space-y-2">
-                <Label htmlFor="hunter-website">Presença digital</Label>
-                <Select value={effectiveWebsite} onValueChange={(value) => setWebsiteFilter(value as WebsiteFilter)} disabled={busy || inferredWebsite !== "any"}>
-                  <SelectTrigger id="hunter-website" className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent position="popper">{Object.entries(websiteLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-                </Select>
-                {requiresMaps && <p className="text-xs leading-5 text-muted-foreground">{inferredWebsite !== "any" ? "“Sem site” foi identificado no seu texto. " : ""}Só aceita perfis inspecionados no Maps sem site informado. Isso não comprova ausência de site em toda a internet.</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hunter-contact">Contato necessário</Label>
-                <Select value={contactFilter} onValueChange={(value) => setContactFilter(value as ContactFilter)} disabled={busy}>
-                  <SelectTrigger id="hunter-contact" className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent position="popper">{Object.entries(contactLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-                </Select>
-                {contactFilter === "whatsapp" && <p className="text-xs leading-5 text-muted-foreground">Exige um link público de WhatsApp. Um telefone sozinho não é confirmação.</p>}
-              </div>
-            </div>
-            <fieldset>
-              <legend className="mb-2 text-xs font-medium text-muted-foreground">Fontes da pesquisa</legend>
-              <div className="grid grid-cols-2 gap-2">{(Object.keys(sourceInfo) as Source[]).map((source) => {
-                const info = sourceInfo[source]; const Icon = info.icon; const active = effectiveSources.includes(source)
-                return <Button key={source} type="button" variant="outline" title={info.detail} aria-pressed={active} aria-disabled={source === "google_maps" && requiresMaps} onClick={() => toggle(source)} className={cn("h-10 justify-start gap-2 rounded-lg px-3 text-xs", active && "border-primary/35 bg-brand-subtle text-brand-subtle-foreground hover:bg-brand-subtle")}><Icon className="size-3.5" /><span className="flex-1 text-left">{info.label}</span>{active && <Check className="size-3.5" />}</Button>
-              })}</div>
-              {requiresMaps && <p className="mt-2 text-xs text-muted-foreground">Google Maps incluído para verificar o critério de site.</p>}
-              {mentionsInstagram && !sources.includes("instagram") && <p className="mt-2 text-xs text-muted-foreground">Instagram incluído porque foi citado na descrição.</p>}
-            </fieldset>
-          </fieldset>
-          {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{error}</p>}
-          <Button type="submit" className={cn(styles.searchButton, "h-12 w-full gap-2")} disabled={query.trim().length < 2 || !effectiveSources.length || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Search />}Revisar pesquisa<ChevronRight className="ml-auto" /></Button>
-        </form>
-      </CardContent>
-    </Card>
-
-    <div ref={resultsPanel} tabIndex={-1} aria-label="Acompanhamento e resultados da pesquisa" className={cn(styles.resultsPanel, "min-w-0 scroll-mt-20 outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
-      <HunterResults jobs={jobs} selected={latest} busy={busy || clearing} loading={loading} stage={stage} error={error} activeQuery={query} activeLocation={location} activeSources={effectiveSources} onRefresh={() => void load()} onClear={() => setClearReview(true)} onSelect={setSelectedId} onBroaden={broaden} />
-    </div>
-
-    <Dialog open={review} onOpenChange={setReview}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" onCloseAutoFocus={(event) => { if (inFlight.current) { event.preventDefault(); focusResults() } }}>
-        <DialogHeader><DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />Confirmar pesquisa</DialogTitle></DialogHeader>
-        <div className="space-y-4 py-2">
-          <div><p className="text-lg font-semibold tracking-tight">{query}</p><p className="text-sm text-muted-foreground">{location || "Todas as regiões"} · até {limit} resultados</p></div>
-          <section aria-labelledby="hunter-preflight-title" className="rounded-xl border bg-muted/30 p-4">
-            <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" /><div><h3 id="hunter-preflight-title" className="text-sm font-semibold">Antes de pesquisar</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">A busca pública está pronta e não exige login. Se uma rede bloquear detalhes do perfil, entre nela em outra aba para fazer a verificação manual.</p></div></div>
-            <p className="mt-3 rounded-lg border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">Só serão aceitos leads com nome/empresa, telefone ou WhatsApp, cidade/endereço comprovado e link público da fonte. Resultados sem qualquer um desses dados serão descartados.</p>
-            {socialChecks.length > 0 ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{socialChecks.map((source) => {
-              const instagram = source === "instagram"
-              return <div key={source} className="rounded-lg border bg-background p-3"><p className="text-xs font-semibold">{instagram ? "Instagram" : "Facebook"}: busca pública pronta</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">Login só será necessário se a própria rede limitar a visualização durante sua conferência.</p><Button asChild variant="outline" size="sm" className="mt-3 h-8 w-full text-xs"><a href={instagram ? "https://www.instagram.com/accounts/login/" : "https://www.facebook.com/login/"} target="_blank" rel="noopener noreferrer">Abrir {instagram ? "Instagram" : "Facebook"}<ExternalLink className="size-3" /></a></Button></div>
-            })}</div> : <p className="mt-3 rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground">Nenhuma ação adicional é necessária para as fontes selecionadas.</p>}
-          </section>
-          <dl className="divide-y rounded-lg border px-4 text-sm">
-            <div className="py-3"><dt className="text-xs text-muted-foreground">Presença digital</dt><dd className="mt-1 font-medium">{websiteLabels[effectiveWebsite]}</dd></div>
-            <div className="py-3"><dt className="text-xs text-muted-foreground">Contato necessário</dt><dd className="mt-1 font-medium">{contactLabels[contactFilter]}</dd></div>
-            <div className="py-3"><dt className="text-xs text-muted-foreground">Fontes</dt><dd className="mt-1">{effectiveSources.map((source) => sourceInfo[source].label).join(" · ")}</dd></div>
-          </dl>
-          {requiresMaps && <p className="text-xs leading-5 text-muted-foreground">Perfis com site informado ou sem evidência suficiente serão excluídos. “Sem site” significa que o campo não foi encontrado no perfil inspecionado do Maps.</p>}
+    <form className="rounded-xl border bg-card p-4" onSubmit={(event) => { event.preventDefault(); void search() }}>
+      <fieldset disabled={busy} className="min-w-0 space-y-3">
+        <legend className="sr-only">Busca de leads</legend>
+        <div className="flex flex-col gap-2 md:flex-row">
+          <label htmlFor="hunter-query" className="sr-only">Quem você procura</label>
+          <Input id="hunter-query" required minLength={2} maxLength={300} value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 flex-1 text-base md:text-sm" placeholder="Ex.: Dentistas sem site" />
+          <label htmlFor="hunter-location" className="sr-only">Cidade ou região</label>
+          <Input id="hunter-location" maxLength={160} value={location} onChange={(event) => setLocation(event.target.value)} className="h-11 text-base md:w-60 md:text-sm" placeholder="Cidade ou região" />
+          <Button type="submit" className="h-11 px-6" disabled={!canSearch}>{busy ? <Loader2 className="animate-spin" /> : <Search />}Buscar</Button>
         </div>
-        <DialogFooter><Button variant="outline" className="h-10" onClick={() => setReview(false)}>Voltar e editar</Button><Button className="h-10" disabled={busy} onClick={() => void confirm()}><Search />Confirmar e pesquisar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <button type="button" aria-expanded={filtersOpen} aria-controls="hunter-filters" onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center gap-2 text-left text-sm text-muted-foreground hover:text-foreground">
+          <ChevronDown className={cn("size-4 shrink-0 transition-transform", filtersOpen && "rotate-180")} aria-hidden="true" />
+          <span className="font-medium text-foreground">Filtros</span>
+          <span className="truncate">{filterSummary}</span>
+        </button>
+        {filtersOpen ? <div id="hunter-filters" className="grid gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1.5"><label htmlFor="hunter-limit" className="text-sm font-medium">Quantidade</label><Input id="hunter-limit" className="h-10" type="number" min={1} max={HUNTER_MAX_RESULTS} value={limit} onChange={(event) => setLimit(Math.max(1, Math.min(HUNTER_MAX_RESULTS, Number(event.target.value) || 1)))} /></div>
+          <div className="space-y-1.5"><label htmlFor="hunter-website" className="text-sm font-medium">Site</label><select id="hunter-website" className={selectClass} value={effectiveWebsite} disabled={inferredWebsite !== "any"} onChange={(event) => setWebsiteFilter(event.target.value as WebsiteFilter)}>{Object.entries(websiteLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+          <div className="space-y-1.5"><label htmlFor="hunter-contact" className="text-sm font-medium">Contato</label><select id="hunter-contact" className={selectClass} value={contactFilter} onChange={(event) => setContactFilter(event.target.value as ContactFilter)}>{Object.entries(contactLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+          <fieldset className="space-y-1.5"><legend className="text-sm font-medium">Fontes</legend><div className="flex flex-wrap gap-1.5">{(Object.keys(sourceLabels) as Source[]).map((source) => {
+            const active = effectiveSources.includes(source)
+            const locked = source === "google_maps" && requiresMaps
+            return <button key={source} type="button" aria-pressed={active} disabled={locked} onClick={() => toggle(source)} className={cn("rounded-full border px-3 py-1 text-sm transition", active ? "border-primary/50 bg-primary/15" : "text-muted-foreground hover:text-foreground")}>{sourceLabels[source]}</button>
+          })}</div></fieldset>
+          {requiresMaps ? <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">“Sem site” usa a ficha do Google Maps: entram só negócios cuja ficha não informa site.</p> : null}
+        </div> : null}
+      </fieldset>
+    </form>
+
+    {error ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
+
+    {busy ? <section className="rounded-xl border bg-card"><HunterActivity stage={stage} query={latest?.query || query} location={latest?.location ?? location} sources={latest?.sources ?? effectiveSources} foundCount={latest?.results.length ?? 0} /></section>
+      : <HunterResults jobs={jobs} selected={latest} loading={loading || clearing} onRefresh={() => void load()} onClear={() => setClearReview(true)} onSelect={setSelectedId} onBroaden={broaden} />}
+
     <Dialog open={clearReview} onOpenChange={setClearReview}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Limpar resultados do Hunter?</DialogTitle><DialogDescription>As pesquisas desta tela serão removidas. Os contatos do Inbox continuarão salvos.</DialogDescription></DialogHeader>
-        <DialogFooter><Button variant="outline" onClick={() => setClearReview(false)} disabled={clearing}>Cancelar</Button><Button variant="destructive" onClick={() => void clearHistory()} disabled={clearing}>{clearing ? <Loader2 className="animate-spin" /> : null}Limpar resultados</Button></DialogFooter>
+        <DialogHeader><DialogTitle>Limpar buscas?</DialogTitle><DialogDescription>As buscas desta tela serão removidas. Os contatos já adicionados continuam salvos.</DialogDescription></DialogHeader>
+        <DialogFooter><Button variant="outline" onClick={() => setClearReview(false)} disabled={clearing}>Cancelar</Button><Button variant="destructive" onClick={() => void clearHistory()} disabled={clearing}>{clearing ? <Loader2 className="animate-spin" /> : null}Limpar</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>

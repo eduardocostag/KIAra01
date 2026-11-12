@@ -7,6 +7,8 @@ import { getPlatformModule, PlatformApiError } from "@/lib/platform/server"
 export default async function PlatformModulePage({ params }: { params: Promise<{ moduleKey: string }> }) {
   const { moduleKey } = await params
   if (!isModuleKey(moduleKey)) notFound()
+  if (moduleKey === "whatsapp") redirect("/app/whatsapp")
+  if (moduleKey === "atendimento" || moduleKey === "intelligence") redirect("/app/chat")
   let detail
   try { detail = await getPlatformModule(moduleKey) }
   catch (error) {

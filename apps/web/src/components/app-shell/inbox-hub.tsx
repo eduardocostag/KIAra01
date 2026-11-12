@@ -1,130 +1,26 @@
 "use client"
 
-import Link from "next/link"
 import { useState } from "react"
-import { ArrowUpRight, AtSign, BadgeCheck, Check, Columns3, FileText, Globe2, List, Loader2, MessageCircle, NotebookPen, Search, Sparkles, Users } from "lucide-react"
-import { SourceMark } from "@/components/brand/source-mark"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { LeadQualification } from "./lead-qualification"
 import { PipelineBoard } from "./pipeline-board"
 import { LeadOperationsWorkspace } from "./lead-operations-workspace"
-import { instagramProfileUrl, leadDisplayName, parsePipelineEntry, requestPipeline, sourceLabels, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
-import "./inbox-hub.css"
+import type { PipelineEntry } from "@/lib/api/pipeline"
 
+/** Contacts (list + editable panel) and the daily outreach queue, over one shared CRM state. */
 export function InboxHub({ entries: initialEntries, prospectError, initialView, initialContactId }: { entries: PipelineEntry[]; prospectError: string; initialView: string; initialContactId: string }) {
   const [entries, setEntries] = useState(initialEntries)
-  const [query, setQuery] = useState("")
-  const normalizedView = initialView === "pipeline" || initialView === "notes" || initialView === "conversations" ? initialView : "contacts"
-  const requestedContact = initialEntries.find((entry) => entry.id === initialContactId || entry.consumer.id === initialContactId)
-  const [view, setView] = useState(normalizedView)
-  const [selectedContactId, setSelectedContactId] = useState(requestedContact?.id ?? entries[0]?.id ?? "")
-  const [draftNoteId, setDraftNoteId] = useState(normalizedView === "notes" ? requestedContact?.id ?? "" : "")
-  const contacts = entries.filter((entry) => !["won", "lost"].includes(entry.stage))
-  const filtered = contacts.filter((entry) => `${leadDisplayName(entry.consumer)} ${entry.consumer.display_name} ${entry.consumer.phone ?? ""}`.toLowerCase().includes(query.toLowerCase()))
-  const selectedContact = contacts.find((entry) => entry.id === selectedContactId) ?? filtered[0] ?? contacts[0]
-  const annotatedContacts = contacts.filter((entry) => entry.consumer.notes?.trim())
-  const noteContact = contacts.find((entry) => entry.id === draftNoteId) ?? annotatedContacts.find((entry) => entry.id === selectedContactId) ?? annotatedContacts[0]
-  const annotatedCount = annotatedContacts.length
+  const [view, setView] = useState(initialView === "conversations" || initialView === "queue" ? "queue" : "contacts")
+  const [focusId, setFocusId] = useState(() => initialEntries.find((entry) => entry.id === initialContactId || entry.consumer.id === initialContactId)?.id ?? "")
 
-  return <Tabs value={view} onValueChange={setView} className="inbox-premium gap-3 sm:gap-5">
-    <TabsList aria-label="Visualização dos leads" className="grid h-auto w-full grid-cols-4 rounded-xl border bg-card/70 p-1 sm:w-fit sm:min-w-[520px]">
-      <TabsTrigger value="contacts" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><List aria-hidden="true" />Lista <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">{contacts.length}</span></TabsTrigger>
-      <TabsTrigger value="pipeline" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><Columns3 aria-hidden="true" />Pipeline</TabsTrigger>
-      <TabsTrigger value="notes" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><NotebookPen aria-hidden="true" />Anotações <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">{annotatedCount}</span></TabsTrigger>
-      <TabsTrigger value="conversations" className="h-9 gap-1.5 rounded-lg text-xs sm:h-10 sm:gap-2 sm:text-sm"><MessageCircle aria-hidden="true" />Operação</TabsTrigger>
+  if (prospectError) return <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</p>
+
+  return <Tabs value={view} onValueChange={setView} className="gap-4">
+    <TabsList aria-label="Visualização dos contatos" className="w-fit">
+      <TabsTrigger value="contacts" className="px-4">Contatos</TabsTrigger>
+      <TabsTrigger value="queue" className="px-4">Fila do dia</TabsTrigger>
     </TabsList>
-    {view === "contacts" ? <div className="kiara-inbox-toolbar"><div className="kiara-inbox-search"><Search aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-10" placeholder="Buscar um contato" aria-label="Buscar prospectados" /></div></div> : null}
-    <TabsContent value="notes">
-      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <NotesWorkspace entries={annotatedContacts} selectedEntry={noteContact} onSelect={(id) => { setDraftNoteId(""); setSelectedContactId(id) }} onSaved={(saved) => { setDraftNoteId(""); setSelectedContactId(saved.id); setEntries((current) => current.map((entry) => entry.id === saved.id ? saved : entry)) }} />}
-    </TabsContent>
-    <TabsContent value="contacts" className="space-y-4">
-      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : null}
-      {!filtered.length && !prospectError ? <div className="grid min-h-52 place-items-center rounded-xl border border-dashed p-6 text-center sm:block sm:min-h-0 sm:p-10"><div><Users className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">{query ? "Nenhum contato corresponde à busca" : "Nenhum contato ainda"}</h3><Button asChild className="mt-4 sm:mt-5"><Link href="/app/hunter">Pesquisar leads</Link></Button></div></div> : selectedContact ? <div className="kiara-contact-workspace"><ContactList entries={filtered} selectedId={selectedContact.id} onSelect={setSelectedContactId} /><ContactDossier entry={selectedContact} onOpenNotes={() => { setDraftNoteId(selectedContact.id); setView("notes") }} /></div> : null}
-    </TabsContent>
-    <TabsContent value="pipeline">
-      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <PipelineBoard initialEntries={entries} />}
-    </TabsContent>
-    <TabsContent value="conversations">
-      {prospectError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{prospectError}</div> : <LeadOperationsWorkspace entries={entries} />}
-    </TabsContent>
+    {/* Inactive tabs unmount, so the board picks up focusId each time it is shown. */}
+    <TabsContent value="contacts"><PipelineBoard entries={entries} onEntriesChange={setEntries} initialSelectedId={focusId} /></TabsContent>
+    <TabsContent value="queue"><LeadOperationsWorkspace entries={entries} onOpen={(id) => { setFocusId(id); setView("contacts") }} /></TabsContent>
   </Tabs>
-}
-
-function ContactList({ entries, selectedId, onSelect }: { entries: PipelineEntry[]; selectedId: string; onSelect: (id: string) => void }) {
-  return <aside className="kiara-contact-list" aria-label="Clientes encontrados">
-    <div className="kiara-contact-list-title"><strong>Clientes encontrados</strong><span>{entries.length}</span></div>
-    {entries.map((entry) => {
-      const active = entry.id === selectedId
-      const source = sourceLabels[entry.consumer.source ?? ""] ?? "CRM"
-      const name = leadDisplayName(entry.consumer)
-      return <button key={entry.id} type="button" className={active ? "is-active" : ""} aria-pressed={active} onClick={() => onSelect(entry.id)}><span className="kiara-contact-initial">{name.replace(/^@/, "").slice(0, 1).toUpperCase()}</span><span><strong>{name}</strong><small>{source} · {entry.consumer.phone || "Sem telefone"}</small></span></button>
-    })}
-  </aside>
-}
-
-function NotesWorkspace({ entries, selectedEntry, onSelect, onSaved }: { entries: PipelineEntry[]; selectedEntry: PipelineEntry | undefined; onSelect: (id: string) => void; onSaved: (entry: PipelineEntry) => void }) {
-  if (!selectedEntry) return <div className="grid min-h-48 place-items-center rounded-xl border border-dashed p-6 text-center sm:block sm:min-h-0 sm:p-10"><div><NotebookPen className="mx-auto size-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">Nenhuma anotação salva</h3><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Use a ação “Anotações” na ficha de um cliente para registrar a primeira.</p></div></div>
-  return <div className="kiara-contact-workspace kiara-notes-workspace"><ContactList entries={entries} selectedId={selectedEntry.id} onSelect={onSelect} /><NotesEditor key={selectedEntry.id} entry={selectedEntry} onSaved={onSaved} /></div>
-}
-
-function NotesEditor({ entry, onSaved }: { entry: PipelineEntry; onSaved: (entry: PipelineEntry) => void }) {
-  const [notes, setNotes] = useState(entry.consumer.notes ?? "")
-  const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle")
-  const [message, setMessage] = useState("")
-  const changed = notes.trim() !== (entry.consumer.notes ?? "").trim()
-
-  async function persist(target: PipelineEntry) {
-    return parsePipelineEntry(await requestPipeline(`/api/pipeline/${encodeURIComponent(target.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ notes: notes.trim() || null }) }))
-  }
-
-  async function save() {
-    if (!changed || saving) return
-    setSaving(true); setStatus("idle"); setMessage("")
-    try {
-      const saved = await persist(entry)
-      onSaved(saved); setNotes(saved.consumer.notes ?? ""); setStatus("saved"); setMessage("Anotação salva neste cliente.")
-    } catch (error) {
-      setStatus("error"); setMessage(error instanceof Error ? error.message : "Não foi possível salvar a anotação.")
-    } finally { setSaving(false) }
-  }
-
-  const name = leadDisplayName(entry.consumer)
-  return <section className="kiara-notes-editor" aria-labelledby="contact-notes-title">
-    <header><span><FileText aria-hidden="true" /></span><div><p>Anotações do cliente</p><h2 id="contact-notes-title">{name}</h2></div></header>
-    <div className="kiara-notes-field"><label htmlFor={`contact-notes-${entry.id}`}>Registre contexto, preferências e próximos passos</label><Textarea id={`contact-notes-${entry.id}`} value={notes} onChange={(event) => { setNotes(event.target.value); setStatus("idle"); setMessage("") }} maxLength={5000} rows={12} placeholder="Ex.: Prefere contato pela manhã. Demonstrou interesse no plano anual..." /><div><span>{notes.length.toLocaleString("pt-BR")} / 5.000</span><Button type="button" onClick={() => void save()} disabled={!changed || saving}>{saving ? <Loader2 className="animate-spin" /> : status === "saved" ? <Check /> : <NotebookPen />}{saving ? "Salvando" : "Salvar anotação"}</Button></div>{message ? <p role={status === "error" ? "alert" : "status"} className={status === "error" ? "is-error" : "is-saved"}>{message}</p> : null}</div>
-  </section>
-}
-
-function ContactDossier({ entry, onOpenNotes }: { entry: PipelineEntry; onOpenNotes: () => void }) {
-  const consumer = entry.consumer
-  const displayName = leadDisplayName(consumer)
-  const source = sourceLabels[consumer.source ?? ""] ?? "CRM"
-  const kind = /instagram/i.test((consumer.source ?? "") + source) ? "instagram" : /maps|google/i.test((consumer.source ?? "") + source) ? "maps" : "web"
-  const whatsapp = whatsappComposerUrl(consumer.phone, consumer.whatsapp_url, "")
-  const instagram = instagramProfileUrl(consumer.instagram_username)
-  const hasDirectContact = Boolean(consumer.phone || consumer.email || consumer.whatsapp_url || consumer.instagram_username)
-  const hasDigitalPresence = consumer.website_status === "present" || Boolean(consumer.website_url || consumer.instagram_username)
-  const inspected = consumer.enrichment === "completed" || consumer.criterion_status === "verified" || Boolean(consumer.website_evidence)
-  const evidenceCount = [hasDirectContact, hasDigitalPresence, Boolean(consumer.address), inspected].filter(Boolean).length
-  const dataQuality = evidenceCount >= 4 ? "Completa" : evidenceCount >= 2 ? "Parcial" : "Limitada"
-  const directContact = consumer.whatsapp_url ? "WhatsApp confirmado" : consumer.phone ? "Telefone encontrado" : consumer.email ? "E-mail encontrado" : consumer.instagram_username ? "Perfil social disponível" : "Não encontrado"
-  const digitalPresence = consumer.website_status === "present" ? "Site identificado" : consumer.instagram_username ? "Perfil social identificado" : consumer.website_status === "not_listed" ? "Site não listado na fonte" : "Não identificada"
-  const evidence = [
-    { label: "Qualidade dos dados", value: dataQuality, icon: BadgeCheck },
-    { label: "Fonte principal", value: source, icon: Sparkles },
-    { label: "Contato direto", value: directContact, icon: MessageCircle },
-    { label: "Presença digital", value: digitalPresence, icon: Globe2 },
-  ]
-  return <section className="kiara-contact-dossier" aria-label={`Detalhes de ${displayName}`}>
-    <header><div className="kiara-contact-identity"><span><SourceMark kind={kind} /></span><div><div><h2 title={displayName}>{displayName}</h2><span className="kiara-contact-status">Novo</span></div><p>{consumer.research_query || source}</p></div></div></header>
-    <LeadQualification qualification={entry.qualification} /><div className="kiara-contact-grid"><section className="kiara-evidence-panel"><h3>Qualidade e origem da evidência</h3><dl>{evidence.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon />{label}</dt><dd>{value}</dd></div>)}</dl>{consumer.match_reasons?.length ? <div className="kiara-evidence-reasons">{consumer.match_reasons.slice(0, 3).map((reason) => <span key={reason}>{reason}</span>)}</div> : null}</section><section id="contact-actions"><h3>Ações rápidas</h3><div className="kiara-contact-quick-actions">
-      <DropdownMenu><DropdownMenuTrigger asChild><button type="button" disabled={!whatsapp && !instagram}><span><MessageCircle /></span><div><strong>Iniciar conversa</strong><small>{whatsapp || instagram ? "Abrir o canal sem mensagem pronta" : "Nenhum canal direto disponível"}</small></div><ArrowUpRight /></button></DropdownMenuTrigger><DropdownMenuContent align="start" className="w-64"><DropdownMenuLabel>Conversar diretamente</DropdownMenuLabel><DropdownMenuSeparator />{whatsapp ? <DropdownMenuItem asChild><a href={whatsapp.url} target="_blank" rel="noreferrer"><MessageCircle className="text-emerald-500" />Abrir WhatsApp<ArrowUpRight className="ml-auto" /></a></DropdownMenuItem> : null}{instagram ? <DropdownMenuItem asChild><a href={instagram} target="_blank" rel="noreferrer"><AtSign className="text-fuchsia-500" />Abrir Instagram<ArrowUpRight className="ml-auto" /></a></DropdownMenuItem> : null}</DropdownMenuContent></DropdownMenu>
-      <button type="button" onClick={onOpenNotes}><span><NotebookPen /></span><div><strong>Anotações</strong><small>{consumer.notes?.trim() ? "Consultar ou editar a anotação" : "Registrar uma anotação neste cliente"}</small></div><ArrowUpRight /></button>
-    </div></section></div>
-  </section>
 }

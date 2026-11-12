@@ -19,7 +19,7 @@ const context = (modules = moduleKeys.map(moduleFixture)) => ({
 
 test("uses the existing Leads URL and keeps new modules under the platform", () => {
   assert.equal(moduleHref("leads"), "/app")
-  assert.deepEqual(moduleKeys.slice(1).map(moduleHref), ["/app/platform/whatsapp", "/app/platform/atendimento", "/app/platform/ti"])
+  assert.deepEqual(moduleKeys.slice(1).map(moduleHref), ["/app/platform/whatsapp", "/app/platform/atendimento", "/app/platform/ti", "/app/platform/intelligence"])
   assert.equal(isModuleKey("unknown"), false)
   assert.equal(isModuleKey("../settings"), false)
 })

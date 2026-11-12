@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from .hunter_research import lead_requirement_gaps, normalize_result
+from .hunter_research import is_editorial_or_post, lead_requirement_gaps, normalize_result
 
 
 def _public_url(value: Any) -> str | None:
@@ -59,20 +59,19 @@ def _facebook_username(url: str) -> str | None:
     first = path[0].lower()
     if first in {
         "p", "posts", "photos", "videos", "watch", "groups", "events", "share",
-        "sharer", "story.php", "permalink.php", "login", "pages", "help",
+        "sharer", "story.php", "permalink.php", "login", "help",
         "marketplace", "about", "policies", "recover", "settings",
     }:
         return None
-    if len(path) == 1 and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", path[0]):
-        return path[0].lower()
-    if first in {"pages", "people"} and len(path) >= 2:
-        return path[1].lower()
     if first == "profile.php":
         from urllib.parse import parse_qs
         params = parse_qs(parts.query)
         uid = (params.get("id") or [""])[0]
-        if uid:
-            return uid.lower()
+        return uid if uid.isdigit() else None
+    if len(path) == 1 and first not in {"pages", "people"} and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", path[0]):
+        return path[0].lower()
+    if first in {"pages", "people"} and len(path) >= 2:
+        return path[-1] if path[-1].isdigit() else path[1].lower()
     return None
 
 
@@ -127,11 +126,16 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
         "research_objective": options.get("objective", ""),
         "website_status": data.get("website_status", "unknown"),
     }
-    for key in ("phone", "email", "address", "address_evidence", "website_evidence", "criterion_status", "place_id", "enrichment", "provider"):
+    for key in ("phone", "email", "address", "address_evidence", "address_source_url", "address_evidence_text",
+                "website_evidence", "criterion_status", "place_id", "enrichment", "provider", "profile_bio",
+                "bio_status", "page_status"):
         if isinstance(data.get(key), str) and data[key].strip():
             metadata[key] = data[key][:3000]
     for key in ("website_quality_score", "website_quality_signals", "match_reasons"):
         if data.get(key) is not None:
+            metadata[key] = data[key]
+    for key in ("detail_inspected", "bio_location_evidence", "bio_niche_evidence", "manual_lead_selection"):
+        if isinstance(data.get(key), bool):
             metadata[key] = data[key]
     for key in ("website_url", "whatsapp_url"):
         value = _public_url(data.get(key))
@@ -202,14 +206,21 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
         keys = identity_keys(result)
         normalized_result = normalize_result(result)
         missing_requirements = lead_requirement_gaps(normalized_result, search_dict)
-        reason = (
-            _skip_reason(search_dict, result)
-            or (None if keys else "invalid_source_url")
-            or (None if not missing_requirements else "incomplete_lead")
-        )
-        if user_selected and reason in {"criterion_not_matched", "criterion_not_verified"}:
-            reason = None
+        criterion_reason = _skip_reason(search_dict, normalized_result)
+        if user_selected and criterion_reason in {"criterion_not_matched", "criterion_not_verified"}:
+            criterion_reason = None
             result.setdefault("public_data", {})["manual_lead_selection"] = True
+            normalized_result["public_data"]["manual_lead_selection"] = True
+        # A human can override an unverified commercial criterion, but never
+        # structural requirements. Evaluate those independently: an earlier
+        # criterion failure must not hide a missing phone, city or identity.
+        reason = (
+            (None if keys else "invalid_source_url")
+            or ("publication_not_contact" if is_editorial_or_post(normalized_result)
+                or normalized_result["public_data"].get("content_kind") == "publication" else None)
+            or (None if not missing_requirements else "incomplete_lead")
+            or criterion_reason
+        )
         if reason:
             summary["skipped"] += 1
             updates = {"crm_status": "skipped", "crm_skip_reason": reason}
@@ -220,7 +231,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
 
         consumer_id = uuid5(NAMESPACE_URL, f"kiara:hunter-consumer:{org_uuid}:{keys[0]}")
         username = _instagram_username(result["url"])
-        display_name = _consumer_display_name(result, username)
+        display_name = _consumer_display_name(normalized_result, username)
         consumer = await (await connection.execute(
             """SELECT id,display_name,attributes,consent_status,lifecycle_status FROM consumers
                WHERE organization_id=%s AND
@@ -240,7 +251,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
         old_keys = attrs.get("hunter_identity_keys")
         attrs["hunter_identity_keys"] = list(dict.fromkeys((old_keys if isinstance(old_keys, list) else []) + keys))
         # Replace only discovery metadata. Manual CRM attributes and consent stay intact.
-        attrs["hunter"] = _hunter_metadata(search_dict, result, attrs.get("hunter"))
+        attrs["hunter"] = _hunter_metadata(search_dict, normalized_result, attrs.get("hunter"))
         if consumer:
             consumer_id = consumer["id"]
             await connection.execute(
@@ -272,7 +283,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
                 attrs = dict(consumer["attributes"] or {})
                 old_keys = attrs.get("hunter_identity_keys")
                 attrs["hunter_identity_keys"] = list(dict.fromkeys((old_keys if isinstance(old_keys, list) else []) + keys))
-                attrs["hunter"] = _hunter_metadata(search_dict, result, attrs.get("hunter"))
+                attrs["hunter"] = _hunter_metadata(search_dict, normalized_result, attrs.get("hunter"))
                 await connection.execute(
                     """UPDATE consumers SET attributes=%s,display_name=COALESCE(NULLIF(display_name,''),%s),
                        version=version+1,updated_at=now() WHERE organization_id=%s AND id=%s""",

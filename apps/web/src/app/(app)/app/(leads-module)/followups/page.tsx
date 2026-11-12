@@ -1,6 +1,5 @@
-import { WhatsAppGatewayWorkspace } from "@/components/app-shell/whatsapp-gateway-workspace"
-import { SupportSectionNav } from "@/components/app-shell/workspace-section-nav"
+import { redirect } from "next/navigation"
 
 export default async function FollowUpsPage() {
-  return <div className="space-y-5"><SupportSectionNav /><WhatsAppGatewayWorkspace /></div>
+  redirect("/app/whatsapp")
 }

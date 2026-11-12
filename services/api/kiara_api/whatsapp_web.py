@@ -14,6 +14,21 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 
+def phone_match_keys(phone: str) -> list[str]:
+    """Digit forms under which the same Brazilian number may already be stored.
+
+    Hunter keeps the phone as published by the source ("(51) 99999-9999"), while
+    WhatsApp reports country code + number. Comparing only digits, with and
+    without the 55 country code, prevents duplicate CRM rows for one contact.
+    """
+    digits = "".join(character for character in phone if character.isdigit())
+    keys = {digits}
+    if digits.startswith("55") and len(digits) in {12, 13}:
+        keys.add(digits[2:])
+        keys.add("0" + digits[2:])
+    return sorted(keys)
+
+
 class Contact(BaseModel):
     model_config = ConfigDict(extra="forbid")
     phone: str = Field(pattern=r"^[1-9][0-9]{7,14}$")
@@ -132,6 +147,14 @@ class WhatsAppWebRepository:
         else:
             async with self.postgres._transaction(organization_id) as connection:
                 await connection.execute("INSERT INTO whatsapp_web_config(organization_id,config) VALUES(%s,%s) ON CONFLICT(organization_id) DO UPDATE SET config=EXCLUDED.config,updated_at=now()", (_uuid("organization", organization_id), Jsonb(data)))
+                # Reconcile the full allowlist, including contacts removed from
+                # this configuration. Updating only the remaining contacts left
+                # old inbox threads showing automation enabled after removal or
+                # after disabling the operation with an empty contact list.
+                await connection.execute(
+                    "UPDATE conversation_threads SET automation_enabled=false,updated_at=now() WHERE organization_id=%s AND channel='whatsapp' AND automation_enabled=true",
+                    (_uuid("organization", organization_id),),
+                )
                 for contact in config.contacts:
                     await connection.execute("UPDATE conversation_threads SET automation_enabled=%s,handoff=%s,updated_at=now() WHERE organization_id=%s AND channel='whatsapp' AND provider_thread_id=%s AND status!='blocked'", (config.enabled and config.auto_reply_enabled and contact.enabled and not contact.handoff, contact.handoff, _uuid("organization", organization_id), contact.phone))
         return data
@@ -290,14 +313,15 @@ class WhatsAppWebRepository:
             imported = duplicates = 0
             for lead in ([] if payload.error else payload.leads):
                 phone = lead.phone
+                keys = phone_match_keys(phone)
                 existing = await (await connection.execute(
                     """SELECT id FROM consumers
                        WHERE organization_id=%s AND
-                         (attributes->'whatsapp'->>'phone'=%s
-                          OR attributes->'hunter'->>'phone'=%s
-                          OR attributes->>'phone'=%s)
+                         (regexp_replace(COALESCE(attributes->'whatsapp'->>'phone',''),'\\D','','g')=ANY(%s)
+                          OR regexp_replace(COALESCE(attributes->'hunter'->>'phone',''),'\\D','','g')=ANY(%s)
+                          OR regexp_replace(COALESCE(attributes->>'phone',''),'\\D','','g')=ANY(%s))
                        LIMIT 1""",
-                    (organization_uuid, phone, phone, phone),
+                    (organization_uuid, keys, keys, keys),
                 )).fetchone()
                 if existing:
                     duplicates += 1
@@ -308,9 +332,12 @@ class WhatsAppWebRepository:
                         (Jsonb({"phone": phone, "summary": lead.summary, "confidence": lead.confidence,
                                 "analyzed_at": datetime.now(UTC).isoformat()}), organization_uuid, existing["id"]),
                     )
+                    # The AI suggestion only fills gaps: it may advance a lead that is
+                    # still "new", but never overrides a stage or next action that a
+                    # person already set in the CRM.
                     await connection.execute(
-                        """UPDATE pipeline_entries SET stage=CASE WHEN stage IN ('won','lost') THEN stage ELSE %s END,
-                           next_action=CASE WHEN stage IN ('won','lost') THEN next_action ELSE %s END,
+                        """UPDATE pipeline_entries SET stage=CASE WHEN stage='new' THEN %s ELSE stage END,
+                           next_action=COALESCE(NULLIF(next_action,''),%s),
                            version=version+1,updated_at=now() WHERE organization_id=%s AND consumer_id=%s""",
                         (lead.stage, lead.next_action or None, organization_uuid, existing["id"]),
                     )

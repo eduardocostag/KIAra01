@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+
 
 @dataclass
 class ExecutionResult:
+    """Execution outcome; success requires a real completed operation or artifact."""
+
     success: bool
-    output_path: Optional[str] = None
-    message: Optional[str] = None
+    output_path: str | None = None
+    message: str | None = None
 
 class BaseExecutor(ABC):
     @abstractmethod
-    async def execute(self, prompt: str, metadata: Optional[dict] = None) -> ExecutionResult:
+    async def execute(self, prompt: str, metadata: dict | None = None) -> ExecutionResult:
         pass

@@ -121,7 +121,7 @@ def test_new_discovery_creates_real_consumer_and_pipeline_without_fake_conversat
     consumer = next(iter(conn.consumers.values()))
     assert consumer["consent_status"] == "unknown"
     assert consumer["instagram_username"] is None
-    assert consumer["attributes"]["hunter"]["phone"] == "+55 11 99999-0000"
+    assert consumer["attributes"]["hunter"]["phone"] == "+5511999990000"
     assert "whatsapp_url" not in consumer["attributes"]["hunter"]
     assert row["public_data"]["crm_status"] == "synced"
     assert row["public_data"]["lead_id"] == str(consumer["id"])
@@ -225,6 +225,51 @@ def test_user_selection_does_not_turn_publication_into_contact():
     assert row["public_data"]["crm_skip_reason"] == "publication_not_contact"
 
 
+@pytest.mark.parametrize("status", ["not_verified", "rejected"])
+@pytest.mark.parametrize("overrides,expected", [
+    ({"public_data": {"phone": None, "address": None}}, "incomplete_lead"),
+    ({"url": ""}, "invalid_source_url"),
+])
+def test_manual_criterion_override_still_checks_all_required_evidence(status, overrides, expected):
+    conn, org = MemoryConnection(), uuid4()
+    overrides = deepcopy(overrides)
+    overrides.setdefault("public_data", {})["criterion_status"] = status
+    row = result(**overrides)
+    summary = asyncio.run(sync_hunter_results(conn, org, search(), [row], user_selected=True))
+    assert summary == {"created": 0, "existing": 0, "skipped": 1}
+    assert row["public_data"]["crm_skip_reason"] == expected
+    assert not conn.consumers and not conn.entries
+
+
+def test_legacy_publication_without_content_kind_is_not_promoted():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(source="instagram", url="https://instagram.com/p/ABC123/",
+                 public_data={"criterion_status": "not_verified"})
+    summary = asyncio.run(sync_hunter_results(conn, org, search(), [row], user_selected=True))
+    assert summary["skipped"] == 1
+    assert row["public_data"]["crm_skip_reason"] == "publication_not_contact"
+    assert not conn.consumers
+
+
+def test_verified_address_provenance_survives_crm_promotion():
+    conn, org = MemoryConnection(), uuid4()
+    row = result(public_data={"address_source_url": "https://clinic.example/contato",
+                              "address_evidence_text": "São Paulo"})
+    run(conn, org, search(), [row])
+    metadata = next(iter(conn.consumers.values()))["attributes"]["hunter"]
+    assert metadata["address_source_url"] == "https://clinic.example/contato"
+    assert metadata["address_evidence_text"] == "São Paulo"
+    assert metadata["detail_inspected"] is True
+
+
+def test_facebook_numeric_profiles_do_not_share_a_crm_identity():
+    first = identity_keys(result(source="facebook", url="https://facebook.com/profile.php?id=123"))
+    second = identity_keys(result(source="facebook", url="https://facebook.com/profile.php?id=456"))
+    assert "facebook:123" in first
+    assert "facebook:456" in second
+    assert not set(first) & set(second)
+
+
 def test_instagram_publication_is_saved_as_research_not_crm_contact():
     conn, org = MemoryConnection(), uuid4()
     row = result(source="instagram", url="https://instagram.com/p/ABC123/",
@@ -248,7 +293,7 @@ def test_rediscovery_does_not_erase_prior_observed_contact_details():
     run(conn, org, search(), [first])
     run(conn, org, search(), [result(public_data={"criterion_status": "not_requested"})])
     metadata = next(iter(conn.consumers.values()))["attributes"]["hunter"]
-    assert metadata["phone"] == "+55 11 99999-0000"
+    assert metadata["phone"] == "+5511999990000"
     assert metadata["whatsapp_url"] == "https://wa.me/5511999990000"
     assert metadata["criterion_status"] == "not_requested"
 

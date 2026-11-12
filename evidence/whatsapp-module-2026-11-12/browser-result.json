@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "mode": "intercepted_apis_no_account_or_messages",
+  "checks": [
+    "disconnected",
+    "connected",
+    "analysis",
+    "invalid_response",
+    "access_denied",
+    "sidebar_hash",
+    "mobile_menu",
+    "mobile_width",
+    "no_page_errors"
+  ],
+  "screenshots": 5
+}

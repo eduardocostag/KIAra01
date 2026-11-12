@@ -1,0 +1,23 @@
+{
+  "mode": "mocked_browser_no_real_messages",
+  "passed": true,
+  "checks": [
+    "contact registration",
+    "activation requires consent",
+    "activation requires business context",
+    "save and enable",
+    "new contacts reset activation and consent",
+    "human handoff persists",
+    "polling preserves edits",
+    "pause ignores invalid unsaved edits",
+    "mobile width",
+    "no page errors",
+    "no unexpected API calls"
+  ],
+  "config_writes_intercepted": 4,
+  "event_polls_intercepted": 3,
+  "screenshots": [
+    "automation-desktop.png",
+    "automation-mobile.png"
+  ]
+}

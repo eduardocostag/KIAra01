@@ -85,9 +85,8 @@ export function whatsappComposerUrl(
   const confirmed = safeWhatsAppUrl(confirmedUrl)
   let base = confirmed
   if (!base) {
-    let digits = phone?.replace(/\D/g, "") ?? ""
-    if ((digits.length === 10 || digits.length === 11) && !digits.startsWith("55")) digits = `55${digits}`
-    if (!/^55\d{10,11}$/.test(digits)) return null
+    const digits = normalizeWhatsAppPhone(phone)
+    if (!digits) return null
     base = `https://wa.me/${digits}`
   }
   const text = message.trim()
@@ -168,4 +167,26 @@ export async function requestPipeline(path: string, init: RequestInit = {}): Pro
     if (controller.signal.aborted || error instanceof TypeError) throw new Error("A conexão com o CRM foi interrompida. Atualize o Pipeline para conferir os dados antes de repetir.")
     throw error
   } finally { clearTimeout(timer) }
+}
+
+/**
+ * Normalizes a phone number to WhatsApp digits (country code + area code + number).
+ *
+ * Brazilian numbers are the default: 10 or 11 digits (DDD + number, with or
+ * without the leading 0 trunk prefix) receive the 55 country code. Numbers from
+ * other countries must be written with an explicit "+" or "00" prefix, otherwise
+ * a Brazilian DDD such as 51 would be misread as a foreign country code.
+ */
+export function normalizeWhatsAppPhone(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim()
+  if (!value) return null
+  const international = /^(\+|00)/.test(value)
+  let digits = value.replace(/\D/g, "")
+  if (value.startsWith("00")) digits = digits.slice(2)
+  if (!international) {
+    if (/^0\d{10,11}$/.test(digits)) digits = digits.slice(1)
+    if (/^\d{10,11}$/.test(digits)) digits = `55${digits}`
+    if (!/^55\d{10,11}$/.test(digits)) return null
+  }
+  return /^[1-9]\d{7,14}$/.test(digits) ? digits : null
 }
