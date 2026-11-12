@@ -7,7 +7,6 @@ import {
   House,
   Inbox,
   Menu,
-  Radar,
   Search,
   Settings2,
   ShieldCheck,
@@ -50,7 +49,6 @@ const navConfigs = {
     { href: "/app/leads", label: "Visão geral", icon: House },
     { href: "/app/hunter", label: "Buscar leads", icon: Search },
     { href: "/app/pipeline", label: "Contatos", icon: UsersRound },
-    { href: "/app/concorrencia", label: "Concorrência", icon: Radar },
     { href: "/app/settings", label: "Configurações", icon: Settings2 },
   ],
   "/app/whatsapp": [

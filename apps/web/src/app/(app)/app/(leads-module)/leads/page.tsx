@@ -1,9 +1,60 @@
-import { LeadsOverview } from "@/components/app-shell/leads-overview"
+import Link from "next/link"
+import { ArrowRight, ChartNoAxesColumnIncreasing, Radar, Search, UsersRound } from "lucide-react"
+import { OrbitScene } from "@/components/brand/orbit-scene"
+import { SourceMark } from "@/components/brand/source-mark"
+import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
+import { Button } from "@/components/ui/button"
 import { getPipelineDTO } from "@/lib/api/pipeline-server"
+import { leadDisplayName, pipelineStages, sourceLabels } from "@/lib/api/pipeline"
+
+function relativeTime(value: string, now: number) {
+  const minutes = Math.max(0, Math.floor((now - new Date(value).getTime()) / 60000))
+  if (!Number.isFinite(minutes)) return "—"
+  if (minutes < 1) return "Agora"
+  if (minutes < 60) return `Há ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Há ${hours} h`
+  const days = Math.floor(hours / 24)
+  return `Há ${days} ${days === 1 ? "dia" : "dias"}`
+}
 
 export default async function DashboardPage() {
   const pipeline = await getPipelineDTO()
     .then((entries) => ({ entries, available: true }))
     .catch(() => ({ entries: [], available: false }))
-  return <LeadsOverview entries={pipeline.entries} available={pipeline.available} now={new Date().getTime()} />
+  const fresh = pipeline.entries.filter((entry) => entry.stage === "new")
+  const active = pipeline.entries.filter((entry) => entry.stage !== "won" && entry.stage !== "lost")
+  const now = new Date().getTime()
+  const nextHref = fresh.length ? "/app/pipeline" : "/app/hunter"
+  const metrics = [
+    { label: "Novos leads", value: pipeline.available ? fresh.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/pipeline" },
+    { label: "Em acompanhamento", value: pipeline.available ? active.length : "—", icon: ChartNoAxesColumnIncreasing, href: "/app/pipeline" },
+  ]
+  const recent = [...pipeline.entries].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5)
+
+  const dateLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).format(new Date())
+  return <div className="kiara-dashboard kiara-orbit-dashboard">
+    <section className="kiara-dashboard-hero" aria-labelledby="dashboard-title">
+      <div className="kiara-dashboard-copy">
+        <p className="kiara-dashboard-eyebrow">{dateLabel}</p>
+        <h1 id="dashboard-title"><span>Converse.</span><span>Entenda.</span><span className="kiara-dashboard-gradient-word">Conquiste.</span></h1>
+        <p className="kiara-dashboard-lead">{fresh.length ? `Você tem ${fresh.length} ${fresh.length === 1 ? "lead novo" : "leads novos"} esperando uma primeira abordagem.` : "A Kiara reúne oportunidades reais e organiza o próximo passo da sua operação."}</p>
+        <Button asChild size="lg" className="kiara-dashboard-cta"><Link href={nextHref}>{fresh.length ? "Começar minha fila" : "Pesquisar leads"}<ArrowRight className="size-4" /></Link></Button>
+        <div className="kiara-dashboard-capabilities" aria-label="Acessos rápidos"><Link href="/app/hunter"><span><Search className="size-3.5" /></span>Buscar leads</Link><Link href="/app/pipeline"><span><UsersRound className="size-3.5" /></span>Contatos</Link></div>
+      </div>
+      <div className="kiara-dashboard-planet" aria-hidden="true"><OrbitScene /></div>
+      <div className="kiara-dashboard-metrics" role="group" aria-label="Indicadores da operação">
+        {metrics.map(({ label, value, icon: Icon, href }) => <Link key={label} href={href} className="kiara-dashboard-metric"><span className="kiara-dashboard-metric-icon"><Icon className="size-5" aria-hidden="true" /></span><div><p className="kiara-dashboard-metric-value">{value}</p><p className="kiara-dashboard-metric-label">{label}</p></div></Link>)}
+      </div>
+    </section>
+    <section className="kiara-dashboard-table" aria-labelledby="recent-title">
+      <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><RefreshWorkspace /><Link href="/app/pipeline" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
+      {recent.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><caption className="sr-only">Leads recentes com origem e status</caption><thead><tr><th scope="col">Lead</th><th scope="col">Origem</th><th scope="col">Tempo</th><th scope="col">Status</th></tr></thead><tbody>{recent.map((entry) => {
+        const source = entry.consumer.source ?? ""
+        const sourceLabel = sourceLabels[source] ?? "Web pública"
+        const kind = /instagram/i.test(source + sourceLabel) ? "instagram" : /facebook/i.test(source + sourceLabel) ? "facebook" : /maps|google/i.test(source + sourceLabel) ? "maps" : "web"
+        return <tr key={entry.id}><td><Link href={`/app/leads/${encodeURIComponent(entry.consumer.id)}`} className="kiara-dashboard-lead-link"><span className="kiara-dashboard-lead-name">{leadDisplayName(entry.consumer)}</span></Link></td><td><span className="kiara-dashboard-source"><span className={`kiara-dashboard-source-icon kiara-dashboard-source-${kind}`}><SourceMark kind={kind} /></span>{sourceLabel}</span></td><td><time dateTime={entry.updated_at}>{relativeTime(entry.updated_at, now)}</time></td><td><span className="kiara-dashboard-status">{pipelineStages.find((stage) => stage.id === entry.stage)?.label ?? entry.stage}</span></td></tr>
+      })}</tbody></table></div> : <div className="kiara-dashboard-empty"><Radar className="size-5 text-primary" /><p>Seus primeiros leads aparecerão aqui depois de uma pesquisa.</p><Link href="/app/hunter" className="font-semibold text-primary hover:underline">Encontrar leads <ArrowRight className="inline size-3.5" /></Link></div>}
+    </section>
+  </div>
 }
