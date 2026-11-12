@@ -136,8 +136,8 @@ export function AppShell({
   const isWhatsApp = modulePrefix === "/app/whatsapp";
   const isChat = modulePrefix === "/app/chat";
 
-  // Conversation modules render their own full-height shell (ImmersiveShell).
-  if (isWhatsApp || isChat) {
+  // Conversation and automation modules render their own full-height shell (ImmersiveShell).
+  if (isWhatsApp || isChat || modulePrefix === "/app/automation") {
     return <div className="kiara-workspace min-h-dvh bg-background text-foreground">{children}</div>;
   }
 

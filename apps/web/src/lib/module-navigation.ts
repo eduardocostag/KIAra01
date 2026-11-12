@@ -4,6 +4,7 @@ const whatsappPaths = ["whatsapp", "inbox"]
 
 export function modulePrefixForPath(pathname: string): string | null {
   if (pathname === "/app/chat" || pathname.startsWith("/app/chat/")) return "/app/chat"
+  if (pathname === "/app/automation" || pathname.startsWith("/app/automation/")) return "/app/automation"
   if (whatsappPaths.some((path) => pathname === `/app/${path}` || pathname.startsWith(`/app/${path}/`))) return "/app/whatsapp"
   if (pathname === "/app/atendimento" || pathname.startsWith("/app/atendimento/")) return "/app/atendimento"
   if (pathname === "/app/ti" || pathname.startsWith("/app/ti/")) return "/app/ti"

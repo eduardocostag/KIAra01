@@ -66,12 +66,13 @@ _MODULES = (
     },
     {
         "key": "ti",
-        "name": "KIARA TI",
-        "description": "Estrutura para um futuro módulo de suporte técnico.",
+        # Key "ti" is kept for existing permissions; the module is now Kiara Automation (/app/automation).
+        "name": "KIARA Automation",
+        "description": "Fluxos de automação: tarefas no computador e em sites, agenda, mensagens, redes sociais e anúncios.",
         "href": "/app/platform/ti",
         "status": "preparation",
         "status_label": "Em preparação",
-        "areas": ["Diagnóstico", "Solicitações", "Conhecimento"],
+        "areas": ["Fluxos", "Integrações", "Anúncios"],
         "integration_status": "pending",
     },
 )

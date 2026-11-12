@@ -8,7 +8,7 @@ const moduleLabels = {
   leads: "KIARA Leads",
   whatsapp: "KIARA WhatsApp",
   atendimento: "Kiara Chat",
-  ti: "KIARA TI",
+  ti: "KIARA Automation",
   intelligence: "Kiara Chat · agentes",
 } as const
 

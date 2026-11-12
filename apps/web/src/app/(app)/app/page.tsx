@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Inbox, MessageCircle, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, Inbox, MessageCircle, Search, Workflow } from "lucide-react";
 import { KiaraBrand } from "@/components/brand/kiara-brand";
 import { OrbitScene } from "@/components/brand/orbit-scene";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,7 @@ export default function ModuleSelectorPage() {
     { href: "/app/leads", label: "KIARA Leads", description: "Pesquisa, CRM e Pipeline.", icon: Search, operational: true },
     { href: "/app/whatsapp", label: "KIARA WhatsApp", description: "Conexão, análise e automação.", icon: MessageCircle, operational: true },
     { href: "/app/chat", label: "Kiara Chat", description: "Conversa, voz e criação com IA.", icon: Inbox, operational: true },
-    { href: "/app/platform/ti", label: "KIARA TI", description: "Suporte e infraestrutura.", icon: ShieldCheck, operational: false },
+    { href: "/app/automation", label: "KIARA Automation", description: "Fluxos, tarefas, agenda, redes e anúncios.", icon: Workflow, operational: true },
   ];
 
   return (

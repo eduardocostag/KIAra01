@@ -1,0 +1,70 @@
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background-color: var(--background);
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--foreground) 14%, transparent) 1px, transparent 1.4px);
+  user-select: none;
+}
+.canvas.panning { cursor: grabbing; }
+
+.world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.edges { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.edge { fill: none; stroke: color-mix(in oklab, var(--foreground) 32%, transparent); stroke-width: 2; pointer-events: stroke; cursor: pointer; transition: stroke .2s; }
+.edge:hover { stroke: var(--destructive); }
+.edgeActive { stroke: var(--primary); stroke-width: 2.5; stroke-dasharray: 7 7; animation: flow .6s linear infinite; }
+.edgeDraft { fill: none; stroke: var(--primary); stroke-width: 2; stroke-dasharray: 5 5; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+
+.node {
+  position: absolute;
+  width: 232px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  box-shadow: 0 10px 30px -18px rgb(0 0 0 / .6);
+  backdrop-filter: blur(10px);
+  cursor: grab;
+  transition: box-shadow .2s, border-color .2s;
+}
+.node::before { position: absolute; inset: 0 0 auto; height: 3px; border-radius: 16px 16px 0 0; background: var(--accent-color); content: ""; }
+.node.selected { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color), 0 14px 40px -16px color-mix(in oklab, var(--accent-color) 70%, transparent); }
+.node.running { animation: pulse 1.2s ease-in-out infinite; }
+.node.done { border-color: rgb(52 211 153 / .6); }
+.node.blocked { border-color: rgb(245 165 36 / .7); }
+.node.error { border-color: var(--destructive); }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-color) 35%, transparent); } }
+
+.nodeBody { display: flex; gap: .7rem; align-items: center; padding: .85rem .9rem; }
+.icon { display: grid; width: 2.2rem; height: 2.2rem; flex-shrink: 0; place-items: center; border-radius: 11px; background: color-mix(in oklab, var(--accent-color) 18%, transparent); color: var(--accent-color); }
+.icon svg { width: 1.05rem; height: 1.05rem; }
+.title { overflow: hidden; font-size: .86rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.subtitle { overflow: hidden; color: var(--muted-foreground); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.badge { position: absolute; top: -9px; right: 10px; border-radius: 999px; padding: .1rem .45rem; font-size: .62rem; font-weight: 600; }
+.badgeNeeds { border: 1px solid rgb(245 165 36 / .5); background: #2b1e05; color: #f5a524; }
+
+.port {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-color);
+  border-radius: 50%;
+  background: var(--card);
+  transform: translateY(-50%);
+  cursor: crosshair;
+}
+.port:hover { background: var(--accent-color); }
+.portIn { left: -8px; }
+.portOut { right: -8px; }
+.portYes { top: 35%; }
+.portNo { top: 72%; }
+.portLabel { position: absolute; right: 10px; font-size: .62rem; color: var(--muted-foreground); transform: translateY(-50%); }
+
+.edgeDelete { position: absolute; display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--card); color: var(--muted-foreground); transform: translate(-50%, -50%); cursor: pointer; }
+.edgeDelete:hover { color: var(--destructive); }
+
+@media (prefers-reduced-motion: reduce) { .edgeActive, .node.running { animation: none; } }
