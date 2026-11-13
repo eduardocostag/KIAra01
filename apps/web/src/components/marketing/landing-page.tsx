@@ -1,13 +1,13 @@
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, Bot, Check, Hand, Laptop, MessageCircle, Search, SlidersHorizontal, UserCheck, Workflow } from "lucide-react"
+import { ArrowRight, Bot, Check, Hand, MessageCircle, Puzzle, Search, SlidersHorizontal, UserCheck, Workflow } from "lucide-react"
 import { KiaraBrand } from "@/components/brand/kiara-brand"
 import { Button } from "@/components/ui/button"
 import { CtaOrb, HeroScene, Reveal, TiltCard, WordRotator } from "./landing-interactive"
 import { AutomationPreview, LeadsPreview, VoicePreview, WhatsAppPreview } from "./module-previews"
 import styles from "./landing.module.css"
 
-const channels = ["Google Maps", "Instagram", "Facebook", "WhatsApp", "LinkedIn", "Google Ads", "Meta Ads", "Google Agenda", "CRM integrado", "IA local", "Voz em português", "Chatwoot"]
+const channels = ["Google Maps", "Instagram", "Facebook", "WhatsApp", "LinkedIn", "Google Ads", "Meta Ads", "Google Agenda", "CRM integrado", "Voz em português", "Chatwoot"]
 
 const modules = [
   { icon: Search, tone: "#38bdf8", eyebrow: "KIARA Leads", title: "Encontre e organize clientes.", copy: "Descreva quem você procura e a Kiara pesquisa, confere contato e localização e leva cada oportunidade para o CRM com a próxima ação.", bullets: ["Busca por nicho, região e presença digital", "Contato e endereço conferidos na fonte", "Pipeline com etapas e follow-ups"], preview: LeadsPreview },
@@ -26,7 +26,7 @@ const control = [
   { icon: Hand, label: "Confirmação para ações sensíveis" },
   { icon: SlidersHorizontal, label: "Limites e horários" },
   { icon: UserCheck, label: "Só contatos autorizados" },
-  { icon: Laptop, label: "IA local opcional" },
+  { icon: Puzzle, label: "Módulos sob medida" },
 ]
 
 const segments = ["clínicas", "agências", "lojas", "escolas", "consultorias", "indústrias", "autônomos"]

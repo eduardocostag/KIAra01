@@ -4,191 +4,380 @@
 <meta charset="utf-8">
 <title>Kiara — vídeo de demonstração</title>
 <style>
-  @font-face { font-family: Geist; src: local("Geist"), local("Segoe UI"); }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07060f; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #05040b; }
   body { font-family: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif; color: white; -webkit-font-smoothing: antialiased; }
-  #stage { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(1200px 700px at 70% 10%, #24124a 0%, transparent 60%), radial-gradient(900px 600px at 10% 90%, #12204a 0%, transparent 60%), #07060f; }
-  #grid { position: absolute; inset: -50%; background-image: linear-gradient(rgb(158 119 255 / .05) 1px, transparent 1px), linear-gradient(90deg, rgb(158 119 255 / .05) 1px, transparent 1px); background-size: 64px 64px; transform: perspective(900px) rotateX(58deg) translateY(var(--gy, 0px)); transform-origin: 50% 100%; mask-image: radial-gradient(ellipse at 50% 70%, black 10%, transparent 60%); }
-  .particle { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #c4a1ff; box-shadow: 0 0 8px #a78bfa; }
-  .scene { position: absolute; inset: 0; display: none; }
-  .backdrop { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .35; filter: blur(2px) saturate(1.2); }
-  .kicker { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; letter-spacing: .32em; color: #b9a2ff; text-transform: uppercase; white-space: nowrap; }
-  .title { position: absolute; top: 84px; left: 0; right: 0; text-align: center; font-size: 46px; font-weight: 650; letter-spacing: -.035em; }
-  .window { position: absolute; left: 50%; top: 152px; width: 1344px; height: 788px; margin-left: -672px; border-radius: 18px; overflow: hidden; border: 1px solid rgb(255 255 255 / .12); background: #0b0a14; box-shadow: 0 60px 120px -40px rgb(0 0 0 / .9), 0 0 80px -20px rgb(124 77 255 / .45); transform-style: preserve-3d; }
-  .bar { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #14121f; border-bottom: 1px solid rgb(255 255 255 / .06); }
-  .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3550; }
+  #stage { position: absolute; inset: 0; overflow: hidden; background: #05040b; }
+  .blob { position: absolute; width: 1100px; height: 1100px; border-radius: 50%; filter: blur(140px); opacity: .55; }
+  #grid { position: absolute; left: -50%; right: -50%; top: 46%; height: 120%; background-image: linear-gradient(rgb(170 130 255 / .14) 1px, transparent 1px), linear-gradient(90deg, rgb(170 130 255 / .14) 1px, transparent 1px); background-size: 80px 80px; transform-origin: 50% 0; mask-image: linear-gradient(to bottom, transparent, black 30%, transparent 85%); }
+  .particle { position: absolute; left: 0; top: 0; border-radius: 50%; background: #d8c6ff; box-shadow: 0 0 10px #a78bfa; }
+  .spark { position: absolute; left: 0; top: 0; width: 6px; height: 6px; border-radius: 50%; background: white; box-shadow: 0 0 12px var(--c, #c4a1ff), 0 0 24px var(--c, #c4a1ff); }
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgb(0 0 0 / .65) 100%); z-index: 60; }
+  #flash { position: absolute; inset: 0; z-index: 55; pointer-events: none; background: radial-gradient(circle at 50% 45%, rgb(210 180 255 / .9), rgb(124 77 255 / .35) 35%, transparent 70%); opacity: 0; mix-blend-mode: screen; }
+  .streak { position: absolute; height: 2px; width: 900px; background: linear-gradient(90deg, transparent, rgb(220 200 255 / .9), transparent); z-index: 54; opacity: 0; }
+  .scene { position: absolute; inset: 0; display: none; transform-origin: 50% 50%; }
+  .kicker { position: absolute; top: 62px; left: 0; right: 0; text-align: center; font-size: 20px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 24px var(--accent); }
+  .kicker::after { content: ""; display: block; height: 2px; margin: 14px auto 0; width: calc(var(--line, 0) * 240px); background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .window { position: absolute; left: 50%; top: 150px; width: 1300px; height: 762px; margin-left: -650px; border-radius: 20px; overflow: hidden; border: 1px solid rgb(255 255 255 / .14); background: #0b0a14; box-shadow: 0 70px 140px -40px rgb(0 0 0 / .95), 0 0 120px -30px var(--accent); }
+  .bar { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #14121f; border-bottom: 1px solid rgb(255 255 255 / .06); position: relative; z-index: 3; }
+  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #3a3550; }
   .bar i:nth-child(1) { background: #ff5f57; } .bar i:nth-child(2) { background: #febc2e; } .bar i:nth-child(3) { background: #28c840; }
-  .bar span { margin-left: 18px; padding: 4px 14px; border-radius: 8px; background: rgb(255 255 255 / .05); color: rgb(255 255 255 / .5); font-size: 13px; }
-  .viewport { position: relative; height: 756px; overflow: hidden; }
-  .viewport img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
-  .card { position: absolute; right: 64px; width: 380px; display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: 20px; border: 1px solid rgb(255 255 255 / .12); background: linear-gradient(145deg, rgb(38 28 72 / .92), rgb(16 14 30 / .9)); box-shadow: 0 30px 60px -24px rgb(0 0 0 / .85), inset 0 1px 0 rgb(255 255 255 / .08); font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
-  .card b { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; background: rgb(124 77 255 / .25); color: #d6c4ff; box-shadow: 0 0 18px rgb(124 77 255 / .4); }
-  .caption { position: absolute; left: 50%; bottom: 46px; max-width: 1240px; transform: translateX(-50%); padding: 12px 26px; border-radius: 16px; background: rgb(8 7 16 / .78); border: 1px solid rgb(255 255 255 / .08); color: rgb(255 255 255 / .92); font-size: 27px; line-height: 1.35; text-align: center; backdrop-filter: blur(8px); }
-  #progress { position: absolute; left: 0; bottom: 0; height: 4px; background: linear-gradient(90deg, #7c4dff, #38bdf8); box-shadow: 0 0 14px #7c4dff; }
-  #brand { position: absolute; top: 40px; left: 52px; display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .22em; font-size: 18px; opacity: .85; }
-  #brand span { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 40% 28%, #e7d4ff, #8b4dff 50%, #2e135e 95%); box-shadow: 0 0 14px #7c4dff; }
-  /* Presenter orb */
-  #orbWrap { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 30; }
-  #halo { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgb(140 82 255 / .65), transparent 66%); filter: blur(30px); }
-  .ripple { position: absolute; border-radius: 50%; border: 2px solid rgb(196 150 255 / .5); }
-  #orb { position: absolute; border-radius: 50%; overflow: hidden; border: 1px solid rgb(212 157 255 / .6); background: radial-gradient(circle at 42% 14%, rgb(249 220 255 / .9), transparent 15%), radial-gradient(circle at 39% 30%, #c698ff 1%, #a061ef 25%, #6522bf 56%, #2e135e 86%); box-shadow: inset 18px 16px 40px rgb(253 216 255 / .22), inset -40px -44px 64px rgb(26 5 59 / .72); display: grid; place-items: center; }
-  #sheen { position: absolute; inset: -20%; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 62%, rgb(255 255 255 / .16) 72%, transparent 82%); }
-  #face { position: relative; display: flex; width: 24%; gap: 24%; justify-content: center; }
-  #face i { display: block; width: 30%; aspect-ratio: .68; border-radius: 50%; background: #10041f; }
-  #orbLabel { position: absolute; white-space: nowrap; font-size: 17px; font-weight: 700; letter-spacing: .2em; color: #d6c4ff; transform: translateX(-50%); }
-  /* Orb layouts */
-  .big { position: absolute; left: 0; right: 0; text-align: center; font-weight: 650; letter-spacing: -.045em; }
-  .grad { background: linear-gradient(90deg, #c4a1ff, #7dd3fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .chip { position: absolute; padding: 16px 26px; border-radius: 999px; border: 1px solid rgb(167 139 250 / .45); background: rgb(30 22 58 / .85); font-size: 24px; font-weight: 600; white-space: nowrap; box-shadow: 0 0 30px rgb(124 77 255 / .25); transform: translate(-50%, -50%); }
-  .cta { position: absolute; left: 50%; transform: translateX(-50%); padding: 18px 36px; border-radius: 16px; background: #8f72ff; color: white; font-size: 26px; font-weight: 700; box-shadow: 0 20px 60px -10px rgb(124 77 255 / .8); white-space: nowrap; }
+  .bar span { margin-left: 18px; padding: 4px 16px; border-radius: 8px; background: rgb(255 255 255 / .05); color: rgb(255 255 255 / .55); font-size: 14px; }
+  .viewport { position: absolute; left: 0; right: 0; top: 34px; bottom: 0; overflow: hidden; }
+  .layer { position: absolute; inset: 0; }
+  .layer img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  .spot { position: absolute; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 3px solid var(--accent); box-shadow: 0 0 30px var(--accent), inset 0 0 30px var(--accent); }
+  .spotPulse { position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--accent); }
+  .glare { position: absolute; top: 0; bottom: 0; width: 360px; background: linear-gradient(100deg, transparent, rgb(255 255 255 / .16), transparent); z-index: 4; pointer-events: none; }
+  .reflection { position: absolute; left: 50%; top: 925px; width: 1300px; height: 120px; margin-left: -650px; border-radius: 20px; background: linear-gradient(to bottom, rgb(124 77 255 / .18), transparent); filter: blur(10px); }
+  .card { position: absolute; right: 56px; width: 410px; display: flex; align-items: center; gap: 16px; padding: 20px 22px; border-radius: 22px; background: linear-gradient(145deg, rgb(40 30 78 / .95), rgb(15 13 30 / .93)); box-shadow: 0 34px 70px -26px rgb(0 0 0 / .9); font-size: 23px; font-weight: 650; letter-spacing: -.01em; overflow: hidden; z-index: 20; }
+  .card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; background: conic-gradient(from var(--spin, 0deg), transparent 0 60%, var(--accent) 75%, transparent 90%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+  .card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgb(255 255 255 / .1); }
+  .card b { position: relative; flex-shrink: 0; width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-size: 19px; background: color-mix(in oklab, var(--accent) 28%, transparent); color: white; box-shadow: 0 0 22px var(--accent); }
+  .card .shine { position: absolute; top: 0; bottom: 0; width: 120px; background: linear-gradient(100deg, transparent, rgb(255 255 255 / .22), transparent); }
+  .caption { position: absolute; left: 50%; bottom: 40px; max-width: 1300px; transform: translateX(-50%); padding: 13px 28px; border-radius: 18px; background: rgb(7 6 14 / .82); border: 1px solid rgb(255 255 255 / .08); font-size: 29px; line-height: 1.35; text-align: center; z-index: 40; white-space: normal; }
+  .caption span { color: rgb(255 255 255 / .42); transition: none; }
+  .caption span.on { color: white; }
+  .caption span.now { color: var(--accent); text-shadow: 0 0 18px var(--accent); }
+  #progress { position: absolute; left: 0; bottom: 0; height: 4px; z-index: 70; background: linear-gradient(90deg, #7c4dff, #38bdf8, #f0abfc); box-shadow: 0 0 16px #7c4dff; }
+  #brand { position: absolute; top: 40px; left: 52px; display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .26em; font-size: 19px; z-index: 65; }
+  #brand span { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 40% 28%, #e7d4ff, #8b4dff 50%, #2e135e 95%); box-shadow: 0 0 16px #7c4dff; }
+  #forWho { position: absolute; top: 40px; right: 52px; z-index: 65; font-size: 17px; color: rgb(255 255 255 / .6); letter-spacing: .04em; }
+  #forWho b { color: white; }
+  /* Presenter */
+  #presenter { position: absolute; left: 0; top: 0; z-index: 35; }
+  #aura { position: absolute; border-radius: 50%; filter: blur(36px); }
+  #bars { position: absolute; overflow: visible; }
+  .sat { position: absolute; border-radius: 50%; background: radial-gradient(circle at 35% 30%, white, var(--accent) 45%, #2e135e 100%); box-shadow: 0 0 16px var(--accent); }
+  .shock { position: absolute; border-radius: 50%; border: 2px solid var(--accent); }
+  #orb { position: absolute; border-radius: 50%; overflow: hidden; border: 1.5px solid rgb(225 190 255 / .65); background: radial-gradient(circle at 42% 14%, rgb(252 232 255 / .95), transparent 15%), radial-gradient(circle at 39% 30%, #cfa6ff 1%, #a061ef 25%, #6522bf 56%, #2a1157 88%); display: grid; place-items: center; }
+  #sheen { position: absolute; inset: -20%; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 60%, rgb(255 255 255 / .2) 72%, transparent 84%); }
+  #scan { position: absolute; left: 0; right: 0; height: 18%; background: linear-gradient(to bottom, transparent, rgb(255 255 255 / .1), transparent); }
+  #rim { position: absolute; inset: 0; border-radius: 50%; }
+  #face { position: relative; display: flex; flex-direction: column; align-items: center; width: 30%; }
+  #eyes { display: flex; width: 80%; gap: 26%; justify-content: center; }
+  #eyes i { display: block; width: 30%; aspect-ratio: .68; border-radius: 50%; background: #10041f; }
+  #eyes.happy i { aspect-ratio: 1.6; background: transparent; border-top: .32em solid #10041f; border-radius: 60% 60% 0 0 / 100% 100% 0 0; }
+  #mouth { margin-top: 12%; width: 26%; border-radius: 0 0 40px 40px; background: #10041f; }
+  #name { position: absolute; white-space: nowrap; font-size: 18px; font-weight: 800; letter-spacing: .24em; color: #e2d4ff; transform: translateX(-50%); text-shadow: 0 0 16px #7c4dff; }
+  /* Orb-centred scenes */
+  .big { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: -.045em; }
+  .grad { background: linear-gradient(90deg, #c4a1ff, #7dd3fc, #f0abfc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .person { position: absolute; top: 690px; font-size: 120px; font-weight: 800; letter-spacing: -.04em; background: linear-gradient(180deg, #ffffff, #c4a1ff 70%, #7c4dff); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 30px rgb(124 77 255 / .8)); }
+  .pill { position: absolute; left: 50%; padding: 14px 30px; border-radius: 999px; border: 1px solid rgb(196 161 255 / .45); background: rgb(30 22 58 / .85); font-size: 24px; font-weight: 600; white-space: nowrap; box-shadow: 0 0 40px rgb(124 77 255 / .35); }
+  .tile { position: absolute; width: 230px; height: 150px; margin: -75px 0 0 -115px; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 22px; font-weight: 700; background: linear-gradient(150deg, rgb(40 30 78 / .95), rgb(15 13 30 / .95)); border: 1px solid rgb(255 255 255 / .14); box-shadow: 0 30px 60px -20px rgb(0 0 0 / .9), 0 0 50px -10px var(--tone); }
+  .tile i { width: 46px; height: 46px; border-radius: 14px; background: var(--tone); box-shadow: 0 0 24px var(--tone); }
+  .tile.new { border: 2px dashed #f0abfc; background: linear-gradient(150deg, rgb(70 30 90 / .95), rgb(25 13 40 / .95)); }
+  .tile.new i { background: none; box-shadow: none; display: grid; place-items: center; font-style: normal; font-size: 44px; color: #f0abfc; }
+  .shield { position: absolute; left: 960px; top: 470px; border-radius: 50%; border: 3px solid #7dd3fc; box-shadow: 0 0 40px #7dd3fc, inset 0 0 40px rgb(125 211 252 / .4); }
+  .cta { position: absolute; left: 50%; padding: 20px 40px; border-radius: 18px; background: linear-gradient(90deg, #7c4dff, #9f7aff); font-size: 28px; font-weight: 800; box-shadow: 0 24px 70px -10px rgb(124 77 255 / .9); white-space: nowrap; }
 </style>
 </head>
 <body>
 <div id="stage">
+  <div class="blob" id="b1"></div><div class="blob" id="b2"></div><div class="blob" id="b3"></div>
   <div id="grid"></div>
   <div id="particles"></div>
   <div id="scenes"></div>
+  <div id="sparks"></div>
+  <div id="presenter">
+    <div id="aura"></div><svg id="bars"></svg>
+    <div class="shock"></div><div class="shock"></div><div class="shock"></div>
+    <div class="sat"></div><div class="sat"></div><div class="sat"></div>
+    <div id="orb"><div id="sheen"></div><div id="scan"></div><div id="rim"></div><div id="face"><div id="eyes"><i></i><i></i></div><div id="mouth"></div></div></div>
+    <div id="name">KIARA</div>
+  </div>
+  <div class="streak" id="s1"></div><div class="streak" id="s2"></div>
+  <div id="flash"></div>
+  <div id="vignette"></div>
   <div id="brand"><span></span>KIARA</div>
-  <div id="orbWrap"><div id="halo"></div><div class="ripple" id="r1"></div><div class="ripple" id="r2"></div><div id="orb"><div id="sheen"></div><div id="face"><i></i><i></i></div></div><div id="orbLabel">KIARA</div></div>
+  <div id="forWho">Apresentação para <b>Dani</b> e <b>Bruno</b></div>
   <div id="progress"></div>
 </div>
 <script src="assets/timeline.js"></script>
 <script>
-const T = window.TIMELINE
-const W = 1920, H = 1080
+const T = window.TIMELINE, W = 1920, H = 1080
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v))
-const ease = (x) => { x = clamp(x); return 1 - Math.pow(1 - x, 3) }
+const ease = (x) => 1 - Math.pow(1 - clamp(x), 3)
 const easeInOut = (x) => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2 }
-const back = (x) => { x = clamp(x); const c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2) }
+const back = (x) => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2) }
 const lerp = (a, b, k) => a + (b - a) * k
-// Region of each screenshot the camera moves toward (in screenshot pixels).
-const FOCUS = {
-  "landing-modules": [960, 560, 1.0], "hunter": [1060, 560, 1.12], "contacts": [1100, 380, 1.18], "queue": [960, 330, 1.15],
-  "whatsapp-inbox": [960, 420, 1.08], "whatsapp-automation": [1095, 480, 1.18], "chat": [960, 330, 1.1],
-  "voice": [960, 520, 1.0], "automation-run": [1040, 560, 1.08], "automation-ads": [1500, 600, 1.15],
-}
+const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
+const mix = (a, b, k) => { const x = hex(a), y = hex(b); return `rgb(${x.map((v, i) => Math.round(lerp(v, y[i], k))).join(",")})` }
+let seed = 11
+const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
 
-// Scene visual windows: appear slightly before the voice, hand over at the next scene.
-const scenes = T.scenes.map((scene, i) => ({ ...scene, vStart: i === 0 ? 0 : scene.start - 0.35, vEnd: i + 1 < T.scenes.length ? T.scenes[i + 1].start - 0.35 : T.duration }))
+const scenes = T.scenes.map((scene, i) => ({ ...scene, vStart: i === 0 ? 0 : scene.start - .4, vEnd: i + 1 < T.scenes.length ? T.scenes[i + 1].start - .4 : T.duration }))
 const root = document.getElementById("scenes")
+const MODULES = [["KIARA Leads", "#38bdf8"], ["KIARA WhatsApp", "#34d399"], ["KIARA Chat", "#c4a1ff"], ["KIARA Automation", "#facc15"]]
 
-function captionChunks(scene) {
-  const parts = scene.caption.split(/(?<=[.!?])\s+/).flatMap((sentence) => {
-    if (sentence.length <= 105) return [sentence]
-    const middle = sentence.indexOf(", ", Math.floor(sentence.length / 2) - 15)
-    return middle > 0 ? [sentence.slice(0, middle + 1), sentence.slice(middle + 2)] : [sentence]
-  })
-  const total = parts.reduce((sum, part) => sum + part.length, 0)
-  let cursor = scene.start
-  return parts.map((text) => { const span = (scene.end - scene.start) * text.length / total; const chunk = { text, from: cursor, to: cursor + span }; cursor += span; return chunk })
-}
-
+// ---------- Build scenes ----------
 for (const scene of scenes) {
-  const el = document.createElement("div"); el.className = "scene"; scene.el = el
-  if (scene.layout === "shot" || scene.layout === "voice") {
-    el.innerHTML = `<div class="kicker">${scene.title.split(" · ")[0]}</div>` +
-      `<div class="window"><div class="bar"><i></i><i></i><i></i><span>app.kiara · ${scene.title}</span></div><div class="viewport"><img src="assets/shots/${scene.shot}.png"></div></div>` +
-      (scene.cards || []).map((text, i) => `<div class="card" style="top:${300 + i * 118}px;${scene.cardsSide === "left" ? "left:64px;right:auto" : ""}"><b>${i + 1}</b><span>${text}</span></div>`).join("") +
-      `<div class="caption"></div>`
-    if (scene.layout === "voice") el.querySelector(".window").style.cssText += "width:1520px;margin-left:-760px;height:860px;top:120px"
+  const el = document.createElement("div"); el.className = "scene"; el.style.setProperty("--accent", scene.accent); scene.el = el
+  const words = scene.caption.split(/\s+/)
+  // Split into short chunks (sentence / comma boundaries) so captions stay on one or two lines.
+  scene.chunkOf = []; let chunk = 0, length = 0
+  words.forEach((w, i) => { scene.chunkOf.push(chunk); length += w.length + 1; if ((/[.!?]$/.test(w) && length > 25) || (/[,:]$/.test(w) && length > 48) || length > 80) { chunk += 1; length = 0 } })
+  const caption = `<div class="caption">${words.map((w) => `<span>${w}</span>`).join(" ")}</div>`
+  if (scene.layout === "shot") {
+    el.innerHTML = `<div class="kicker">${scene.kicker}</div><div class="reflection"></div>
+      <div class="window"><div class="bar"><i></i><i></i><i></i><span>app.kiara · ${scene.kicker}</span></div><div class="viewport">
+      ${scene.shots.map((s) => `<div class="layer"><img src="assets/shots/${s.shot}.png"></div>`).join("")}
+      ${(scene.spots || []).map(() => `<div class="spot"><div class="spotPulse"></div></div>`).join("")}</div><div class="glare"></div></div>
+      ${(scene.cards || []).map((c, i) => `<div class="card" style="top:${280 + i * 124}px;${scene.cardsSide === "left" ? "left:56px;right:auto" : ""}"><b>${i + 1}</b><span>${c.text}</span><div class="shine"></div></div>`).join("")}${caption}`
+  } else if (scene.layout === "hello") {
+    el.innerHTML = `<div class="big" style="top:62px;font-size:44px;font-weight:600;letter-spacing:-.02em;color:rgb(255 255 255 / .75)">Olá,</div>
+      <div class="person" style="left:340px">Dani</div><div class="person" style="left:1290px">Bruno</div>
+      <div class="pill" style="top:900px">Uma apresentação exclusiva para vocês</div>${caption}`
   } else if (scene.layout === "orb") {
-    el.innerHTML = `<div class="backdrop" style="background-image:url(../../apps/web/public/images/kiara-hero-ai.png);opacity:.55;filter:blur(1px) saturate(1.2)"></div><div class="big" style="top:705px;font-size:76px">Olá, eu sou a <span class="grad">Kiara</span></div><div class="big" style="top:800px;font-size:28px;font-weight:500;letter-spacing:0;color:rgb(255 255 255 / .6)">Inteligência que prospecta, atende e trabalha por você</div><div class="caption"></div>`
+    el.innerHTML = (scene.words || []).map((w) => `<div class="card" style="right:auto;width:auto;padding:16px 24px"><b>✦</b><span>${w.text}</span><div class="shine"></div></div>`).join("") + caption
+  } else if (scene.layout === "custom") {
+    el.innerHTML = `<div class="kicker">Feita sob medida</div>` + MODULES.map(([name, tone]) => `<div class="tile" style="--tone:${tone}"><i></i>${name.replace("KIARA ", "")}</div>`).join("") +
+      `<div class="tile new"><i>+</i>Novo módulo</div>` + (scene.cards || []).map((c, i) => `<div class="pill" style="top:${830}px">${c.text}</div>`).join("") + caption
   } else if (scene.layout === "control") {
-    el.innerHTML = `<div class="big" style="top:96px;font-size:58px">Você no <span class="grad">controle</span></div>` +
-      scene.cards.map((text, i) => { const angle = -Math.PI / 2 + (i + .5) * Math.PI / 2 + Math.PI / 4; return `<div class="chip" data-x="${960 + Math.cos(angle) * 520}" data-y="${520 + Math.sin(angle) * 250}">${text}</div>` }).join("") + `<div class="caption"></div>`
+    el.innerHTML = `<div class="kicker">Você no controle</div><div class="shield"></div><div class="shield"></div>` + (scene.cards || []).map((c) => `<div class="pill">${c.text}</div>`).join("") + caption
   } else if (scene.layout === "outro") {
-    el.innerHTML = `<div class="big" style="top:640px;font-size:84px">Você aprova.<br><span class="grad">A Kiara executa.</span></div><div class="cta" style="top:900px">Conheça a Kiara · kiaralead.vercel.app</div>`
+    el.innerHTML = `<div class="big" style="top:640px;font-size:92px">Vocês aprovam.<br><span class="grad">A Kiara executa.</span></div><div class="cta" style="top:905px">Conheça a Kiara · kiaralead.vercel.app</div>`
   }
-  scene.chunks = captionChunks(scene)
+  scene.captionWords = [...el.querySelectorAll(".caption span")]
+  const total = words.reduce((s, w) => s + w.length + 1, 0); let acc = 0
+  scene.wordTimes = words.map((w) => { const at = scene.start + (scene.end - scene.start) * (acc / total); acc += w.length + 1; return at })
   root.appendChild(el)
 }
 
-// Deterministic particles.
-const particles = []
-let seed = 7
-const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
-const box = document.getElementById("particles")
-for (let i = 0; i < 46; i++) { const p = document.createElement("div"); p.className = "particle"; box.appendChild(p); particles.push({ el: p, x: rand() * W, y: rand() * H, speed: 8 + rand() * 22, phase: rand() * 6.28, size: .6 + rand() * 1.4 }) }
+// ---------- Ambient ----------
+const particles = [], pbox = document.getElementById("particles")
+for (let i = 0; i < 90; i++) { const p = document.createElement("div"); p.className = "particle"; pbox.appendChild(p); const z = rand(); particles.push({ el: p, x: rand() * W, y: rand() * H, z, phase: rand() * 6.3 }) }
+const sparks = [], sbox = document.getElementById("sparks")
+for (let i = 0; i < 70; i++) { const s = document.createElement("div"); s.className = "spark"; sbox.appendChild(s); sparks.push({ el: s, angle: rand() * 6.283, speed: 220 + rand() * 520, life: .7 + rand() * .8 }) }
+// Burst moments: every card/word cue and every scene start.
+const bursts = []
+for (const scene of scenes) { bursts.push({ t: scene.start, strong: true }); for (const c of [...(scene.cards || []), ...(scene.words || [])]) bursts.push({ t: c.at, strong: false }) }
 
-const orbWrap = document.getElementById("orbWrap"), orb = document.getElementById("orb"), halo = document.getElementById("halo")
-const sheen = document.getElementById("sheen"), face = document.getElementById("face"), eyes = face.querySelectorAll("i"), label = document.getElementById("orbLabel")
-const ripples = [document.getElementById("r1"), document.getElementById("r2")]
-const ORB = { orb: [960, 430, 330], shot: [168, 876, 150], voice: [168, 876, 0], control: [960, 520, 250], outro: [960, 400, 300] }
+// ---------- Presenter ----------
+const presenter = document.getElementById("presenter"), orb = document.getElementById("orb"), aura = document.getElementById("aura"), bars = document.getElementById("bars")
+const eyes = document.getElementById("eyes"), mouth = document.getElementById("mouth"), face = document.getElementById("face"), nameTag = document.getElementById("name")
+const sats = [...document.querySelectorAll(".sat")], shocks = [...document.querySelectorAll(".shock")]
+const NB = 72
+bars.innerHTML = Array.from({ length: NB }, () => `<line stroke-linecap="round" stroke-width="4"></line>`).join(""); const lines = [...bars.querySelectorAll("line")]
+const POSE = { hello: [960, 420, 300], orb: [960, 470, 340], shot: [176, 870, 150], custom: [960, 470, 220], control: [960, 470, 230], outro: [960, 370, 280] }
+const pose = (scene) => POSE[scene.layout] || POSE.shot
 
-function orbTarget(scene) { return ORB[scene.layout] || ORB.shot }
+function renderPresenter(t, level, current, previous, accent) {
+  const k = easeInOut((t - current.vStart) / 1.1)
+  const [ax, ay, as] = pose(previous), [bx, by, bs] = pose(current)
+  const x = lerp(ax, bx, k), y = lerp(ay, by, k) + Math.sin(t * 1.5) * 7, size = lerp(as, bs, k)
+  // Look toward the newest card/word on screen.
+  const items = [...(current.cards || []), ...(current.words || [])].filter((c) => c.at <= t)
+  const lookAt = items.length && current.layout === "shot" ? (current.cardsSide === "left" ? [-.5, -.4] : [.7, -.35]) : [Math.sin(t * .45) * .3, Math.sin(t * .31) * .18]
+  const s = 1 + level * .13
+  Object.assign(orb.style, { width: `${size}px`, height: `${size}px`, left: `${x - size / 2}px`, top: `${y - size / 2}px`, transform: `scale(${s}) rotate(${Math.sin(t * .8) * 4}deg)`,
+    boxShadow: `inset 20px 18px 44px rgb(253 216 255 / .24), inset -44px -48px 70px rgb(26 5 59 / .74), 0 0 ${40 + level * 90}px ${accent}, 0 0 ${size * .7}px rgb(95 38 187 / .5)` })
+  document.getElementById("rim").style.boxShadow = `inset 0 0 ${18 + level * 30}px ${accent}`
+  document.getElementById("sheen").style.transform = `rotate(${t * 40}deg)`
+  document.getElementById("scan").style.top = `${((t * 0.45) % 1.3) * 100 - 15}%`
+  const as2 = size * (2.1 + level * .7)
+  Object.assign(aura.style, { width: `${as2}px`, height: `${as2}px`, left: `${x - as2 / 2}px`, top: `${y - as2 / 2}px`, background: `radial-gradient(circle, ${accent}, transparent 62%)`, opacity: (.45 + level * .5).toFixed(3) })
+  // Circular audio visualizer.
+  const r0 = size * .62 * s, maxLen = size * .42
+  bars.setAttribute("style", `left:${x}px;top:${y}px;width:1px;height:1px`)
+  lines.forEach((line, i) => {
+    const a = (i / NB) * Math.PI * 2 + t * .25
+    const wobble = (Math.sin(i * 1.7 + t * 9) * .5 + .5) * (Math.sin(i * .37 - t * 5) * .5 + .5)
+    const len = 4 + maxLen * level * (.35 + .65 * wobble)
+    line.setAttribute("x1", Math.cos(a) * r0); line.setAttribute("y1", Math.sin(a) * r0)
+    line.setAttribute("x2", Math.cos(a) * (r0 + len)); line.setAttribute("y2", Math.sin(a) * (r0 + len))
+    line.setAttribute("stroke", i % 2 ? accent : "#ffffff"); line.setAttribute("stroke-opacity", (.25 + level * .7).toFixed(2))
+  })
+  // Satellites on tilted orbits (behind the orb when "far").
+  sats.forEach((sat, i) => {
+    const a = t * (.9 + i * .35) + i * 2.1, rx = size * (.95 + i * .18), ry = size * (.32 + i * .06), tilt = (i - 1) * .5
+    const ox = Math.cos(a) * rx, oy = Math.sin(a) * ry, depth = Math.sin(a)
+    const sx = ox * Math.cos(tilt) - oy * Math.sin(tilt), sy = ox * Math.sin(tilt) + oy * Math.cos(tilt)
+    const d = size * (.075 + .03 * depth) * (size > 100 ? 1 : .7)
+    Object.assign(sat.style, { width: `${d}px`, height: `${d}px`, left: `${x + sx - d / 2}px`, top: `${y + sy - d / 2}px`, zIndex: depth > 0 ? 2 : 0, opacity: size < 4 ? 0 : (.55 + .45 * depth).toFixed(2), "--accent": accent })
+  })
+  presenter.style.setProperty("--accent", accent)
+  // Shockwaves on cues.
+  const recent = bursts.filter((b) => t >= b.t && t - b.t < 1.2).slice(-3)
+  shocks.forEach((shock, i) => {
+    const b = recent[i]; if (!b) { shock.style.opacity = 0; return }
+    const p = (t - b.t) / 1.2, d = size * (1.1 + p * (b.strong ? 2.2 : 1.4))
+    Object.assign(shock.style, { width: `${d}px`, height: `${d}px`, left: `${x - d / 2}px`, top: `${y - d / 2}px`, opacity: ((1 - p) * .8).toFixed(3), borderColor: accent })
+  })
+  // Face: glance, blink, talk, smile.
+  face.style.transform = `translate(${lookAt[0] * 18}%, ${lookAt[1] * 18 - 4}%)`
+  const happy = (current.layout === "hello" || current.layout === "outro") && level < .25 && t > current.start + 1
+  eyes.className = happy ? "happy" : ""
+  const blink = (t % 3.7) > 3.58 ? .1 : 1
+  eyes.querySelectorAll("i").forEach((e) => { e.style.transform = happy ? "none" : `scaleY(${(blink * (1 - level * .25)).toFixed(3)})`; e.style.fontSize = `${size * .03}px` })
+  mouth.style.height = `${Math.max(0, level - .06) * size * .16}px`
+  mouth.style.opacity = level > .08 ? 1 : 0
+  presenter.style.opacity = size < 6 ? 0 : 1
+  Object.assign(nameTag.style, { left: `${x}px`, top: `${y + size * s / 2 + 22}px`, opacity: 0 })
+  return [x, y, size]
+}
 
+// ---------- Frame ----------
 window.renderAt = function renderAt(t) {
   const level = T.envelope[Math.min(T.envelope.length - 1, Math.floor(t * T.fps))] || 0
+  let index = scenes.findIndex((s) => t >= s.vStart && t < s.vEnd); if (index < 0) index = scenes.length - 1
+  const current = scenes[index], previous = scenes[index - 1] || current
+  const tint = easeInOut((t - current.vStart) / 1.2), accent = mix(previous.accent, current.accent, tint)
+
   document.getElementById("progress").style.width = `${(t / T.duration) * 100}%`
-  document.getElementById("grid").style.setProperty("--gy", `${(t * 18) % 64}px`)
+  ;[["b1", -200, -250, .23], ["b2", 1100, 300, .17], ["b3", 300, 500, .13]].forEach(([id, bx, by, sp], i) => {
+    const b = document.getElementById(id)
+    b.style.transform = `translate(${bx + Math.sin(t * sp + i) * 260}px, ${by + Math.cos(t * sp * 1.3 + i) * 180}px)`
+    b.style.background = i === 1 ? accent : i === 0 ? "#3b1d7a" : "#123a6b"
+  })
+  document.getElementById("grid").style.transform = `perspective(700px) rotateX(64deg) translateY(${(t * 40) % 80}px)`
   for (const p of particles) {
-    const y = ((p.y - t * p.speed) % H + H) % H
-    p.el.style.transform = `translate(${p.x + Math.sin(t * .6 + p.phase) * 18}px, ${y}px) scale(${p.size})`
-    p.el.style.opacity = (.25 + .35 * Math.sin(t * 1.3 + p.phase) ** 2).toFixed(2)
+    const speed = 10 + p.z * 46, y = ((p.y - t * speed) % H + H) % H, size = 1 + p.z * 3.2
+    p.el.style.transform = `translate(${p.x + Math.sin(t * .5 + p.phase) * 24 * p.z}px, ${y}px)`
+    p.el.style.width = p.el.style.height = `${size}px`
+    p.el.style.opacity = (.15 + .55 * p.z * (.5 + .5 * Math.sin(t * 1.4 + p.phase))).toFixed(2)
   }
 
-  let index = scenes.findIndex((scene) => t >= scene.vStart && t < scene.vEnd)
-  if (index < 0) index = scenes.length - 1
   for (const [i, scene] of scenes.entries()) {
-    const visible = i === index
+    // Cross-fade window: the outgoing scene zooms through while the next one arrives.
+    const visible = i === index || (i === index - 1 && t < scene.vEnd + .5)
     scene.el.style.display = visible ? "block" : "none"
     if (!visible) continue
     const local = t - scene.vStart, span = scene.vEnd - scene.vStart
-    const fadeIn = ease(local / .7), fadeOut = 1 - ease((local - (span - .45)) / .45)
-    scene.el.style.opacity = Math.min(fadeIn, i === scenes.length - 1 ? 1 : fadeOut).toFixed(3)
+    if (i === index - 1) { const p = clamp((t - scene.vEnd) / .5); scene.el.style.opacity = (1 - p).toFixed(3); scene.el.style.transform = `scale(${1 + p * .12})`; scene.el.style.filter = `blur(${p * 10}px)`; continue }
+    scene.el.style.opacity = ease(local / .6).toFixed(3); scene.el.style.transform = `scale(${lerp(.94, 1, ease(local / .9))})`; scene.el.style.filter = "none"
+    scene.el.style.setProperty("--line", ease((local - .3) / .8).toFixed(3))
+
     const win = scene.el.querySelector(".window")
     if (win) {
-      const enter = ease(local / 1.1), exit = ease((local - (span - .45)) / .45)
-      win.style.transform = `perspective(1800px) translateX(${(1 - enter) * 260}px) translateZ(${-exit * 160}px) rotateY(${lerp(24, -3, enter) - exit * 6}deg) rotateX(${lerp(8, 2, enter)}deg)`
-      const [fx, fy, zoom] = FOCUS[scene.shot] || [960, 540, 1.05]
-      const vw = win.offsetWidth, vh = win.querySelector(".viewport").offsetHeight
-      const baseScale = vw / 1920
-      const k = easeInOut((local - .6) / Math.max(1, span - 1.2))
-      const scale = baseScale * lerp(1, zoom, k)
-      const cx = lerp(960, fx, k), cy = lerp(540, fy, k)
-      const x = clamp(vw / 2 - cx * scale, vw - 1920 * scale, 0), y = clamp(vh / 2 - cy * scale, vh - 1080 * scale, 0)
-      win.querySelector("img").style.transform = `translate(${x}px, ${y}px) scale(${scale})`
+      const enter = ease(local / 1.2)
+      win.style.transform = `perspective(2000px) translateX(${(1 - enter) * 320}px) translateY(${Math.sin(t * .7) * 5}px) rotateY(${lerp(28, -4, enter) + Math.sin(t * .4) * 1.2}deg) rotateX(${lerp(10, 3, enter)}deg)`
+      scene.el.querySelector(".glare").style.left = `${lerp(-400, 1500, clamp((local - .5) / 1.3))}px`
+      const vw = win.offsetWidth, vh = win.offsetHeight - 34, base = vw / 1920
+      const layers = scene.el.querySelectorAll(".layer")
+      let activeShot = 0
+      scene.shots.forEach((shot, n) => { if (t >= shot.at) activeShot = n })
+      scene.shots.forEach((shot, n) => {
+        const layer = layers[n], since = t - shot.at
+        const from = n === 0 ? scene.vStart : shot.at, until = n + 1 < scene.shots.length ? scene.shots[n + 1].at : scene.vEnd
+        const k = easeInOut((t - from - .4) / Math.max(1, until - from - .6))
+        const [fx, fy, zoom] = shot.focus, scale = base * lerp(1, zoom, k)
+        const cx = lerp(960, fx, k), cy = lerp(540, fy, k)
+        const px = clamp(vw / 2 - cx * scale, vw - 1920 * scale, 0), py = clamp(vh / 2 - cy * scale, vh - 1080 * scale, 0)
+        layer.querySelector("img").style.transform = `translate(${px}px, ${py}px) scale(${scale})`
+        layer.dataset.px = px; layer.dataset.py = py; layer.dataset.scale = scale
+        // Shot switch: new shot slides in with depth, old one leaves blurred.
+        if (n === 0 && scene.shots.length > 1 && t >= scene.shots[1].at) { const p = ease((t - scene.shots[1].at) / .7); layer.style.transform = `translateX(${-p * 300}px) scale(${1 - p * .1})`; layer.style.opacity = 1 - p; layer.style.filter = `blur(${p * 8}px)` }
+        else if (n > 0) { const p = ease(since / .7); layer.style.opacity = t >= shot.at ? p : 0; layer.style.transform = `translateX(${(1 - p) * 320}px) scale(${lerp(1.08, 1, p)})`; layer.style.filter = `blur(${(1 - p) * 8}px)` }
+      })
+      ;(scene.spots || []).forEach((spot, n) => {
+        const el = scene.el.querySelectorAll(".spot")[n], layer = layers[activeShot]
+        const ownShot = scene.shots.reduce((idx, shot, s) => spot.at >= shot.at ? s : idx, 0)
+        const p = (t - spot.at), on = p >= 0 && p < 3.2 && ownShot === activeShot
+        const sx = spot.x * +layer.dataset.scale + +layer.dataset.px, sy = spot.y * +layer.dataset.scale + +layer.dataset.py
+        el.style.transform = `translate(${sx}px, ${sy}px) scale(${on ? back(p / .5) : 0})`
+        el.style.opacity = on ? (1 - clamp((p - 2.6) / .6)).toFixed(3) : 0
+        const pulse = el.querySelector(".spotPulse"), ph = (p * 1.3) % 1
+        pulse.style.transform = `scale(${1 + ph * 1.2})`; pulse.style.opacity = (1 - ph).toFixed(2)
+      })
     }
-    scene.el.querySelectorAll(".card").forEach((card, n) => {
-      const at = 1.4 + n * 1.5, k = back((local - at) / .6), o = ease((local - at) / .4)
-      card.style.opacity = o.toFixed(3)
-      card.style.transform = `perspective(900px) translateY(${(1 - k) * 40}px) rotateX(${(1 - k) * 35}deg) scale(${lerp(.85, 1, k)})`
+
+    const cards = [...scene.el.querySelectorAll(".card")], cues = scene.layout === "orb" ? scene.words : scene.cards
+    cards.forEach((card, n) => {
+      const at = cues[n].at, p = t - at, k = back(p / .65), o = ease(p / .35)
+      const newest = cues.filter((c) => c.at <= t).length - 1 === n
+      if (scene.layout === "orb") {
+        const a = -Math.PI / 2 + n * (2 * Math.PI / cues.length) + t * .25, rx = 470, ry = 250
+        card.style.left = `${960 + Math.cos(a) * rx - 150}px`; card.style.top = `${470 + Math.sin(a) * ry - 32}px`
+      }
+      card.style.opacity = (o * (newest || scene.layout === "orb" ? 1 : .55)).toFixed(3)
+      const side = scene.cardsSide === "left" ? -1 : 1
+      card.style.transform = `perspective(1000px) translateX(${(1 - k) * 140 * side}px) rotateY(${(1 - k) * -50 * side}deg) scale(${lerp(.8, newest ? 1.03 : .97, k)})`
+      card.style.setProperty("--spin", `${(t * 140 + n * 90) % 360}deg`)
+      card.querySelector(".shine").style.left = `${lerp(-150, 480, clamp(p / .9))}px`
     })
-    scene.el.querySelectorAll(".chip").forEach((chip, n) => {
-      const at = 1.2 + n * 1.6, k = back((local - at) / .7), o = ease((local - at) / .4)
-      chip.style.opacity = o.toFixed(3)
-      chip.style.left = `${lerp(960, +chip.dataset.x, ease((local - at) / .9))}px`; chip.style.top = `${lerp(520, +chip.dataset.y, ease((local - at) / .9))}px`
-      chip.style.transform = `translate(-50%, -50%) scale(${lerp(.5, 1, k)})`
-    })
-    scene.el.querySelectorAll(".big").forEach((big, n) => { const k = ease((local - .3 - n * .35) / .9); big.style.opacity = k.toFixed(3); big.style.transform = `translateY(${(1 - k) * 30}px)` })
-    const cta = scene.el.querySelector(".cta"); if (cta) { const k = back((local - 1.6) / .7); cta.style.opacity = ease((local - 1.6) / .4).toFixed(3); cta.style.transform = `translateX(-50%) scale(${lerp(.7, 1, k)})` }
-    const caption = scene.el.querySelector(".caption")
-    if (caption) { const chunk = scene.chunks.find((c) => t >= c.from && t < c.to + .25) || (t < scene.start ? null : scene.chunks.at(-1)); caption.textContent = chunk ? chunk.text : ""; caption.style.display = chunk && t < scene.end + .3 ? "block" : "none" }
+
+    if (scene.layout === "hello") {
+      scene.el.querySelectorAll(".person").forEach((el, n) => {
+        const p = t - scene.words[n].at, k = back(p / .8)
+        el.style.opacity = ease(p / .4).toFixed(3)
+        el.style.transform = `perspective(900px) translateZ(${(1 - k) * -900}px) rotateY(${(1 - k) * (n ? -40 : 40)}deg) translateY(${Math.sin(t * 1.2 + n) * 8}px)`
+        el.style.letterSpacing = `${lerp(.35, -.04, ease(p / 1))}em`
+      })
+      const big = scene.el.querySelector(".big"); big.style.opacity = ease((local - .2) / .7); big.style.transform = `translateY(${(1 - ease(local / .9)) * 20}px)`
+      const pill = scene.el.querySelector(".pill"), pp = t - (scene.end - 3.2)
+      pill.style.opacity = ease(pp / .5); pill.style.transform = `translateX(-50%) scale(${lerp(.7, 1, back(pp / .6))})`
+    }
+    if (scene.layout === "custom") {
+      const tiles = scene.el.querySelectorAll(".tile"), cueNew = scene.cards[1].at
+      tiles.forEach((tile, n) => {
+        if (n < 4) {
+          const spread = t > cueNew ? ease((t - cueNew) / .9) : 0
+          const a = -Math.PI / 2 + lerp(n * Math.PI / 2, n * 2 * Math.PI / 5, spread) + t * .3
+          const k = back((local - .3 - n * .2) / .6)
+          tile.style.left = `${960 + Math.cos(a) * 520}px`; tile.style.top = `${470 + Math.sin(a) * 250}px`
+          tile.style.transform = `scale(${k}) translateZ(0)`; tile.style.opacity = ease((local - .3 - n * .2) / .4)
+        } else {
+          const p = t - cueNew, k = back(p / .8), a = -Math.PI / 2 + 4 * 2 * Math.PI / 5 + t * .3
+          tile.style.left = `${lerp(960, 960 + Math.cos(a) * 520, ease(p / 1))}px`; tile.style.top = `${lerp(470, 470 + Math.sin(a) * 250, ease(p / 1))}px`
+          tile.style.transform = `scale(${lerp(.2, 1.12, k)}) rotate(${(1 - k) * 90}deg)`; tile.style.opacity = ease(p / .4)
+        }
+      })
+      scene.el.querySelectorAll(".pill").forEach((pill, n) => {
+        const p = t - scene.cards[n].at, k = back(p / .6)
+        pill.style.opacity = ease(p / .35); pill.style.left = `${[560, 960, 1360][n]}px`; pill.style.transform = `translateX(-50%) translateY(${(1 - k) * 40}px) scale(${lerp(.7, 1, k)})`
+      })
+    }
+    if (scene.layout === "control") {
+      scene.el.querySelectorAll(".shield").forEach((ring, n) => {
+        const k = ease((local - .3 - n * .3) / 1), d = 380 + n * 120 + Math.sin(t * 2 + n) * 8
+        Object.assign(ring.style, { width: `${d}px`, height: `${d}px`, marginLeft: `${-d / 2}px`, marginTop: `${-d / 2}px`, opacity: (k * (.8 - n * .3)).toFixed(3), transform: `rotate(${t * (n ? -25 : 25)}deg) scale(${lerp(.6, 1, k)})`, borderStyle: n ? "dashed" : "solid" })
+      })
+      scene.el.querySelectorAll(".pill").forEach((pill, n) => {
+        const p = t - scene.cards[n].at, k = back(p / .6)
+        pill.style.opacity = ease(p / .35); pill.style.top = `${[760, 838][n]}px`; pill.style.transform = `translateX(-50%) scale(${lerp(.6, 1, k)})`
+      })
+    }
+    if (scene.layout === "outro") {
+      const big = scene.el.querySelector(".big"), k = ease((local - .4) / 1)
+      big.style.opacity = k; big.style.transform = `perspective(800px) rotateX(${(1 - k) * 40}deg) translateY(${(1 - k) * 40}px)`
+      const cta = scene.el.querySelector(".cta"), p = local - 2.2
+      cta.style.opacity = ease(p / .4); cta.style.transform = `translateX(-50%) scale(${lerp(.6, 1, back(p / .7))})`
+    }
+
+    // Karaoke caption.
+    if (scene.captionWords.length) {
+      const cap = scene.el.querySelector(".caption")
+      cap.style.opacity = t < scene.end + .4 && t > scene.start - .1 ? 1 : 0
+      let now = -1
+      scene.wordTimes.forEach((at, n) => { if (t >= at) now = n })
+      const active = scene.chunkOf[Math.max(0, now)]
+      scene.captionWords.forEach((w, n) => { w.style.display = scene.chunkOf[n] === active ? "inline" : "none"; w.className = n < now ? "on" : n === now ? "now" : "" })
+    }
   }
 
-  // Presenter orb: glides between layouts, breathes with the voice, blinks and glances.
-  const current = scenes[index], previous = scenes[index - 1] || current
-  const glide = easeInOut((t - current.vStart) / 1.0)
-  const [ax, ay, as] = orbTarget(previous), [bx, by, bs] = orbTarget(current)
-  const x = lerp(ax, bx, glide), y = lerp(ay, by, glide) + Math.sin(t * 1.4) * 6, size = lerp(as, bs, glide)
-  orbWrap.style.opacity = size < 4 ? "0" : "1"
-  const scale = 1 + level * .12
-  Object.assign(orb.style, { width: `${size}px`, height: `${size}px`, left: `${x - size / 2}px`, top: `${y - size / 2}px`, transform: `scale(${scale})`,
-    boxShadow: `inset 18px 16px 40px rgb(253 216 255 / .22), inset -40px -44px 64px rgb(26 5 59 / .72), 0 0 ${30 + level * 70}px rgb(127 56 242 / .85), 0 0 ${size * .5}px rgb(95 38 187 / .45)` })
-  const hs = size * (1.9 + level * .5)
-  halo.style.cssText = `width:${hs}px;height:${hs}px;left:${x - hs / 2}px;top:${y - hs / 2}px;opacity:${.55 + level * .45}`
-  ripples.forEach((ripple, n) => {
-    const phase = ((t * .8 + n * .5) % 1), rs = size * (1 + phase * .7)
-    ripple.style.cssText = `width:${rs}px;height:${rs}px;left:${x - rs / 2}px;top:${y - rs / 2}px;opacity:${(level > .08 ? (1 - phase) * .7 * Math.min(1, level * 2) : 0).toFixed(3)}`
+  renderPresenter(t, level, current, previous, accent)
+
+  // Bursts of sparks from the avatar on scene starts.
+  const last = bursts.filter((b) => b.strong && t >= b.t && t - b.t < 1.5).pop()
+  const ox = parseFloat(orb.style.left) + parseFloat(orb.style.width) / 2, oy = parseFloat(orb.style.top) + parseFloat(orb.style.height) / 2
+  sparks.forEach((spark) => {
+    if (!last) { spark.el.style.opacity = 0; return }
+    const p = (t - last.t) / spark.life, d = ease(p) * spark.speed
+    spark.el.style.transform = `translate(${ox + Math.cos(spark.angle) * d}px, ${oy + Math.sin(spark.angle) * d}px) scale(${1 - p})`
+    spark.el.style.opacity = p < 1 ? (1 - p).toFixed(3) : 0; spark.el.style.setProperty("--c", accent)
   })
-  sheen.style.transform = `rotate(${t * 36}deg)`
-  const lookX = current.layout === "shot" ? .35 : Math.sin(t * .5) * .25, lookY = current.layout === "shot" ? -.25 : Math.sin(t * .37) * .15
-  face.style.transform = `translate(${-10 + lookX * 30}%, ${-4 + lookY * 30}%)`
-  const blinkPhase = t % 4.3, blink = blinkPhase > 4.15 ? .12 : 1
-  eyes.forEach((eye) => { eye.style.transform = `rotate(11deg) scaleY(${(blink * (1 - level * .35)).toFixed(3)})` })
-  label.style.cssText = `left:${x}px;top:${y + size / 2 + 18}px;opacity:${current.layout === "shot" ? 1 : 0}`
-  document.getElementById("brand").style.opacity = current.layout === "outro" ? "0" : ".85"
+  // Transition flash + light streaks.
+  const sinceStart = t - current.start
+  document.getElementById("flash").style.opacity = index > 0 && sinceStart > -.45 && sinceStart < .5 ? (Math.max(0, .5 - Math.abs(sinceStart + .05)) * .9).toFixed(3) : 0
+  ;[["s1", 180, -18], ["s2", 760, 14]].forEach(([id, y, rot], n) => {
+    const p = (t - current.vStart - n * .12) / .7, el = document.getElementById(id)
+    el.style.opacity = index > 0 && p > 0 && p < 1 ? Math.sin(p * Math.PI).toFixed(3) : 0
+    el.style.transform = `translate(${lerp(-1000, 2000, p)}px, ${y}px) rotate(${rot}deg)`
+  })
+  document.getElementById("brand").style.opacity = current.layout === "outro" || current.layout === "hello" ? 0 : .9
+  document.getElementById("forWho").style.opacity = current.layout === "shot" ? .9 : 0
   return true
 }
 window.renderAt(0)

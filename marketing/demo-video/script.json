@@ -1,148 +1,367 @@
 {
-  "voice": "pt-BR-FranciscaNeural",
-  "rate": "+4%",
-  "gap_seconds": 0.55,
+  "voice": "pt-BR-ThalitaMultilingualNeural",
+  "rate": "+2%",
+  "gap_seconds": 0.45,
   "scenes": [
+    {
+      "id": "hello",
+      "layout": "hello",
+      "accent": "#c4a1ff",
+      "title": "Dani e Bruno",
+      "text": "Olá, Dani e Bruno! Que bom ter vocês aqui. Eu sou a Kiara, e preparei esta apresentação especialmente para vocês.",
+      "words": [
+        {
+          "text": "Dani",
+          "cue": "Dáni"
+        },
+        {
+          "text": "Bruno",
+          "cue": "Bruno"
+        }
+      ],
+      "speech": "Olá, Dáni e Bruno! Que bom ter vocês aqui. Eu sou a Kiara, e preparei esta apresentação especialmente para vocês."
+    },
     {
       "id": "intro",
       "layout": "orb",
-      "title": "Olá, eu sou a Kiara",
-      "text": "Olá! Eu sou a Kiara, uma inteligência artificial que prospecta, atende e trabalha pelo seu negócio. Nos próximos minutos, vou te mostrar tudo o que eu faço, por dentro do sistema."
+      "accent": "#a78bfa",
+      "title": "Kiara",
+      "text": "Sou uma inteligência artificial que encontra clientes, atende no WhatsApp e automatiza o trabalho do seu negócio. Vem comigo.",
+      "words": [
+        {
+          "text": "Encontra clientes",
+          "cue": "encontra"
+        },
+        {
+          "text": "Atende no WhatsApp",
+          "cue": "atende"
+        },
+        {
+          "text": "Automatiza",
+          "cue": "automatiza"
+        }
+      ]
     },
     {
       "id": "platform",
       "layout": "shot",
-      "shot": "landing-modules",
-      "title": "Quatro módulos. Uma Kiara.",
-      "cards": [
-        "KIARA Leads",
-        "KIARA WhatsApp",
-        "KIARA Chat",
-        "KIARA Automation"
+      "shots": [
+        {
+          "shot": "landing-modules",
+          "focus": [
+            960,
+            600,
+            1.05
+          ]
+        }
       ],
-      "text": "Eu sou uma plataforma com quatro módulos, que compartilham o mesmo CRM e a mesma inteligência: Leads, WhatsApp, Chat e Automation. Você começa pelo que mais precisa."
+      "kicker": "A plataforma",
+      "accent": "#a78bfa",
+      "text": "São quatro módulos, conectados ao mesmo CRM: Leads, WhatsApp, Chat e Automation.",
+      "speech": "São quatro módulos, conectados ao mesmo cê érre ême: Leads, WhatsApp, Chat e Automêichon.",
+      "cards": [
+        {
+          "text": "KIARA Leads",
+          "cue": "Leads"
+        },
+        {
+          "text": "KIARA WhatsApp",
+          "cue": "WhatsApp"
+        },
+        {
+          "text": "KIARA Chat",
+          "cue": "Chat"
+        },
+        {
+          "text": "KIARA Automation",
+          "cue": "Automêichon"
+        }
+      ]
     },
     {
       "id": "hunter",
       "layout": "shot",
-      "shot": "hunter",
-      "title": "KIARA Leads · Buscar",
-      "cards": [
-        "Descreva quem você procura",
-        "Google Maps, web e redes",
-        "Telefone e endereço conferidos"
+      "shots": [
+        {
+          "shot": "hunter",
+          "focus": [
+            1060,
+            560,
+            1.14
+          ]
+        }
       ],
-      "text": "No KIARA Leads, você descreve quem procura, por exemplo, dentistas sem site em Porto Alegre. Eu pesquiso no Google Maps, na web e nas redes, confiro telefone e localização, e mostro cada resultado com a fonte."
+      "kicker": "KIARA Leads",
+      "accent": "#38bdf8",
+      "text": "No módulo Leads, você descreve quem procura, como dentistas sem site em Porto Alegre. Eu pesquiso no Google Maps, na web e nas redes, e confiro telefone e endereço de cada um.",
+      "cards": [
+        {
+          "text": "Busca em linguagem natural",
+          "cue": "descreve"
+        },
+        {
+          "text": "Google Maps, web e redes",
+          "cue": "Maps"
+        },
+        {
+          "text": "Telefone e endereço conferidos",
+          "cue": "confiro"
+        }
+      ],
+      "spots": [
+        {
+          "cue": "descreve",
+          "x": 870,
+          "y": 155
+        },
+        {
+          "cue": "confiro",
+          "x": 640,
+          "y": 400
+        }
+      ]
     },
     {
-      "id": "contacts",
+      "id": "crm",
       "layout": "shot",
-      "shot": "contacts",
-      "title": "KIARA Leads · Contatos",
-      "cards": [
-        "Etapa e qualificação",
-        "Próxima ação",
-        "Anotações"
+      "shots": [
+        {
+          "shot": "contacts",
+          "focus": [
+            1180,
+            380,
+            1.18
+          ]
+        },
+        {
+          "shot": "queue",
+          "cue": "fila",
+          "focus": [
+            960,
+            330,
+            1.15
+          ]
+        }
       ],
-      "text": "Com um clique, cada oportunidade vai para o CRM. Você vê a etapa, a qualificação, a próxima ação e as anotações, tudo em um só lugar."
-    },
-    {
-      "id": "queue",
-      "layout": "shot",
-      "shot": "queue",
-      "title": "Fila do dia",
+      "kicker": "CRM e fila do dia",
+      "accent": "#38bdf8",
+      "text": "Cada oportunidade vai para o CRM, com etapa, qualificação e próxima ação. E a fila do dia mostra quem atender primeiro.",
+      "speech": "Cada oportunidade vai para o cê érre ême, com etapa, qualificação e próxima ação. E a fila do dia mostra quem atender primeiro.",
       "cards": [
-        "Ações atrasadas primeiro",
-        "Prontos para contato",
-        "WhatsApp em um clique"
+        {
+          "text": "Etapa e qualificação",
+          "cue": "etapa"
+        },
+        {
+          "text": "Próxima ação",
+          "cue": "próxima"
+        },
+        {
+          "text": "Fila do dia priorizada",
+          "cue": "fila"
+        }
       ],
-      "text": "E a fila do dia mostra quem precisa de atenção primeiro: ações atrasadas, quem respondeu e quem está pronto para o primeiro contato."
+      "spots": [
+        {
+          "cue": "qualificação",
+          "x": 1600,
+          "y": 330
+        }
+      ]
     },
     {
       "id": "whatsapp",
       "layout": "shot",
-      "shot": "whatsapp-inbox",
-      "title": "KIARA WhatsApp",
-      "cards": [
-        "Conexão por QR Code",
-        "Resumo de cada conversa",
-        "CRM atualizado"
+      "shots": [
+        {
+          "shot": "whatsapp-inbox",
+          "focus": [
+            960,
+            420,
+            1.1
+          ]
+        }
       ],
-      "text": "No KIARA WhatsApp, você conecta o seu número pelo QR Code, como no WhatsApp Web. Eu leio as conversas recentes, entendo cada cliente e atualizo o CRM com resumo, etapa e próxima ação."
+      "kicker": "KIARA WhatsApp",
+      "accent": "#34d399",
+      "text": "No módulo WhatsApp, você conecta o seu número pelo código QR. Eu leio as conversas, entendo cada cliente e atualizo o CRM sozinha.",
+      "speech": "No módulo WhatsApp, você conecta o seu número pelo código QR. Eu leio as conversas, entendo cada cliente e atualizo o cê érre ême sozinha.",
+      "cards": [
+        {
+          "text": "Conexão por código QR",
+          "cue": "código"
+        },
+        {
+          "text": "Entende cada conversa",
+          "cue": "entendo"
+        },
+        {
+          "text": "CRM atualizado sozinho",
+          "cue": "atualizo"
+        }
+      ]
     },
     {
-      "id": "whatsapp-rules",
+      "id": "rules",
       "layout": "shot",
-      "shot": "whatsapp-automation",
-      "title": "Você define o que eu faço",
-      "cards": [
-        "Responder com o que você aprovar",
-        "Primeira mensagem e follow-up",
-        "Só contatos autorizados"
+      "shots": [
+        {
+          "shot": "whatsapp-automation",
+          "focus": [
+            1095,
+            500,
+            1.16
+          ]
+        }
       ],
-      "text": "Você define o que eu posso fazer: responder com as informações que você aprovar, mandar a primeira mensagem e fazer follow-up, sempre só para contatos autorizados, dentro do horário e do limite diário. Se o cliente pedir para parar, ou um atendente assumir, eu pauso."
+      "kicker": "Você define as regras",
+      "accent": "#34d399",
+      "text": "Você decide o que eu faço: respondo com as informações que você aprovar, mando a primeira mensagem e faço o acompanhamento, sempre só para contatos autorizados.",
+      "cards": [
+        {
+          "text": "Respostas que você aprova",
+          "cue": "respondo"
+        },
+        {
+          "text": "Primeira mensagem",
+          "cue": "primeira"
+        },
+        {
+          "text": "Acompanhamento automático",
+          "cue": "acompanhamento"
+        },
+        {
+          "text": "Só contatos autorizados",
+          "cue": "autorizados"
+        }
+      ]
     },
     {
       "id": "chat",
       "layout": "shot",
-      "shot": "chat",
-      "title": "KIARA Chat",
-      "cards": [
-        "Prioridades do dia",
-        "Textos e propostas",
-        "Sites e dashboards"
+      "shots": [
+        {
+          "shot": "chat",
+          "focus": [
+            960,
+            330,
+            1.1
+          ]
+        },
+        {
+          "shot": "voice",
+          "cue": "voz",
+          "focus": [
+            960,
+            520,
+            1.0
+          ]
+        }
       ],
-      "text": "No KIARA Chat, você conversa comigo como em um assistente de inteligência artificial. Eu organizo prioridades, escrevo textos e propostas, e crio sites, dashboards e planos de tarefas."
-    },
-    {
-      "id": "voice",
-      "layout": "voice",
-      "shot": "voice",
-      "title": "Conversa por voz",
-      "text": "E você também pode simplesmente falar comigo. No modo conversa, eu escuto, penso e respondo em voz alta, do jeito que estou fazendo agora."
+      "kicker": "KIARA Chat",
+      "accent": "#c4a1ff",
+      "text": "No módulo Chat, você conversa comigo por texto ou por voz. Eu organizo prioridades, escrevo propostas e crio sites e painéis.",
+      "cards": [
+        {
+          "text": "Texto ou voz",
+          "cue": "voz"
+        },
+        {
+          "text": "Prioridades e propostas",
+          "cue": "organizo"
+        },
+        {
+          "text": "Sites e painéis",
+          "cue": "sites"
+        }
+      ]
     },
     {
       "id": "automation",
       "layout": "shot",
-      "shot": "automation-run",
-      "title": "KIARA Automation",
-      "cards": [
-        "Blocos ligados por linhas",
-        "Agenda, mensagens e redes",
-        "Execução acompanhada"
+      "shots": [
+        {
+          "shot": "automation-run",
+          "focus": [
+            1040,
+            560,
+            1.1
+          ]
+        },
+        {
+          "shot": "automation-ads",
+          "cue": "anúncios",
+          "focus": [
+            1500,
+            620,
+            1.18
+          ]
+        }
       ],
-      "text": "No KIARA Automation, você monta automações ligando blocos, sem programar. Um resumo diário do CRM, um post semanal no Instagram, boas-vindas no WhatsApp. Você vê cada passo sendo executado."
+      "kicker": "KIARA Automation",
+      "accent": "#facc15",
+      "cardsSide": "left",
+      "text": "No módulo Automation, você monta automações ligando blocos, sem programar: resumo diário do CRM, post semanal no Instagram e anúncios no Meta e no Google, com o custo mostrado antes.",
+      "speech": "No módulo Automêichon, você monta automações ligando blocos, sem programar: resumo diário do cê érre ême, post semanal no Instagram e anúncios no Meta e no Google, com o custo mostrado antes.",
+      "cards": [
+        {
+          "text": "Blocos ligados, sem programar",
+          "cue": "blocos"
+        },
+        {
+          "text": "Redes sociais e agenda",
+          "cue": "Instagram"
+        },
+        {
+          "text": "Anúncios com custo claro",
+          "cue": "custo"
+        }
+      ]
     },
     {
-      "id": "ads",
-      "layout": "shot",
-      "shot": "automation-ads",
-      "title": "Anúncios com custo claro",
+      "id": "custom",
+      "layout": "custom",
+      "accent": "#f0abfc",
+      "title": "Sob medida para você",
+      "text": "E eu me adapto a vocês. Ajusto funções e crio novos módulos sob medida, conforme a demanda do negócio de vocês.",
       "cards": [
-        "Meta, Google e LinkedIn",
-        "Custo por dia e total",
-        "Como cada plataforma cobra"
-      ],
-      "text": "Eu também preparo campanhas de anúncios no Meta, no Google e no LinkedIn, mostrando antes quanto custa por dia, o total da campanha e como cada plataforma cobra.",
-      "cardsSide": "left"
+        {
+          "text": "Funções ajustáveis",
+          "cue": "Ajusto"
+        },
+        {
+          "text": "Novos módulos",
+          "cue": "módulos"
+        },
+        {
+          "text": "Sob medida",
+          "cue": "medida"
+        }
+      ]
     },
     {
       "id": "control",
       "layout": "control",
+      "accent": "#7dd3fc",
       "title": "Você no controle",
+      "text": "Em tudo isso, você está no controle: ações importantes pedem a sua confirmação, e os limites que você define são sempre respeitados.",
       "cards": [
-        "Confirmação para ações sensíveis",
-        "Limites e horários",
-        "Só contatos autorizados",
-        "IA local opcional"
-      ],
-      "text": "Em tudo isso, você está no controle. Ações sensíveis pedem a sua confirmação, os limites são respeitados, e as conversas podem ser analisadas por uma inteligência artificial no seu próprio computador."
+        {
+          "text": "Você confirma o que importa",
+          "cue": "confirmação"
+        },
+        {
+          "text": "Limites e horários respeitados",
+          "cue": "limites"
+        }
+      ]
     },
     {
       "id": "outro",
       "layout": "outro",
+      "accent": "#c4a1ff",
       "title": "Você aprova. A Kiara executa.",
-      "text": "Eu sou a Kiara. Você aprova, e eu executo. Vamos colocar o seu negócio para trabalhar?"
+      "text": "Dani, Bruno: vocês aprovam, e eu executo. Vamos colocar o negócio de vocês para trabalhar?"
     }
   ]
 }
