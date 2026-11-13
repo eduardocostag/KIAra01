@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        client_name: "Kiara Lead Intelligence",
+        client_name: "Kiara Intelligence",
         redirect_uris: [redirectUri],
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],

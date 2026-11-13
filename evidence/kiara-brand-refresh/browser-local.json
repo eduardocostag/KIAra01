@@ -1,0 +1,28 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "title": "Kiara Intelligence",
+    "lead_brand_count": 0,
+    "expected_leads_scope": false
+  },
+  {
+    "path": "/sign-in",
+    "status": 200,
+    "title": "Kiara Intelligence",
+    "lead_brand_count": 0,
+    "expected_leads_scope": false
+  },
+  {
+    "path": "/ui-verification?workspace=hunter",
+    "status": 200,
+    "title": "Kiara Intelligence",
+    "lead_brand_count": 1,
+    "expected_leads_scope": true
+  },
+  {
+    "path": "/",
+    "width": 390,
+    "overflow": false
+  }
+]

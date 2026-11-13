@@ -298,7 +298,7 @@ class KiaraWindow(QMainWindow):
         self._thinking_timer = QTimer(self)
         self._thinking_timer.setInterval(650)
         self._thinking_timer.timeout.connect(self._pulse_thinking)
-        self.setWindowTitle("Kiara Lead Intelligence")
+        self.setWindowTitle("Kiara Intelligence")
         self.setMinimumSize(900, 680)
         screen = QApplication.primaryScreen()
         available = screen.availableGeometry() if screen is not None else None

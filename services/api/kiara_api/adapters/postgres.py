@@ -358,6 +358,15 @@ class PostgresRepository:
                 consumer[key] = [str(item) for item in hunter[key] if isinstance(item, str)][:20]
         if isinstance(hunter.get("website_quality_score"), (int, float)):
             consumer["website_quality_score"] = hunter["website_quality_score"]
+        for key in ("rating", "user_rating_count"):
+            if isinstance(hunter.get(key), (int, float)) and not isinstance(hunter.get(key), bool):
+                consumer[key] = hunter[key]
+        company = (row.get("attributes") or {}).get("company")
+        if isinstance(company, dict):
+            consumer["company"] = company
+        from ..company_data import lead_fit
+
+        consumer["fit"] = lead_fit(consumer)
         if hunter:
             from ..hunter_research import (
                 is_editorial_or_post,

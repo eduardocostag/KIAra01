@@ -1,0 +1,16 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "title": "Kiara Intelligence",
+    "old_brand_visible": false,
+    "app_name": "Kiara Intelligence"
+  },
+  {
+    "path": "/sign-in",
+    "status": 200,
+    "title": "Kiara Intelligence",
+    "old_brand_visible": false,
+    "app_name": "Kiara Intelligence"
+  }
+]

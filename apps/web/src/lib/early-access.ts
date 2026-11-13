@@ -26,4 +26,4 @@ export const EARLY_ACCESS: Record<EarlyAccessModule, { name: string; href: strin
 }
 
 /** Backend routes of early-access modules; the site proxy only forwards them for the administrator. */
-export const EARLY_ACCESS_API_PREFIXES = ["/v1/chat", "/v1/whatsapp-web"]
+export const EARLY_ACCESS_API_PREFIXES = ["/v1/chat", "/v1/whatsapp-web", "/v1/automation"]

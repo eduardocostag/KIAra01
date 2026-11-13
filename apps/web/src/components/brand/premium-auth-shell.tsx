@@ -22,7 +22,7 @@ export function PremiumAuthShell({ eyebrow, title, description, children }: { ey
           </div>
         </div>
 
-        <p className="auth-footnote text-xs text-white/35">Kiara Lead Intelligence · Operação protegida</p>
+        <p className="auth-footnote text-xs text-white/35">Kiara Intelligence · Operação protegida</p>
       </section>
 
       <section className="auth-form-panel relative grid place-items-center border-l border-white/8 px-5 py-8 sm:py-10">

@@ -149,7 +149,7 @@ export function AppShell({
       {isModuleActive && (
         <aside className="kiara-sidebar fixed inset-y-0 left-0 z-30 hidden w-[202px] flex-col border-r border-sidebar-border bg-sidebar px-3 py-6 md:flex">
           <Link href="/app" className="kiara-shell-brand mb-8 flex min-h-12 items-center px-2" aria-label="Kiara, início">
-            <KiaraBrand inverse />
+            <KiaraBrand inverse scope={modulePrefix === "/app/leads" ? "leads" : "platform"} />
           </Link>
           {isWhatsApp && <div className="mb-5 flex items-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-3 py-3 text-sm font-semibold text-emerald-300"><MessageCircle className="size-4" aria-hidden="true" />WhatsApp</div>}
           {isChat && <div className="mb-5 flex items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/5 px-3 py-3 text-sm font-semibold text-violet-200"><Sparkles className="size-4" aria-hidden="true" />KIARA Chat</div>}
@@ -190,7 +190,7 @@ export function AppShell({
           {/* Menu Mobile unificado */}
           <SheetHeader className="p-0 text-left">
             <SheetTitle>
-              <KiaraBrand inverse />
+              <KiaraBrand inverse scope={modulePrefix === "/app/leads" ? "leads" : "platform"} />
             </SheetTitle>
             <SheetDescription>{isWhatsApp ? "WhatsApp · conexão, análise e automação" : isChat ? "KIARA Chat · conversa e criação" : "Navegue pelas áreas da Kiara"}</SheetDescription>
           </SheetHeader>

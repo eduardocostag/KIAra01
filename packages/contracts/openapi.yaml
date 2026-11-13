@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Kiara Lead Intelligence API
+  title: Kiara Intelligence API
   version: 1.0.0
   description: Tenant is derived from the verified bearer token and membership; clients never supply organization_id.
 servers:

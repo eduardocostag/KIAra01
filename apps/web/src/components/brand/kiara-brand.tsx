@@ -5,9 +5,10 @@ type KiaraBrandProps = {
   className?: string
   compact?: boolean
   inverse?: boolean
+  scope?: "platform" | "leads"
 }
 
-export function KiaraBrand({ className, compact = false, inverse = false }: KiaraBrandProps) {
+export function KiaraBrand({ className, compact = false, inverse = false, scope = "platform" }: KiaraBrandProps) {
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-3", className)}>
       <KiaraOrb size="sm" />
@@ -27,7 +28,7 @@ export function KiaraBrand({ className, compact = false, inverse = false }: Kiar
               inverse ? "text-white/58" : "text-muted-foreground",
             )}
           >
-            Lead Intelligence
+            {scope === "leads" ? "Lead Intelligence" : "Intelligence"}
           </span>
         </span>
       )}

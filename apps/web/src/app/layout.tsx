@@ -14,12 +14,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Kiara Lead Intelligence",
+    default: "Kiara Intelligence",
     template: "%s | Kiara",
   },
   description:
-    "Encontre leads por nicho e região, revise contatos e organize cada oportunidade no Pipeline da Kiara.",
-  applicationName: "Kiara Lead Intelligence",
+    "Kiara Intelligence: prospecção, atendimento, criação de sites, vídeos e automação em uma plataforma integrada.",
+  applicationName: "Kiara Intelligence",
   category: "business",
 };
 

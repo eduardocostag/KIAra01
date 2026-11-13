@@ -49,6 +49,8 @@ from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .sales import SalesRepository, create_sales_router
 from .social import SocialRepository, create_social_router
+from .automation import AutomationRepository, create_automation_router
+from .lead_company import LeadCompanyRepository, create_lead_company_router
 from .unified_inbox import UnifiedInboxRepository, create_unified_inbox_router
 from .whatsapp_web import WhatsAppWebRepository, create_whatsapp_web_router
 from .workspace import PostgresWorkspaceResetRepository, create_workspace_router
@@ -134,7 +136,7 @@ def create_app(
         app.state.settings = config
         yield
 
-    app = FastAPI(title="Kiara Lead Intelligence API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Kiara Intelligence API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(CorrelationMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -413,6 +415,7 @@ def create_app(
     app.include_router(create_instagram_content_router())
     app.include_router(create_whatsapp_web_router(WhatsAppWebRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_social_router(SocialRepository(PostgresRepository(config.database_url) if config.database_url else None)))
+    app.include_router(create_automation_router(AutomationRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     if config.database_url:
         app.include_router(create_unified_inbox_router(UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None)))
         app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
@@ -425,6 +428,7 @@ def create_app(
                 CompetitionRepository(PostgresRepository(config.database_url)),
             ))
         app.include_router(create_sales_router(SalesRepository(PostgresRepository(config.database_url))))
+        app.include_router(create_lead_company_router(LeadCompanyRepository(PostgresRepository(config.database_url))))
         app.include_router(create_workspace_router(PostgresWorkspaceResetRepository(PostgresRepository(config.database_url))))
 
     return app

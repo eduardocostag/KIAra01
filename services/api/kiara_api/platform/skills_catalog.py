@@ -65,4 +65,12 @@ SKILLS_CATALOG = (
         "name": "kiara-freellmapi",
         "description": "Configurar e operar o roteador FreeLLMAPI da Kiara, selecionar modelos e diagnosticar falhas de inferencia nesse provider.",
     },
+    {
+        "name": "kiara-video-studio",
+        "description": 'Produzir vídeos de apresentação e venda narrados pela própria Kiara (orbe animado com voz), com telas reais do sistema, cards sincronizados com a fala, saudação personalizada com o nome dos clientes e efeitos 3D.',
+    },
+    {
+        "name": "kiara-web-studio",
+        "description": 'Criar sites e landing pages a partir do acervo Landing Page System da Kiara: 33 templates profissionais, brief, design premium, critérios de qualidade, mídia cinematográfica e preparação de preview/publicação.',
+    },
 )

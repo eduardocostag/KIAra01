@@ -140,6 +140,12 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
     for key in ("website_quality_score", "website_quality_signals", "match_reasons"):
         if data.get(key) is not None:
             metadata[key] = data[key]
+    # Google reputation feeds the lead fit score.
+    for key in ("rating", "user_rating_count"):
+        if isinstance(data.get(key), (int, float)) and not isinstance(data.get(key), bool):
+            metadata[key] = data[key]
+    if isinstance(data.get("business_status"), str):
+        metadata["business_status"] = data["business_status"][:40]
     for key in ("detail_inspected", "bio_location_evidence", "bio_niche_evidence", "manual_lead_selection"):
         if isinstance(data.get(key), bool):
             metadata[key] = data[key]
