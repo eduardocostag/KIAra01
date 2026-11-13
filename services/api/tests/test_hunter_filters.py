@@ -208,8 +208,9 @@ def test_instagram_search_keeps_arbitrary_indexed_niches_without_hardcoded_categ
     request = {"query": query, "location": location, "sources": ["instagram"]}
     assert not _instagram_profile_matches(row, request)
     kept, stats = filter_results([row], request)
-    assert kept == []
-    assert stats["accepted"] == 0
+    # An indexed profile in the right niche, without a verified bio, is kept to be checked by a person.
+    assert [item["public_data"]["lead_tier"] for item in kept] == ["to_review"]
+    assert stats["confirmed"] == 0
 
     verified = {
         **row,
@@ -258,11 +259,12 @@ def test_exact_reported_query_excludes_own_website_and_requires_public_whatsapp(
         maps_result("accepted", whatsapp=True),
     ]
     kept, stats = filter_results(items, search(contact_filter="whatsapp"))
+    kept = [item for item in kept if item["public_data"]["lead_tier"] == "confirmed"]
     assert [item["title"] for item in kept] == ["accepted"]
     assert kept[0]["public_data"]["criterion_status"] == "verified"
     assert kept[0]["public_data"]["whatsapp_url"] == "https://wa.me/5511912345678"
     assert kept[0]["public_data"]["website_status"] == "not_listed"
-    assert stats == {"checked": 5, "accepted": 1, "excluded": 4, "unknown": 1, "incomplete": 1, "source_failures": 0}
+    assert {key: stats[key] for key in ("checked", "confirmed", "unknown")} == {"checked": 5, "confirmed": 1, "unknown": 2}
 
 
 def test_required_quality_gate_overfetches_before_applying_the_result_limit(monkeypatch):
@@ -285,7 +287,7 @@ def test_required_quality_gate_overfetches_before_applying_the_result_limit(monk
         "query": "clínicas", "location": None, "sources": ["web"],
         "result_limit": 5, "market": "b2b",
     }))
-    assert observed_limits == [10]
+    assert observed_limits == [15]
     assert [row["title"] for row in outcome["results"]] == ["Clínica Aurora"]
 
 
@@ -298,10 +300,13 @@ def test_hunter_only_returns_leads_with_every_required_public_field():
     ]
     cases[2][1]["public_data"]["address"] = None
     cases[3][1]["url"] = ""
-    for _, candidate in cases:
+    expected = {"name": None, "contact": "to_review", "location": "probable", "source": None}
+    for case, candidate in cases:
+        candidate["summary"] = "Clínica de dentistas"
         kept, stats = filter_results([candidate], search("dentistas"))
-        assert kept == []
-        assert stats["incomplete"] == 1
+        assert stats["confirmed"] == 0
+        # Without a name or a public source it is not a lead; otherwise it is shown with a lower tier.
+        assert [item["public_data"]["lead_tier"] for item in kept] == ([expected[case]] if expected[case] else [])
 
 
 def test_verified_social_bio_location_can_satisfy_city_requirement():
@@ -333,7 +338,7 @@ def test_web_address_requires_evidence_from_the_public_business_page():
     }
     request = {"query": "clínicas", "location": "Porto Alegre", "sources": ["web"], "market": "b2b"}
     kept, stats = filter_results([candidate], request)
-    assert kept == []
+    assert kept[0]["public_data"]["lead_tier"] == "probable"
     assert stats["incomplete"] == 1
 
     candidate["public_data"]["address_evidence"] = "verified_public_page"
@@ -426,6 +431,8 @@ def test_golden_constraint_judgments_improve_precision_without_losing_eligible_c
         for candidate in candidates:
             candidate["summary"] = request["query"]
         kept, _ = filter_results(deepcopy(candidates), request)
+        assert all(item["public_data"]["lead_tier"] == "to_review" for item in kept if item["title"] not in labels)
+        kept = [item for item in kept if item["public_data"]["lead_tier"] == "confirmed"]
         titles = {item["title"] for item in kept}
         assert titles == labels
         total += len(candidates)

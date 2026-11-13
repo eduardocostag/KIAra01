@@ -1,11 +1,35 @@
 "use client"
 
 import { useState } from "react"
-import { BadgeCheck, Check, ExternalLink, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Star, Trash2, TriangleAlert } from "lucide-react"
+import { BadgeCheck, Check, ExternalLink, Flame, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Snowflake, Star, Sun, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { hunterEvidenceLabel, hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
 
 const sourceLabels: Record<string, string> = { web: "Web", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
+const tierStyles = {
+  confirmed: { label: "Confirmado", className: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300" },
+  probable: { label: "Provável", className: "border-sky-400/40 bg-sky-400/10 text-sky-300" },
+  to_review: { label: "A conferir", className: "border-amber-400/40 bg-amber-400/10 text-amber-300" },
+} as const
+const temperatureStyles = {
+  hot: { label: "Quente", icon: Flame, className: "bg-rose-500/15 text-rose-300" },
+  warm: { label: "Morno", icon: Sun, className: "bg-amber-400/15 text-amber-300" },
+  cold: { label: "Frio", icon: Snowflake, className: "bg-sky-400/15 text-sky-300" },
+} as const
+
+/** Confidence tier and temperature computed by the API; reasons appear on hover and to screen readers. */
+function LeadBadges({ data }: { data: HunterResult["public_data"] }) {
+  const tier = data?.lead_tier ? tierStyles[data.lead_tier] : null
+  const temperature = data?.temperature ? temperatureStyles[data.temperature] : null
+  if (!tier && !temperature) return null
+  const reasons = (data?.temperature_reasons ?? []).join(" · ")
+  const Icon = temperature?.icon
+  return <span className="inline-flex flex-wrap items-center gap-1.5">
+    {temperature && Icon ? <span title={reasons || undefined} aria-label={`Lead ${temperature.label.toLowerCase()}${reasons ? `: ${reasons}` : ""}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${temperature.className}`}><Icon className="size-3" aria-hidden="true" />{temperature.label}</span> : null}
+    {tier ? <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${tier.className}`}>{tier.label}</span> : null}
+  </span>
+}
+
 const statusLabels: Record<string, string> = { completed: "Concluída", running: "Em andamento", pending_confirmation: "Não iniciada", failed: "Não concluída", cancelled: "Cancelada" }
 
 /** Client-facing explanations; configuration details stay in the collapsed technical section. */
@@ -60,7 +84,8 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
     ...(!phone && !whatsapp ? ["telefone ou WhatsApp público"] : []),
     ...(!locationConfirmed ? ["localização confirmada"] : []),
   ])]
-  const blocked = publication || missing.length > 0
+  // Not fully confirmed leads can still be added; they enter the CRM marked as Provável / A conferir.
+  const blocked = publication
 
   async function addLead() {
     if (adding || added || blocked) return
@@ -79,6 +104,7 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
     <div className="min-w-0 flex-1 space-y-1">
       <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <span className="min-w-0 break-words">{name}</span>
+        <LeadBadges data={data} />
         <span className="text-xs font-normal text-muted-foreground">{sourceLabels[result.source]}</span>
         <span className={`inline-flex items-center gap-1 text-xs font-normal ${verified ? "text-emerald-400" : "text-muted-foreground"}`}>{verified ? <BadgeCheck className="size-3.5" aria-hidden="true" /> : null}{hunterEvidenceLabel(result.source, data)}</span>
       </h3>
@@ -93,7 +119,10 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
       </div>
       {summary ? <p className="line-clamp-2 text-xs text-muted-foreground">{summary}</p> : null}
       {result.source === "web" && data?.name_status === "source_title" ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Nome extraído do título da fonte</summary><p className="mt-1 break-words">{data.source_title || result.title}</p><p>O nome comercial não foi confirmado separadamente.</p></details> : null}
-      {blocked && !added ? <p className="text-xs text-amber-400">{publication ? "É uma publicação, não um perfil de negócio." : `Falta confirmar: ${missing.join(", ")}.`}</p> : null}
+      {data?.temperature_reasons?.length ? <p className="text-xs text-muted-foreground">{data.temperature_reasons.join(" · ")}</p> : null}
+      {publication && !added ? <p className="text-xs text-amber-400">É uma publicação, não um perfil de negócio.</p>
+        : missing.length && !added ? <p className="text-xs text-amber-400">Falta confirmar: {missing.join(", ")}. Confira a fonte antes de abordar.</p> : null}
+      {data?.also_found_on?.length ? <p className="text-xs text-muted-foreground">Também encontrado em {data.also_found_on.length} outra(s) fonte(s); os contatos foram reunidos.</p> : null}
       {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
     </div>
     <div className="flex shrink-0 items-center gap-2">
@@ -111,12 +140,16 @@ export function HunterResults({ jobs, selected, loading, onRefresh, onClear, onS
   if (!selected) return <p className="py-12 text-center text-sm text-muted-foreground">Os leads encontrados aparecem aqui.</p>
 
   const withContact = selected.results.filter((result) => publicPhone(result.public_data?.phone) || publicWhatsappUrl(result.public_data?.whatsapp_url)).length
+  const tierCount = (tier: string) => selected.results.filter((result) => result.public_data?.lead_tier === tier).length
+  const hot = selected.results.filter((result) => result.public_data?.temperature === "hot").length
+  const breakdown = [tierCount("confirmed") ? `${tierCount("confirmed")} confirmados` : "", tierCount("probable") ? `${tierCount("probable")} prováveis` : "",
+    tierCount("to_review") ? `${tierCount("to_review")} a conferir` : "", hot ? `${hot} quentes` : ""].filter(Boolean).join(" · ")
 
   return <section aria-labelledby="hunter-results-title" className="overflow-hidden rounded-xl border bg-card">
     <header className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1">
         <h2 id="hunter-results-title" className="font-semibold">{selected.status === "completed" ? `${selected.results.length} resultado${selected.results.length === 1 ? "" : "s"}` : statusLabels[selected.status]}</h2>
-        <p className="truncate text-sm text-muted-foreground">{selected.query}{selected.location ? ` · ${selected.location}` : ""}{selected.status === "completed" && selected.results.length ? ` · ${withContact} com telefone` : ""}</p>
+        <p className="truncate text-sm text-muted-foreground">{selected.query}{selected.location ? ` · ${selected.location}` : ""}{selected.status === "completed" && selected.results.length ? ` · ${breakdown || `${withContact} com telefone`}` : ""}</p>
       </div>
       <div className="flex items-center gap-1">
         {jobs.length > 1 ? <select aria-label="Buscas anteriores" value={selected.id} onChange={(event) => onSelect(event.target.value)} className="h-9 max-w-56 truncate rounded-md border bg-background px-2 text-sm">

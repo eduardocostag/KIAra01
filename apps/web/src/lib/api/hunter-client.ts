@@ -2,6 +2,12 @@ export type HunterSource = "web" | "google_maps" | "instagram" | "facebook"
 export type WebsiteFilter = "any" | "without_website" | "with_website"
 export type ContactFilter = "any" | "phone" | "whatsapp"
 export type HunterPublicData = {
+  /** confirmed: every field verified; probable: has a direct contact; to_review: only business + public source. */
+  lead_tier?: "confirmed" | "probable" | "to_review"
+  lead_score?: number
+  temperature?: "hot" | "warm" | "cold"
+  temperature_reasons?: string[]
+  also_found_on?: string[]
   display_name?: string | null
   source_title?: string | null
   name_status?: "source_title"
@@ -61,7 +67,7 @@ export type HunterJob = {
   objective?: string
   website_filter?: WebsiteFilter
   contact_filter?: ContactFilter
-  validation?: { checked: number; accepted: number; excluded: number; unknown: number; incomplete?: number; source_failures: number }
+  validation?: { checked: number; accepted: number; excluded: number; unknown: number; incomplete?: number; source_failures: number; confirmed?: number; probable?: number; to_review?: number }
   warnings?: string[]
   sync_summary?: { created: number; existing: number; skipped: number }
 }

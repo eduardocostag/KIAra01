@@ -10,3 +10,5 @@ playwright>=1.50,<2
 scrapling==0.4.15
 # Chrome-impersonating HTTP engine used by Scrapling's fetcher; small and browser-free.
 curl_cffi>=0.13,<1
+# Raw Chrome DevTools Protocol client for remote browsers (Playwright's driver cannot run on Vercel).
+websockets>=13,<18

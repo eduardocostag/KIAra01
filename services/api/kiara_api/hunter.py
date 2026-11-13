@@ -1490,6 +1490,18 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     return merge_maps_rows([*structured, *browsed])[:limit]
 
 
+async def _read_maps_remote(connect_url: str, query: str, limit: int, *, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Remote browser over raw CDP first (works on Vercel); Playwright's driver is the fallback."""
+    from .cdp_maps import read_maps
+
+    try:
+        return await read_maps(connect_url, maps_search_url(query), min(limit, HUNTER_MAX_RESULTS),
+                               MAPS_DETAIL_SCRIPT, maps_detail_result, headers=headers)
+    except Exception as exc:  # noqa: BLE001 - Playwright remains an independent path
+        logger.warning("hunter.maps.raw_cdp_failed %s", _safe_error(exc))
+    return await _read_maps_cdp(connect_url, query, limit, headers=headers)
+
+
 async def _create_browserbase_session(client: Any, project: str, attempts: int = 3) -> Any:
     """Plans limit concurrent sessions; the previous search's session may still be releasing."""
     for attempt in range(attempts):
@@ -1555,7 +1567,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
     if obscura:
         endpoint, headers = obscura
         try:
-            rows = await _read_maps_cdp(endpoint, query, limit, headers=headers)
+            rows = await _read_maps_remote(endpoint, query, limit, headers=headers)
             if has_verified_details(rows):
                 return await supplement(rows)
             unverified_rows.extend(rows)
@@ -1584,7 +1596,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
         return await local_or_index()
     try:
         try:
-            rows = await _read_maps_cdp(session.connect_url, query, limit)
+            rows = await _read_maps_remote(session.connect_url, query, limit)
             if has_verified_details(rows):
                 return await supplement(rows)
             unverified_rows.extend(rows)
@@ -1768,6 +1780,10 @@ MAPS_DETAIL_SCRIPT = """() => {
         phone: phone?.getAttribute('href') || phone?.getAttribute('aria-label') || phone?.textContent || null,
         address: (address?.getAttribute('aria-label') || address?.textContent || '').replace(/^(?:Address|Endereço):\\s*/i, ''),
         category: panel.querySelector('button[jsaction*="category"]')?.textContent || '',
+        rating: (panel.querySelector('div.F7nice span[aria-hidden="true"]')?.textContent
+            || [...panel.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label')).find(l => /^[\\d,.]+ estrelas?|^[\\d,.]+ stars?/i.test(l || '')) || ''),
+        reviews: ([...panel.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label'))
+            .find(l => /[\\d.\\s]+ (avaliações|avaliação|reviews?)/i.test(l || '')) || panel.querySelector('div.F7nice span[aria-label]')?.getAttribute('aria-label') || ''),
         links: [...panel.querySelectorAll('a[href]')].map(a => a.href),
     };
 }"""
@@ -1946,7 +1962,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         "has_location": bool(search.get("location")), "research_mode": search.get("research_mode", "broad"),
     })
     # Filter after recall: never spend the user's result allowance on rejects.
-    per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 2)
+    per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 3)
     def source_task(source: str) -> asyncio.Task[list[dict[str, Any]]]:
         operation = maps_search(query, per_source) if source == "google_maps" else multi_public_search(expanded_queries, source, per_source)
         return asyncio.create_task(operation)
@@ -2032,6 +2048,9 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         warnings.append(f"{combined_count} resultado(s) eram a mesma empresa em outra fonte; os contatos foram reunidos em um único lead.")
     results, validation = filter_results(candidates, search)
     validation["source_failures"] = len(failures)
+    # The requested amount is filled in order of confidence (filter_results already sorts
+    # confirmed > probable > to review): weaker leads only appear when confirmed ones run out,
+    # labeled on the card, so a search is never empty just because confirmation failed.
     results = results[:search["result_limit"]]
     validation["accepted"] = len(results)
     if options["website_filter"] == "without_website":
@@ -2046,10 +2065,11 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         warnings.append("Oportunidade digital usa sinais técnicos verificáveis; a Kiara não classifica gosto visual como fato.")
     if validation["unknown"]:
         warnings.append(f"{validation['unknown']} candidato(s) excluído(s) por falta de evidência para os filtros solicitados.")
-    if validation["incomplete"]:
+    partial_count = validation.get("probable", 0) + validation.get("to_review", 0)
+    if partial_count:
         warnings.append(
-            f"{validation['incomplete']} candidato(s) excluído(s) por não apresentar nome/empresa, telefone ou WhatsApp, "
-            "cidade/endereço comprovado e URL pública da fonte."
+            f"{partial_count} lead(s) aparecem como Provável ou A conferir: falta confirmar telefone, endereço ou critério. "
+            "Confira a fonte antes de abordar."
         )
     if options["unsupported_criterion"]:
         warnings.append("O critério livre foi enviado à busca, mas não pôde ser comprovado automaticamente. Esses resultados não foram importados para o CRM.")

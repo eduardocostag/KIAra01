@@ -22,7 +22,7 @@ export function HunterClient() {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [location, setLocation] = useState("")
-  const [limit, setLimit] = useState(10)
+  const [limit, setLimit] = useState(30)
   const [sources, setSources] = useState<Source[]>(["google_maps", "web"])
   const [websiteFilter, setWebsiteFilter] = useState<WebsiteFilter>("any")
   const [contactFilter, setContactFilter] = useState<ContactFilter>("any")

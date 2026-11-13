@@ -104,3 +104,50 @@ def test_browserbase_busy_session_is_retried(monkeypatch):
     client = type("Client", (), {"sessions": Sessions()})()
     assert asyncio.run(hunter._create_browserbase_session(client, "project")) == "session"
     assert len(calls) == 2
+
+
+def test_raw_cdp_matches_responses_by_id_and_reports_errors():
+    import json as _json
+
+    from kiara_api.cdp_maps import CdpConnection, CdpError
+
+    class Socket:
+        def __init__(self):
+            self.queue = asyncio.Queue()
+
+        async def send(self, raw):
+            message = _json.loads(raw)
+            reply = {"id": message["id"], "error": {"message": "No target"}} if message["method"] == "Bad.method" \
+                else {"id": message["id"], "result": {"echo": message["method"], "session": message.get("sessionId")}}
+            await self.queue.put(_json.dumps(reply))
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return await self.queue.get()
+
+        async def close(self):
+            return None
+
+    async def scenario():
+        cdp = CdpConnection(Socket())
+        first, second = await asyncio.gather(cdp.send("Page.navigate", session="s1"), cdp.send("Runtime.evaluate"))
+        assert first == {"echo": "Page.navigate", "session": "s1"} and second["echo"] == "Runtime.evaluate"
+        try:
+            await cdp.send("Bad.method")
+            raise AssertionError("expected CdpError")
+        except CdpError as error:
+            assert "No target" in str(error)
+        await cdp.close()
+
+    asyncio.run(scenario())
+
+
+def test_maps_panel_reputation_is_parsed_from_brazilian_formats():
+    from kiara_api.hunter_research import maps_detail_result
+
+    row = maps_detail_result({"title": "Padaria X", "url": "https://www.google.com/maps/place/x/data=!1sABC"},
+                             {"title": "Padaria X", "loaded": True, "phone": "5133334444", "address": "Rua A, 1 - Porto Alegre - RS",
+                              "rating": "4,7", "reviews": "1.234 avaliações"})
+    assert row["public_data"]["rating"] == 4.7 and row["public_data"]["user_rating_count"] == 1234

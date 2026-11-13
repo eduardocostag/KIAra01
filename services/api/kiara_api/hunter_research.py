@@ -416,6 +416,7 @@ def lead_requirement_gaps(item: dict[str, Any], search: dict[str, Any]) -> list[
     title = str(item.get("title") or "").strip()
     has_name = bool(title and title.lower() not in {
         "contato público", "contato publico", "resultado sem nome", "empresa no google maps",
+        "resultado público", "resultado publico", "perfil público", "perfil publico",
     })
     if item.get("source") in {"instagram", "facebook"} and data.get("profile_handle"):
         has_name = True
@@ -539,14 +540,20 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
     options = research_options(search)
     accepted: list[dict[str, Any]] = []
     counts = {"checked": len(items), "accepted": 0, "excluded": 0, "unknown": 0,
-              "incomplete": 0, "source_failures": 0}
+              "incomplete": 0, "source_failures": 0, "confirmed": 0, "probable": 0, "to_review": 0}
+    partial: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw in items:
         item = normalize_result(raw)
         data = item["public_data"]
+        # Leads that could not be fully confirmed are kept with a lower tier instead of discarded:
+        # "probable" has a direct contact, "to_review" has only the business and its public source.
+        tier = "confirmed"
         if item["source"] == "google_maps" and data.get("detail_inspected") is not True:
-            counts["excluded"] += 1
-            continue
+            if "/maps/place/" not in (data.get("source_url") or item.get("url") or ""):
+                counts["excluded"] += 1
+                continue
+            tier = "to_review"
         if item["source"] in {"instagram", "facebook"} and not data.get("manual_import"):
             has_relevant_profile = (
                 data.get("content_kind") == "profile"
@@ -558,8 +565,10 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
                 )
             )
             if not has_relevant_profile:
-                counts["excluded"] += 1
-                continue
+                if data.get("content_kind") == "publication" or not result_niche_matches(item, search):
+                    counts["excluded"] += 1
+                    continue
+                tier = "to_review"
         # Identity query parameters (Facebook id, Maps cid/place_id, etc.)
         # distinguish real businesses. Drop tracking only; path-only keys used
         # to collapse unrelated profiles into a single result.
@@ -580,10 +589,20 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
         if identities & seen or is_editorial_or_post(item):
             counts["excluded"] += 1
             continue
-        if lead_requirement_gaps(item, search):
+        gaps = lead_requirement_gaps(item, search)
+        if "name" in gaps or "source_url" in gaps or _verified_elsewhere(item, search):
             counts["excluded"] += 1
             counts["incomplete"] += 1
             continue
+        if gaps:
+            tier = "probable" if "phone_or_whatsapp" not in gaps or data.get("email") else "to_review"
+            # A web page with no contact at all is almost always a guide or listing ("Onde comer em…"),
+            # not a business: only Maps places and social profiles may be shown without a contact.
+            if tier == "to_review" and item["source"] == "web":
+                counts["excluded"] += 1
+                continue
+            if tier == "probable" and "verified_location" in gaps and item["source"] == "google_maps" and data.get("detail_inspected") is not True:
+                tier = "to_review"
         if not result_niche_matches(item, search):
             counts["excluded"] += 1
             continue
@@ -608,6 +627,7 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
         if options["website_quality_filter"] == "opportunity":
             rejected = rejected or data.get("website_quality_score", 100) > 55
             unknown = unknown or data.get("website_quality_score") is None
+        # Filters the user chose explicitly stay strict: a lead that does not prove them is not shown.
         if rejected or unknown:
             counts["excluded"] += 1
             counts["unknown"] += int(unknown and not rejected)
@@ -633,9 +653,49 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
         data["match_reasons"] = list(dict.fromkeys(reasons))
         data["research_objective"] = options["objective"]
         data["verification_version"] = 1
-        accepted.append(item)
+        apply_lead_tier(item, tier)
+        counts[tier] += 1
+        counts["incomplete"] += int(tier != "confirmed")
+        (accepted if tier == "confirmed" else partial).append(item)
+    rank = {"probable": 0, "to_review": 1}
+    partial.sort(key=lambda row: (rank[row["public_data"]["lead_tier"]], -row["public_data"]["lead_score"]))
+    accepted.sort(key=lambda row: -row["public_data"]["lead_score"])
+    accepted.extend(partial)
     counts["accepted"] = len(accepted)
     return accepted, counts
+
+
+TIER_LABELS = {"confirmed": "Confirmado", "probable": "Provável", "to_review": "A conferir"}
+TIER_PENALTY = {"confirmed": 0, "probable": 8, "to_review": 22}
+
+
+def _verified_elsewhere(item: dict[str, Any], search: dict[str, Any]) -> bool:
+    """A verified address in another city is a different market, not a weaker lead."""
+    data = item["public_data"]
+    address = clean_summary(data.get("address"), 300)
+    verified = bool(address) and (
+        item.get("source") == "google_maps" and data.get("detail_inspected") is True
+        or item.get("source") == "web" and data.get("address_evidence") == "verified_public_page"
+    )
+    return bool(verified and search.get("location") and not address_matches_location(address, search.get("location")))
+
+
+def apply_lead_tier(item: dict[str, Any], tier: str) -> None:
+    """Confidence tier plus a hot/warm/cold temperature with its reasons, for the result card."""
+    from .company_data import lead_fit
+
+    data = item["public_data"]
+    fit = lead_fit({key: data.get(key) for key in ("phone", "email", "whatsapp_url", "website_status",
+                                                   "website_quality_score", "rating", "user_rating_count")})
+    score = max(0, min(100, fit["score"] + 20 - TIER_PENALTY[tier]))
+    temperature = "hot" if score >= 55 else "warm" if score >= 30 else "cold"
+    reasons = [reason["text"] for reason in fit["reasons"] if reason["points"] > 0][:3]
+    if tier == "probable":
+        reasons.append("Endereço ou critério ainda não confirmado")
+    elif tier == "to_review":
+        reasons.append("Contato ainda não encontrado: confira a fonte")
+    data.update({"lead_tier": tier, "lead_tier_label": TIER_LABELS[tier], "lead_score": score,
+                 "temperature": temperature, "temperature_reasons": reasons})
 
 
 def maps_detail_result(item: dict[str, Any], detail: dict[str, Any]) -> dict[str, Any]:
@@ -667,6 +727,13 @@ def maps_detail_result(item: dict[str, Any], detail: dict[str, Any]) -> dict[str
     place = re.search(r"!1s([^!/?]+)", unquote(item["url"]))
     if place:
         public_data["place_id"] = place.group(1)
+    # Google reputation shown on the business panel ("4,7" and "(1.234)" / "1.234 avaliações").
+    rating = re.search(r"\d+(?:[.,]\d)?", str(detail.get("rating") or ""))
+    if inspected and rating and 0 < float(rating.group().replace(",", ".")) <= 5:
+        public_data["rating"] = float(rating.group().replace(",", "."))
+        reviews = re.search(r"(\d[\d.\s]*)\s*(?:avaliaç|avaliac|review)", str(detail.get("reviews") or ""), re.IGNORECASE)
+        if reviews:
+            public_data["user_rating_count"] = int(re.sub(r"\D", "", reviews.group(1)))
     return {"source": "google_maps", "title": detail.get("title") or item.get("title") or "Empresa no Google Maps",
             "url": item["url"], "summary": clean_summary(detail.get("category")) or "Perfil empresarial público no Google Maps.",
             "public_data": public_data}

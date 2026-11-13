@@ -88,7 +88,7 @@ def test_obscura_is_optional_and_browserbase_remains_fallback() -> None:
     source = (Path(__file__).parents[1] / "kiara_api" / "hunter.py").read_text(encoding="utf-8")
     assert 'os.getenv("OBSCURA_CDP_URL"' in source
     assert 'os.getenv("OBSCURA_AUTH_TOKEN"' in source
-    assert "rows = await _read_maps_cdp(endpoint, query, limit, headers=headers)" in source
+    assert "rows = await _read_maps_remote(endpoint, query, limit, headers=headers)" in source
     assert "return await supplement(rows)" in source
     assert "Browserbase(api_key=key" in source
     assert '"provider": "obscura"' in source

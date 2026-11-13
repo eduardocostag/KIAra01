@@ -196,14 +196,16 @@ def test_user_can_explicitly_add_unverified_result_as_lead():
     assert row["public_data"]["crm_status"] == "synced"
 
 
-def test_manual_selection_cannot_bypass_required_contact_and_location_evidence():
+def test_person_can_add_a_lead_still_missing_contact_and_location():
+    """Probable / to-review leads: a person may add them; automatic imports keep every requirement."""
     conn, org = MemoryConnection(), uuid4()
-    row = result(public_data={"phone": None, "address": None})
+    row = result(public_data={"phone": None, "address": None, "lead_tier": "to_review"})
     summary = asyncio.run(sync_hunter_results(conn, org, search(), [row], user_selected=True))
-    assert summary == {"created": 0, "existing": 0, "skipped": 1}
-    assert not conn.consumers and not conn.entries
-    assert row["public_data"]["crm_skip_reason"] == "incomplete_lead"
-    assert row["public_data"]["lead_requirements_missing"] == ["phone_or_whatsapp", "verified_location"]
+    assert summary == {"created": 1, "existing": 0, "skipped": 0}
+    assert next(iter(conn.consumers.values()))["attributes"]["hunter"]["lead_tier"] == "to_review"
+    automatic = result(url="https://clinic.example/outra", public_data={"phone": None, "address": None})
+    summary = asyncio.run(sync_hunter_results(conn, org, search(), [automatic]))
+    assert summary["skipped"] == 1 and automatic["public_data"]["crm_skip_reason"] == "incomplete_lead"
 
 
 def test_manual_selection_without_a_public_source_url_is_rejected():
@@ -227,7 +229,7 @@ def test_user_selection_does_not_turn_publication_into_contact():
 
 @pytest.mark.parametrize("status", ["not_verified", "rejected"])
 @pytest.mark.parametrize("overrides,expected", [
-    ({"public_data": {"phone": None, "address": None}}, "incomplete_lead"),
+    ({"title": "Resultado público"}, "incomplete_lead"),
     ({"url": ""}, "invalid_source_url"),
 ])
 def test_manual_criterion_override_still_checks_all_required_evidence(status, overrides, expected):

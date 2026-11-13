@@ -146,6 +146,9 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
             metadata[key] = data[key]
     if isinstance(data.get("business_status"), str):
         metadata["business_status"] = data["business_status"][:40]
+    for key in ("lead_tier", "temperature"):
+        if isinstance(data.get(key), str):
+            metadata[key] = data[key][:20]
     for key in ("detail_inspected", "bio_location_evidence", "bio_niche_evidence", "manual_lead_selection"):
         if isinstance(data.get(key), bool):
             metadata[key] = data[key]
@@ -228,6 +231,10 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
         # A human can override an unverified commercial criterion, but never
         # structural requirements. Evaluate those independently: an earlier
         # criterion failure must not hide a missing phone, city or identity.
+        # A person may add a lead that is not fully confirmed (tier Provável/A conferir): only the
+        # business name and a public source stay mandatory. Automatic imports keep every requirement.
+        if user_selected and not {"name", "source_url", "niche_match"} & set(missing_requirements):
+            missing_requirements = []
         reason = (
             (None if keys else "invalid_source_url")
             or ("publication_not_contact" if is_editorial_or_post(normalized_result)
