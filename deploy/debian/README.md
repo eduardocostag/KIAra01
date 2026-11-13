@@ -66,6 +66,21 @@ Na Vercel, abra o projeto do site, vá em **Settings → Environment Variables**
 
 Depois faça um novo deploy. Pronto: o Chat, a voz e os vídeos passam a funcionar de qualquer lugar, sem o seu PC ligado.
 
+### 6. Ligar as automações (a cada minuto)
+O servidor chama a API da Kiara a cada minuto. Nessa chamada a API dispara os agendamentos, confere se entraram leads novos e executa os fluxos que estão na fila. Use o mesmo `KIARA_WORKER_TOKEN` que está nas variáveis da API na Vercel. Se ele ainda não existir, crie um valor longo e aleatório e cadastre na Vercel também.
+```bash
+sudo install -d -m 0750 /etc/kiara
+sudo nano /etc/kiara/automation.env
+```
+Escreva duas linhas, com os seus valores:
+```
+KIARA_API_URL=https://kiara-api-rouge.vercel.app
+KIARA_WORKER_TOKEN=cole-o-token-aqui
+```
+Depois rode `sudo bash deploy/debian/install.sh` de novo. Para conferir, use `systemctl list-timers kiara-automation.timer` e `journalctl -u kiara-automation -n 5`. O esperado é ver `tick HTTP 200`.
+
+Sem o Debian ligado, qualquer serviço gratuito de cron (por exemplo, cron-job.org) pode fazer a mesma chamada a cada minuto: `POST https://SUA-API/v1/automation/internal/tick` com o cabeçalho `Authorization: Bearer SEU_TOKEN`.
+
 ## No dia a dia
 | Para… | Comando no Debian |
 |---|---|

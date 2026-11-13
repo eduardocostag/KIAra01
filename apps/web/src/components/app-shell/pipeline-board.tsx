@@ -135,7 +135,7 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
             return <li key={entry.id}><button type="button" aria-current={active ? "true" : undefined} onClick={() => { setSelectedId(entry.id); setNotice("") }} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/40", active && "bg-primary/10")}>
               <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{initials(name)}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{name}</span>
+                <span className="flex min-w-0 items-center gap-2"><span className="truncate text-sm font-medium">{name}</span>{entry.consumer.fit ? <FitChip fit={entry.consumer.fit} /> : null}</span>
                 <span className="block truncate text-xs text-muted-foreground">{entry.next_action || entry.consumer.phone || entry.consumer.address || "Sem contato informado"}</span>
               </span>
               <span className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex"><span className={cn("size-1.5 rounded-full", stageDot[entry.stage])} aria-hidden="true" />{stageLabel(entry.stage)}</span>
@@ -146,6 +146,13 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
       {selected ? <ContactPanel key={`${selected.id}-${selected.version}`} entry={selected} saving={saving} notice={notice} onSave={save} /> : null}
     </div>
   </div>
+}
+
+const fitChipStyles = { A: "bg-emerald-400/15 text-emerald-300", B: "bg-sky-400/15 text-sky-300", C: "bg-amber-400/15 text-amber-300", D: "bg-muted text-muted-foreground" } as const
+
+/** Lead fit grade from the API; the full explanation lives on the lead page. */
+function FitChip({ fit, detailed = false }: { fit: NonNullable<PipelineEntry["consumer"]["fit"]>; detailed?: boolean }) {
+  return <span title={`${fit.label}: ${fit.score}/100`} aria-label={`Nota ${fit.grade}, ${fit.score} de 100`} className={cn("inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", fitChipStyles[fit.grade])}>{fit.grade}{detailed ? ` · ${fit.score}` : ""}</span>
 }
 
 function ContactPanel({ entry, saving, notice, onSave }: { entry: PipelineEntry; saving: boolean; notice: string; onSave: (changes: Changes) => Promise<void> }) {
@@ -161,7 +168,7 @@ function ContactPanel({ entry, saving, notice, onSave }: { entry: PipelineEntry;
 
   return <aside aria-label={`Contato ${name}`} className="h-fit space-y-5 rounded-xl border bg-card p-5 lg:sticky lg:top-6">
     <header>
-      <h2 className="text-lg font-semibold leading-tight">{name}</h2>
+      <h2 className="flex items-center gap-2 text-lg font-semibold leading-tight">{name}{entry.consumer.fit ? <FitChip fit={entry.consumer.fit} detailed /> : null}</h2>
       <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{entry.consumer.address || "Localização não informada"}</p>
       {entry.consumer.phone && <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground"><Phone className="size-3.5 shrink-0" aria-hidden="true" />{entry.consumer.phone}</p>}
     </header>

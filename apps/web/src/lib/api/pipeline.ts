@@ -41,8 +41,39 @@ export type PipelineEntry = {
     notes?: string | null
     prospecting_status?: "review_required" | "public_contact"
     quality_gaps?: string[]
+    rating?: number | null
+    user_rating_count?: number | null
+    company?: CompanyData | null
+    fit?: LeadFit | null
   }
 }
+
+/** Public registry data (Receita Federal) attached to a lead. */
+export type CompanyData = {
+  cnpj: string
+  cnpj_formatted: string
+  legal_name: string | null
+  trade_name: string | null
+  status: string | null
+  active: boolean
+  opened_at: string | null
+  size: string | null
+  legal_nature: string | null
+  main_activity: string | null
+  secondary_activities?: string[]
+  capital: number | null
+  city: string | null
+  state: string | null
+  simples: boolean | null
+  mei: boolean | null
+  partners?: { name: string | null; role: string | null }[]
+  source: string
+  cnpj_source?: "manual" | "website"
+  fetched_at: string
+}
+
+/** Explainable 0-100 profile score computed by the API. */
+export type LeadFit = { score: number; grade: "A" | "B" | "C" | "D"; label: string; reasons: { points: number; text: string }[]; has_company_data: boolean }
 
 export class PipelineRequestError extends Error {
   readonly status: number
@@ -123,7 +154,20 @@ export function parsePipelineEntry(value: unknown): PipelineEntry {
   return { ...item, consumer: { ...item.consumer,
     source_url: safePublicUrl(item.consumer.source_url), website_url: safePublicUrl(item.consumer.website_url),
     whatsapp_url: safeWhatsAppUrl(item.consumer.whatsapp_url),
+    fit: parseLeadFit(item.consumer.fit), company: parseCompany(item.consumer.company),
   } }
+}
+
+/** Optional extras never break the CRM: anything malformed is dropped. */
+export function parseLeadFit(value: unknown): LeadFit | null {
+  const fit = value as LeadFit | null
+  if (!fit || typeof fit !== "object" || !Number.isFinite(fit.score) || fit.score < 0 || fit.score > 100 || !["A", "B", "C", "D"].includes(fit.grade) || !Array.isArray(fit.reasons)) return null
+  return { ...fit, reasons: fit.reasons.filter((reason) => typeof reason?.text === "string" && Number.isFinite(reason.points)).slice(0, 10) }
+}
+
+export function parseCompany(value: unknown): CompanyData | null {
+  const company = value as CompanyData | null
+  return company && typeof company === "object" && typeof company.cnpj === "string" && /^\d{14}$/.test(company.cnpj) ? company : null
 }
 
 export function parsePipeline(value: unknown): PipelineEntry[] {

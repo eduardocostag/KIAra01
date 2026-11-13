@@ -1,8 +1,9 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, ArrowUpRight, Globe2, MapPin, MessageCircle, NotebookPen, Radar, Search, UserRound } from "lucide-react"
+import { ArrowLeft, ArrowUpRight, Globe2, MapPin, MessageCircle, NotebookPen, Radar, Search, Star, UserRound } from "lucide-react"
 import { SourceMark } from "@/components/brand/source-mark"
 import { LeadContactActions } from "@/components/app-shell/lead-contact-actions"
+import { LeadCompanyPanel } from "@/components/app-shell/lead-company-panel"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
 import { getPipelineDTO } from "@/lib/api/pipeline-server"
 import { leadDisplayName, pipelineStages, safePublicUrl, sourceLabels, websiteLabel } from "@/lib/api/pipeline"
@@ -27,6 +28,7 @@ export default async function LeadPage({ params }: { params: Promise<{ leadId: s
     { label: "Telefone", value: consumer.phone || "Não informado", icon: MessageCircle },
     { label: "WhatsApp", value: consumer.whatsapp_url ? "Link público encontrado" : "Não confirmado", icon: MessageCircle },
     { label: "Site", value: websiteLabel(consumer.website_status), icon: Globe2 },
+    ...(typeof consumer.rating === "number" ? [{ label: "Google", value: `Nota ${consumer.rating.toFixed(1)}${typeof consumer.user_rating_count === "number" ? ` · ${consumer.user_rating_count} avaliações` : ""}`, icon: Star }] : []),
     { label: "Endereço", value: consumer.address || "Não informado", icon: MapPin },
     { label: "Pesquisa", value: consumer.research_query || "Não informada", icon: Search },
   ]
@@ -39,6 +41,7 @@ export default async function LeadPage({ params }: { params: Promise<{ leadId: s
       <section className="kiara-lead-panel" aria-labelledby="lead-information-title"><h2 id="lead-information-title">Informações</h2><dl className="kiara-lead-facts">{facts.map(({ label, value, icon: Icon }) => <div key={label}><dt><Icon className="size-4" aria-hidden="true" />{label}</dt><dd>{value}</dd></div>)}</dl>{websiteUrl ? <a href={websiteUrl} target="_blank" rel="noreferrer" className="kiara-lead-inline-link">Abrir site identificado<ArrowUpRight className="size-4" /></a> : null}</section>
       <section className="kiara-lead-panel" aria-labelledby="lead-actions-title"><h2 id="lead-actions-title">Ações rápidas</h2><div className="kiara-lead-action-list">{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer"><span><Globe2 className="size-4" /></span><div><strong>Abrir fonte</strong><small>Confira o dado público original</small></div><ArrowUpRight className="size-4" /></a> : null}<Link href="/app/pipeline?view=contacts"><span><UserRound className="size-4" /></span><div><strong>Ver outros contatos</strong><small>Volte para a sua fila de leads</small></div><ArrowUpRight className="size-4" /></Link><Link href={`/app/pipeline?view=contacts&contact=${encodeURIComponent(entry.id)}`}><span><NotebookPen className="size-4" /></span><div><strong>Anotações</strong><small>{consumer.notes?.trim() ? "Consulte ou edite a anotação" : "Registre uma anotação neste cliente"}</small></div><ArrowUpRight className="size-4" /></Link></div></section>
     </div>
+    <LeadCompanyPanel leadId={consumer.id} initialCompany={consumer.company ?? null} initialFit={consumer.fit ?? null} />
     <section id="context" className="kiara-lead-panel kiara-lead-context" aria-labelledby="lead-context-title"><h2 id="lead-context-title">Contexto</h2><p>{consumer.research_query ? `Encontrado na pesquisa “${consumer.research_query}”.` : "Lead identificado em uma fonte pública."}{consumer.address ? ` Localização informada: ${consumer.address}.` : ""} Revise a fonte antes de iniciar uma abordagem.</p></section>
   </main>
 }

@@ -1,0 +1,12 @@
+[Unit]
+Description=Kiara Automation: dispara agendamentos, novos leads e execuções na fila
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Holds KIARA_API_URL and KIARA_WORKER_TOKEN (and, if the API is protected, VERCEL_AUTOMATION_BYPASS_SECRET).
+EnvironmentFile=/etc/kiara/automation.env
+DynamicUser=true
+NoNewPrivileges=true
+ExecStart=/usr/local/bin/kiara-automation-tick

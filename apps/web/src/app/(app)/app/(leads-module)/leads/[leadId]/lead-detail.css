@@ -59,3 +59,5 @@
   .kiara-lead-facts > div { grid-template-columns: minmax(90px, .4fr) minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .kiara-lead-action-list > a { transition: none; } .kiara-lead-action-list > a:hover { transform: none; } }
+.kiara-lead-company { margin-top: .8rem; }
+.kiara-lead-company h3 { color: #f4f2fb; font-size: .9rem; }

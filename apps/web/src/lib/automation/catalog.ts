@@ -61,8 +61,8 @@ const budgetFields: Field[] = [
 
 export const nodeKinds: NodeKind[] = [
   { type: "trigger.manual", category: "trigger", label: "Executar agora", description: "Inicia o fluxo quando você clica em Executar.", icon: "Play", fields: [], defaults: {}, run: "browser", trigger: true },
-  { type: "trigger.schedule", category: "trigger", label: "Agendamento", description: "Inicia o fluxo em dias e horários definidos. Agendamentos rodam no servidor da Kiara; ao executar aqui, o fluxo roda uma vez.", icon: "CalendarClock", fields: [{ key: "cadence", label: "Frequência", type: "select", options: cadence }, { key: "weekday", label: "Dia da semana", type: "select", options: weekdays, hint: "Usado na frequência semanal." }, { key: "time", label: "Horário", type: "time" }], defaults: { cadence: "weekly", weekday: "1", time: "09:00" }, run: "browser", trigger: true },
-  { type: "trigger.lead", category: "trigger", label: "Novo lead no CRM", description: "Inicia quando um lead entra no CRM. Eventos rodam no servidor; ao executar aqui, usa o lead mais recente.", icon: "UserPlus", fields: [], defaults: {}, run: "browser", trigger: true },
+  { type: "trigger.schedule", category: "trigger", label: "Agendamento", description: "Inicia o fluxo em dias e horários definidos (horário de Brasília). Com o fluxo Ativo, o servidor da Kiara dispara sozinho; ao testar aqui, roda uma vez.", icon: "CalendarClock", fields: [{ key: "cadence", label: "Frequência", type: "select", options: cadence }, { key: "weekday", label: "Dia da semana", type: "select", options: weekdays, hint: "Usado na frequência semanal." }, { key: "time", label: "Horário", type: "time" }], defaults: { cadence: "weekly", weekday: "1", time: "09:00" }, run: "browser", trigger: true },
+  { type: "trigger.lead", category: "trigger", label: "Novo lead no CRM", description: "Inicia quando um lead novo entra no CRM. Com o fluxo Ativo, o servidor confere a cada minuto; ao testar aqui, usa o lead mais recente.", icon: "UserPlus", fields: [], defaults: {}, run: "browser", trigger: true },
   { type: "trigger.whatsapp", category: "trigger", label: "Mensagem no WhatsApp", description: "Inicia quando um contato autorizado envia mensagem.", icon: "MessageCircle", fields: [], defaults: {}, run: "server", trigger: true },
 
   { type: "ai.generate", category: "ai", label: "Kiara escreve", description: "A IA da Kiara gera um texto a partir das instruções. Use {{entrada}} para o resultado do bloco anterior.", icon: "Sparkles", fields: [{ key: "prompt", label: "Instruções", type: "textarea", placeholder: "Escreva uma legenda curta para Instagram sobre…" }], defaults: { prompt: "Resuma em tópicos curtos: {{entrada}}" }, run: "browser" },
@@ -124,7 +124,7 @@ export const adsBilling: Record<"meta" | "google" | "linkedin", { name: string; 
 
 export type FlowNode = { id: string; type: string; x: number; y: number; config: Record<string, string | number> }
 export type FlowEdge = { id: string; from: string; to: string; port?: "yes" | "no" }
-export type Workflow = { id: string; name: string; nodes: FlowNode[]; edges: FlowEdge[]; updatedAt: number }
+export type Workflow = { id: string; name: string; nodes: FlowNode[]; edges: FlowEdge[]; updatedAt: number; enabled?: boolean; next_run_at?: string | null }
 
 let counter = 0
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`

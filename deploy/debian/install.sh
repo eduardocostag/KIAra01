@@ -73,6 +73,18 @@ systemctl daemon-reload
 systemctl enable --now kiara-omniroute.service
 if [[ -f "$REPO/.env.local" ]]; then systemctl enable kiara-chat.service && systemctl restart kiara-chat.service; fi
 
+step "Kiara Automation (agendamentos e novos leads a cada minuto)"
+install -m 0755 "$REPO/deploy/debian/kiara-automation-tick.sh" /usr/local/bin/kiara-automation-tick
+install -m 0644 "$REPO/deploy/debian/kiara-automation.service" "$REPO/deploy/debian/kiara-automation.timer" /etc/systemd/system/
+install -d -m 0750 /etc/kiara
+if [[ -f /etc/kiara/automation.env ]]; then
+  chmod 0600 /etc/kiara/automation.env
+  systemctl daemon-reload
+  systemctl enable --now kiara-automation.timer
+else
+  echo "!! Para ligar as automações, crie /etc/kiara/automation.env (veja o README) e rode este script de novo."
+fi
+
 step "Endereço público com HTTPS (Tailscale Funnel)"
 if ! command -v tailscale >/dev/null; then curl -fsSL https://tailscale.com/install.sh | sh; fi
 if ! tailscale status >/dev/null 2>&1; then

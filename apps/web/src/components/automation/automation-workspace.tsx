@@ -4,19 +4,25 @@ import { AdminOnly } from "@/components/app-shell/admin-access"
 
 import Link from "next/link"
 import { useEffect, useRef, useState, type CSSProperties } from "react"
-import { Check, ChevronDown, CircleAlert, Copy, LayoutTemplate, LoaderCircle, Maximize2, Play, Plug, Plus, Search, Square, Trash2, Workflow as WorkflowIcon, X, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, ChevronDown, CircleAlert, CloudOff, CloudUpload, Copy, History, LayoutTemplate, LoaderCircle, Maximize2, Play, Plug, Plus, Search, Server, ShieldCheck, Square, Trash2, Workflow as WorkflowIcon, X, ZoomIn, ZoomOut } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { adsBilling, categories, connectionLabels, emptyWorkflow, newId, nodeKind, nodeKinds, templates, type CategoryId, type FlowNode, type NodeKind, type Workflow } from "@/lib/automation/catalog"
 import { runWorkflow, type Step, type StepStatus } from "@/lib/automation/runner"
+import { deleteServerFlow, listServerFlows, listServerRuns, runOnServer, runStatusLabels, saveServerFlow, triggerLabels, type ServerRun } from "@/lib/automation/server"
 import { chatRequest, parseChatReply, type ChatTransport } from "@/lib/chat-client"
 import { cn } from "@/lib/utils"
 import { FlowCanvas, NODE_DRAG_TYPE, NODE_HEIGHT, NODE_WIDTH, NodeIcon, type View } from "./flow-canvas"
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
 const statusLabels: Record<StepStatus, string> = { running: "Executando", done: "Concluído", blocked: "Precisa conectar", error: "Erro" }
+const serverStepLabels: Record<string, string> = { done: "Concluído", blocked: "Não roda no servidor", error: "Erro", approval: "Na Central de aprovações", waiting: "Aguardando" }
+const when = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" })
+type SyncState = "loading" | "server" | "local"
+type SaveState = "idle" | "saving" | "saved" | "error"
+const timestamp = () => Date.now()
 
 function readFlows(key: string): Workflow[] {
   try {
@@ -55,6 +61,14 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState("")
   const [logOpen, setLogOpen] = useState(false)
+  const [sync, setSync] = useState<SyncState>("loading")
+  const [saveState, setSaveState] = useState<SaveState>("idle")
+  const [saveError, setSaveError] = useState("")
+  const [runs, setRuns] = useState<ServerRun[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [serverBusy, setServerBusy] = useState(false)
+  const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const areaRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const transportRef = useRef<ChatTransport | null>(null)
@@ -62,24 +76,95 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   const selected = flow?.nodes.find((node) => node.id === selectedId)
   const selectedKind = selected ? nodeKind(selected.type) : undefined
 
-  // Flows are kept in this browser, per signed-in user.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { const saved = readFlows(storageKey); setFlows(saved); setActiveId(saved[0]?.id ?? "") }, [storageKey])
+  // Flows live on the Kiara server (per organization). Flows that older versions kept only in this
+  // browser are uploaded once and then removed from the browser.
+  useEffect(() => {
+    let cancelled = false
+    const local = readFlows(storageKey)
+    listServerFlows().then(async (server) => {
+      const missing = local.filter((item) => !server.some((saved) => saved.id === item.id))
+      const uploaded = await Promise.all(missing.map((item) => saveServerFlow(item, false).catch(() => null)))
+      if (cancelled) return
+      const all: Workflow[] = [...server, ...uploaded.filter((item): item is NonNullable<typeof item> => Boolean(item))]
+      if (uploaded.every(Boolean)) { try { localStorage.removeItem(storageKey) } catch { /* Storage blocked. */ } }
+      setFlows(all); setActiveId(all[0]?.id ?? ""); setSync("server")
+    }).catch(() => {
+      if (cancelled) return
+      setFlows(local); setActiveId(local[0]?.id ?? ""); setSync("local")
+    })
+    const timers = saveTimers.current
+    return () => { cancelled = true; timers.forEach(clearTimeout); if (pollRef.current) clearTimeout(pollRef.current) }
+  }, [storageKey])
 
   function persist(next: Workflow[]) {
     setFlows(next)
+    if (sync !== "local") return
     try { localStorage.setItem(storageKey, JSON.stringify(next.slice(0, 50))) } catch { /* Storage blocked: keep in memory. */ }
   }
-  function update(next: Workflow) { persist(flows.map((item) => item.id === next.id ? { ...next, updatedAt: Date.now() } : item)) }
+  function scheduleSave(target: Workflow, delay = 700) {
+    if (sync !== "server") return
+    const timers = saveTimers.current
+    clearTimeout(timers.get(target.id))
+    setSaveState("saving")
+    timers.set(target.id, setTimeout(() => {
+      timers.delete(target.id)
+      saveServerFlow(target, Boolean(target.enabled)).then((saved) => {
+        setFlows((current) => current.map((item) => item.id === saved.id ? { ...item, enabled: saved.enabled, next_run_at: saved.next_run_at } : item))
+        setSaveState("saved"); setSaveError("")
+      }).catch((error: unknown) => {
+        setSaveState("error"); setSaveError(error instanceof Error ? error.message : "Não foi possível salvar no servidor.")
+        if (target.enabled) setFlows((current) => current.map((item) => item.id === target.id ? { ...item, enabled: false } : item))
+      })
+    }, delay))
+  }
+  function update(next: Workflow) {
+    const changed = { ...next, updatedAt: timestamp() }
+    persist(flows.map((item) => item.id === next.id ? changed : item))
+    scheduleSave(changed)
+  }
   function open(next: Workflow) {
     persist([next, ...flows.filter((item) => item.id !== next.id)])
-    setActiveId(next.id); setSelectedId(""); setStatuses({}); setSteps([]); setRunError("")
+    scheduleSave(next, 0)
+    setActiveId(next.id); setSelectedId(""); setStatuses({}); setSteps([]); setRunError(""); setHistoryOpen(false)
     requestAnimationFrame(() => fit(next))
   }
   function remove(id: string) {
     const next = flows.filter((item) => item.id !== id)
     persist(next)
+    clearTimeout(saveTimers.current.get(id))
+    if (sync === "server") deleteServerFlow(id).catch((error: unknown) => { setSaveState("error"); setSaveError(error instanceof Error ? error.message : "Não foi possível excluir no servidor.") })
     if (id === activeId) setActiveId(next[0]?.id ?? "")
+  }
+
+  async function refreshRuns(flowId: string, attempts = 0) {
+    if (pollRef.current) clearTimeout(pollRef.current)
+    try {
+      const items = await listServerRuns(flowId)
+      setRuns(items)
+      const pending = items.some((item) => ["queued", "running", "waiting"].includes(item.status))
+      if (pending && attempts < 60) pollRef.current = setTimeout(() => void refreshRuns(flowId, attempts + 1), 5000)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Não foi possível ler o histórico.")
+    }
+  }
+
+  async function runServer() {
+    if (!flow || serverBusy) return
+    setServerBusy(true); setSaveError(""); setSteps([]); setStatuses({})
+    try {
+      clearTimeout(saveTimers.current.get(flow.id))
+      await saveServerFlow(flow, Boolean(flow.enabled))
+      await runOnServer(flow.id)
+      setHistoryOpen(true)
+      await refreshRuns(flow.id)
+    } catch (error) {
+      setSaveState("error"); setSaveError(error instanceof Error ? error.message : "Não foi possível executar no servidor.")
+    } finally { setServerBusy(false) }
+  }
+
+  function toggleEnabled() {
+    if (!flow) return
+    update({ ...flow, enabled: !flow.enabled })
   }
 
   /** Part of the canvas not covered by the floating palette and inspector. */
@@ -194,9 +279,21 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
     topBar={flow ? <>
       <WorkflowIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
       <input value={flow.name} onChange={(event) => update({ ...flow, name: event.target.value.slice(0, 80) })} aria-label="Nome do fluxo" className="min-w-0 flex-1 truncate bg-transparent text-sm font-medium outline-none" />
-      <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex"><Check className="size-3.5" />Salvo</span>
+      <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex" title={saveError || undefined} role="status">
+        {sync === "local" ? <><CloudOff className="size-3.5 text-amber-400" />Só neste navegador</>
+          : saveState === "saving" ? <><LoaderCircle className="size-3.5 animate-spin" />Salvando…</>
+            : saveState === "error" ? <><CircleAlert className="size-3.5 text-destructive" />Não salvou</>
+              : <><CloudUpload className="size-3.5" />Salvo no servidor</>}
+      </span>
+      {sync === "server" ? <button type="button" role="switch" aria-checked={Boolean(flow.enabled)} onClick={toggleEnabled} title={flow.enabled ? "O servidor dispara este fluxo sozinho" : "Ative para o servidor disparar agendamentos e novos leads"}
+        className={cn("inline-flex h-8 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-medium transition", flow.enabled ? "border-emerald-400/50 bg-emerald-400/15 text-emerald-300" : "text-muted-foreground hover:text-foreground")}>
+        <span className={cn("relative h-4 w-7 rounded-full transition", flow.enabled ? "bg-emerald-400" : "bg-muted")}><span className={cn("absolute top-0.5 size-3 rounded-full bg-white transition-all", flow.enabled ? "left-3.5" : "left-0.5")} /></span>
+        {flow.enabled ? "Ativo" : "Desativado"}
+      </button> : null}
+      {sync === "server" ? <Button type="button" size="sm" variant="ghost" aria-label="Histórico de execuções no servidor" onClick={() => { const next = !historyOpen; setHistoryOpen(next); if (next) void refreshRuns(flow.id) }}><History /></Button> : null}
+      {sync === "server" ? <Button type="button" size="sm" variant="outline" disabled={serverBusy} onClick={() => void runServer()}>{serverBusy ? <LoaderCircle className="animate-spin" /> : <Server />}<span className="hidden md:inline">No servidor</span></Button> : null}
       {running ? <Button type="button" size="sm" variant="outline" onClick={() => abortRef.current?.abort()}><Square />Parar</Button>
-        : <Button type="button" size="sm" onClick={() => void run()}><Play />Executar</Button>}
+        : <Button type="button" size="sm" onClick={() => void run()}><Play /><span className="hidden sm:inline">Testar aqui</span></Button>}
     </> : <span className="font-medium">Kiara Automation</span>}>
     {flow ? <div ref={areaRef} className="relative flex min-h-0 flex-1">
       <FlowCanvas workflow={flow} onChange={update} view={view} onViewChange={setView} selectedId={selectedId} onSelect={setSelectedId} statuses={statuses} activeEdges={activeEdges} onDropNode={addNode} />
@@ -226,6 +323,31 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Enquadrar fluxo" onClick={() => fit()}><Maximize2 /></Button>
       </div>
 
+      {saveError || (flow.enabled && flow.next_run_at) ? <p role="status" className={cn("absolute right-3 top-3 z-10 max-w-[min(420px,calc(100%-1.5rem))] rounded-xl border bg-card/90 px-3 py-2 text-xs shadow-lg backdrop-blur-xl", selected && "hidden", saveError ? "text-destructive" : "text-muted-foreground")}>
+        {saveError || `Próxima execução: ${when.format(new Date(flow.next_run_at!))}`}
+      </p> : null}
+
+      {historyOpen && !steps.length && !running ? <section aria-label="Execuções no servidor" className="absolute bottom-3 left-1/2 z-10 w-[min(600px,calc(100%-1.5rem))] -translate-x-1/2 overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl">
+        <header className="flex items-center gap-2 border-b px-4 py-2.5 text-sm"><History className="size-4 text-primary" /><span className="font-medium">Execuções no servidor</span>
+          <Link href="/app/aprovacoes" className="ml-auto inline-flex items-center gap-1 text-xs text-primary hover:underline"><ShieldCheck className="size-3.5" />Central de aprovações</Link>
+          <Button type="button" variant="ghost" size="icon" className="size-7" aria-label="Fechar histórico" onClick={() => setHistoryOpen(false)}><X /></Button></header>
+        {runs.length ? <ol className="max-h-72 space-y-2 overflow-y-auto p-3">{runs.map((item) => <li key={item.id} className="rounded-lg bg-muted/30 p-2.5 text-sm">
+          <p className="flex flex-wrap items-center gap-2">
+            {["queued", "running", "waiting"].includes(item.status) ? <LoaderCircle className="size-3.5 animate-spin text-primary" /> : <span className={cn("size-1.5 rounded-full", item.status === "done" ? "bg-emerald-400" : item.status === "partial" ? "bg-amber-400" : "bg-destructive")} />}
+            <span className="font-medium">{runStatusLabels[item.status]}</span>
+            <span className="text-xs text-muted-foreground">{triggerLabels[item.trigger]} · {when.format(new Date(item.created_at))}</span>
+          </p>
+          {item.status === "queued" ? <p className="mt-1 text-xs text-muted-foreground">O servidor executa em até 1 minuto.</p> : null}
+          {item.error ? <p className="mt-1 text-xs text-destructive">{item.error}</p> : null}
+          {item.steps.length ? <ul className="mt-1.5 space-y-1">{item.steps.map((step, index) => <li key={`${step.node_id}-${index}`} className="text-xs">
+            <span className="font-medium">{nodeKind(step.type ?? flow.nodes.find((node) => node.id === step.node_id)?.type ?? "")?.label ?? "Bloco"}</span>
+            <span className="text-muted-foreground"> · {serverStepLabels[step.status] ?? step.status}</span>
+            {step.message && step.status !== "approval" ? <span className="text-muted-foreground"> · {step.message}</span> : null}
+            {step.output ? <span className="mt-0.5 line-clamp-3 block whitespace-pre-wrap break-words text-muted-foreground/90">{step.output}</span> : null}
+          </li>)}</ul> : null}
+        </li>)}</ol> : <p className="p-4 text-sm text-muted-foreground">Nenhuma execução no servidor ainda. Use “No servidor” ou ative o fluxo.</p>}
+      </section> : null}
+
       {steps.length || running || runError ? <section aria-label="Execução" className="absolute bottom-3 left-1/2 z-10 w-[min(560px,calc(100%-1.5rem))] -translate-x-1/2 overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl">
         <button type="button" onClick={() => setLogOpen(!logOpen)} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm" aria-expanded={logOpen}>
           {running ? <LoaderCircle className="size-4 animate-spin text-primary" /> : runError || errors ? <CircleAlert className="size-4 text-destructive" /> : <Check className="size-4 text-emerald-400" />}
@@ -250,9 +372,13 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         </header>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           <p className="text-sm text-muted-foreground">{selectedKind.description}</p>
-          {selectedKind.run === "browser"
-            ? <p className="flex items-center gap-2 rounded-lg bg-emerald-400/10 px-3 py-2 text-xs text-emerald-400"><Check className="size-3.5" />Funciona agora, direto nesta página.</p>
-            : <div className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300"><p className="flex items-center gap-2 font-medium"><Plug className="size-3.5" />Precisa conectar</p><p className="mt-1">{connectionLabels[selectedKind.run]}. Ao executar sem a conexão, o fluxo para neste bloco e avisa; nada é simulado.</p><AdminOnly><Link href="/app/settings/integrations" className="mt-1 inline-block underline">Abrir conexões</Link></AdminOnly></div>}
+          {selectedKind.type === "code.js"
+            ? <p className="flex items-center gap-2 rounded-lg bg-emerald-400/10 px-3 py-2 text-xs text-emerald-400"><Check className="size-3.5" />Funciona ao testar aqui. No servidor este bloco não roda.</p>
+            : selectedKind.run === "browser"
+              ? <p className="flex items-center gap-2 rounded-lg bg-emerald-400/10 px-3 py-2 text-xs text-emerald-400"><Check className="size-3.5" />Funciona aqui e no servidor.</p>
+              : selectedKind.run === "server"
+                ? <div className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300"><p className="flex items-center gap-2 font-medium"><Plug className="size-3.5" />Precisa conectar</p><p className="mt-1">{connectionLabels[selectedKind.run]}. Ainda não dispara sozinho; nada é simulado.</p></div>
+                : <div className="rounded-lg bg-sky-400/10 px-3 py-2 text-xs text-sky-300"><p className="flex items-center gap-2 font-medium"><ShieldCheck className="size-3.5" />Passa pela sua aprovação</p><p className="mt-1">No servidor, a Kiara prepara esta ação e envia para a <Link href="/app/aprovacoes" className="underline">Central de aprovações</Link>. Nada sai sem você aprovar. Para executar sozinha depois de aprovada, precisa de: {connectionLabels[selectedKind.run]}.</p><AdminOnly><Link href="/app/settings/integrations" className="mt-1 inline-block underline">Abrir conexões</Link></AdminOnly></div>}
           {selectedKind.fields.map((field) => {
             const id = `field-${selected.id}-${field.key}`
             const value = selected.config[field.key] ?? ""
