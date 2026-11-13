@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Kiara — vídeo de demonstração</title>
+<style>
+  @font-face { font-family: Geist; src: local("Geist"), local("Segoe UI"); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07060f; }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif; color: white; -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(1200px 700px at 70% 10%, #24124a 0%, transparent 60%), radial-gradient(900px 600px at 10% 90%, #12204a 0%, transparent 60%), #07060f; }
+  #grid { position: absolute; inset: -50%; background-image: linear-gradient(rgb(158 119 255 / .05) 1px, transparent 1px), linear-gradient(90deg, rgb(158 119 255 / .05) 1px, transparent 1px); background-size: 64px 64px; transform: perspective(900px) rotateX(58deg) translateY(var(--gy, 0px)); transform-origin: 50% 100%; mask-image: radial-gradient(ellipse at 50% 70%, black 10%, transparent 60%); }
+  .particle { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #c4a1ff; box-shadow: 0 0 8px #a78bfa; }
+  .scene { position: absolute; inset: 0; display: none; }
+  .backdrop { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .35; filter: blur(2px) saturate(1.2); }
+  .kicker { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; letter-spacing: .32em; color: #b9a2ff; text-transform: uppercase; white-space: nowrap; }
+  .title { position: absolute; top: 84px; left: 0; right: 0; text-align: center; font-size: 46px; font-weight: 650; letter-spacing: -.035em; }
+  .window { position: absolute; left: 50%; top: 152px; width: 1344px; height: 788px; margin-left: -672px; border-radius: 18px; overflow: hidden; border: 1px solid rgb(255 255 255 / .12); background: #0b0a14; box-shadow: 0 60px 120px -40px rgb(0 0 0 / .9), 0 0 80px -20px rgb(124 77 255 / .45); transform-style: preserve-3d; }
+  .bar { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #14121f; border-bottom: 1px solid rgb(255 255 255 / .06); }
+  .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3550; }
+  .bar i:nth-child(1) { background: #ff5f57; } .bar i:nth-child(2) { background: #febc2e; } .bar i:nth-child(3) { background: #28c840; }
+  .bar span { margin-left: 18px; padding: 4px 14px; border-radius: 8px; background: rgb(255 255 255 / .05); color: rgb(255 255 255 / .5); font-size: 13px; }
+  .viewport { position: relative; height: 756px; overflow: hidden; }
+  .viewport img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  .card { position: absolute; right: 64px; width: 380px; display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: 20px; border: 1px solid rgb(255 255 255 / .12); background: linear-gradient(145deg, rgb(38 28 72 / .92), rgb(16 14 30 / .9)); box-shadow: 0 30px 60px -24px rgb(0 0 0 / .85), inset 0 1px 0 rgb(255 255 255 / .08); font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
+  .card b { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; background: rgb(124 77 255 / .25); color: #d6c4ff; box-shadow: 0 0 18px rgb(124 77 255 / .4); }
+  .caption { position: absolute; left: 50%; bottom: 46px; max-width: 1240px; transform: translateX(-50%); padding: 12px 26px; border-radius: 16px; background: rgb(8 7 16 / .78); border: 1px solid rgb(255 255 255 / .08); color: rgb(255 255 255 / .92); font-size: 27px; line-height: 1.35; text-align: center; backdrop-filter: blur(8px); }
+  #progress { position: absolute; left: 0; bottom: 0; height: 4px; background: linear-gradient(90deg, #7c4dff, #38bdf8); box-shadow: 0 0 14px #7c4dff; }
+  #brand { position: absolute; top: 40px; left: 52px; display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .22em; font-size: 18px; opacity: .85; }
+  #brand span { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 40% 28%, #e7d4ff, #8b4dff 50%, #2e135e 95%); box-shadow: 0 0 14px #7c4dff; }
+  /* Presenter orb */
+  #orbWrap { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 30; }
+  #halo { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgb(140 82 255 / .65), transparent 66%); filter: blur(30px); }
+  .ripple { position: absolute; border-radius: 50%; border: 2px solid rgb(196 150 255 / .5); }
+  #orb { position: absolute; border-radius: 50%; overflow: hidden; border: 1px solid rgb(212 157 255 / .6); background: radial-gradient(circle at 42% 14%, rgb(249 220 255 / .9), transparent 15%), radial-gradient(circle at 39% 30%, #c698ff 1%, #a061ef 25%, #6522bf 56%, #2e135e 86%); box-shadow: inset 18px 16px 40px rgb(253 216 255 / .22), inset -40px -44px 64px rgb(26 5 59 / .72); display: grid; place-items: center; }
+  #sheen { position: absolute; inset: -20%; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 62%, rgb(255 255 255 / .16) 72%, transparent 82%); }
+  #face { position: relative; display: flex; width: 24%; gap: 24%; justify-content: center; }
+  #face i { display: block; width: 30%; aspect-ratio: .68; border-radius: 50%; background: #10041f; }
+  #orbLabel { position: absolute; white-space: nowrap; font-size: 17px; font-weight: 700; letter-spacing: .2em; color: #d6c4ff; transform: translateX(-50%); }
+  /* Orb layouts */
+  .big { position: absolute; left: 0; right: 0; text-align: center; font-weight: 650; letter-spacing: -.045em; }
+  .grad { background: linear-gradient(90deg, #c4a1ff, #7dd3fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chip { position: absolute; padding: 16px 26px; border-radius: 999px; border: 1px solid rgb(167 139 250 / .45); background: rgb(30 22 58 / .85); font-size: 24px; font-weight: 600; white-space: nowrap; box-shadow: 0 0 30px rgb(124 77 255 / .25); transform: translate(-50%, -50%); }
+  .cta { position: absolute; left: 50%; transform: translateX(-50%); padding: 18px 36px; border-radius: 16px; background: #8f72ff; color: white; font-size: 26px; font-weight: 700; box-shadow: 0 20px 60px -10px rgb(124 77 255 / .8); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="grid"></div>
+  <div id="particles"></div>
+  <div id="scenes"></div>
+  <div id="brand"><span></span>KIARA</div>
+  <div id="orbWrap"><div id="halo"></div><div class="ripple" id="r1"></div><div class="ripple" id="r2"></div><div id="orb"><div id="sheen"></div><div id="face"><i></i><i></i></div></div><div id="orbLabel">KIARA</div></div>
+  <div id="progress"></div>
+</div>
+<script src="assets/timeline.js"></script>
+<script>
+const T = window.TIMELINE
+const W = 1920, H = 1080
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v))
+const ease = (x) => { x = clamp(x); return 1 - Math.pow(1 - x, 3) }
+const easeInOut = (x) => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2 }
+const back = (x) => { x = clamp(x); const c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2) }
+const lerp = (a, b, k) => a + (b - a) * k
+// Region of each screenshot the camera moves toward (in screenshot pixels).
+const FOCUS = {
+  "landing-modules": [960, 560, 1.0], "hunter": [1060, 560, 1.12], "contacts": [1100, 380, 1.18], "queue": [960, 330, 1.15],
+  "whatsapp-inbox": [960, 420, 1.08], "whatsapp-automation": [1095, 480, 1.18], "chat": [960, 330, 1.1],
+  "voice": [960, 520, 1.0], "automation-run": [1040, 560, 1.08], "automation-ads": [1500, 600, 1.15],
+}
+
+// Scene visual windows: appear slightly before the voice, hand over at the next scene.
+const scenes = T.scenes.map((scene, i) => ({ ...scene, vStart: i === 0 ? 0 : scene.start - 0.35, vEnd: i + 1 < T.scenes.length ? T.scenes[i + 1].start - 0.35 : T.duration }))
+const root = document.getElementById("scenes")
+
+function captionChunks(scene) {
+  const parts = scene.caption.split(/(?<=[.!?])\s+/).flatMap((sentence) => {
+    if (sentence.length <= 105) return [sentence]
+    const middle = sentence.indexOf(", ", Math.floor(sentence.length / 2) - 15)
+    return middle > 0 ? [sentence.slice(0, middle + 1), sentence.slice(middle + 2)] : [sentence]
+  })
+  const total = parts.reduce((sum, part) => sum + part.length, 0)
+  let cursor = scene.start
+  return parts.map((text) => { const span = (scene.end - scene.start) * text.length / total; const chunk = { text, from: cursor, to: cursor + span }; cursor += span; return chunk })
+}
+
+for (const scene of scenes) {
+  const el = document.createElement("div"); el.className = "scene"; scene.el = el
+  if (scene.layout === "shot" || scene.layout === "voice") {
+    el.innerHTML = `<div class="kicker">${scene.title.split(" · ")[0]}</div>` +
+      `<div class="window"><div class="bar"><i></i><i></i><i></i><span>app.kiara · ${scene.title}</span></div><div class="viewport"><img src="assets/shots/${scene.shot}.png"></div></div>` +
+      (scene.cards || []).map((text, i) => `<div class="card" style="top:${300 + i * 118}px;${scene.cardsSide === "left" ? "left:64px;right:auto" : ""}"><b>${i + 1}</b><span>${text}</span></div>`).join("") +
+      `<div class="caption"></div>`
+    if (scene.layout === "voice") el.querySelector(".window").style.cssText += "width:1520px;margin-left:-760px;height:860px;top:120px"
+  } else if (scene.layout === "orb") {
+    el.innerHTML = `<div class="backdrop" style="background-image:url(../../apps/web/public/images/kiara-hero-ai.png);opacity:.55;filter:blur(1px) saturate(1.2)"></div><div class="big" style="top:705px;font-size:76px">Olá, eu sou a <span class="grad">Kiara</span></div><div class="big" style="top:800px;font-size:28px;font-weight:500;letter-spacing:0;color:rgb(255 255 255 / .6)">Inteligência que prospecta, atende e trabalha por você</div><div class="caption"></div>`
+  } else if (scene.layout === "control") {
+    el.innerHTML = `<div class="big" style="top:96px;font-size:58px">Você no <span class="grad">controle</span></div>` +
+      scene.cards.map((text, i) => { const angle = -Math.PI / 2 + (i + .5) * Math.PI / 2 + Math.PI / 4; return `<div class="chip" data-x="${960 + Math.cos(angle) * 520}" data-y="${520 + Math.sin(angle) * 250}">${text}</div>` }).join("") + `<div class="caption"></div>`
+  } else if (scene.layout === "outro") {
+    el.innerHTML = `<div class="big" style="top:640px;font-size:84px">Você aprova.<br><span class="grad">A Kiara executa.</span></div><div class="cta" style="top:900px">Conheça a Kiara · kiaralead.vercel.app</div>`
+  }
+  scene.chunks = captionChunks(scene)
+  root.appendChild(el)
+}
+
+// Deterministic particles.
+const particles = []
+let seed = 7
+const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+const box = document.getElementById("particles")
+for (let i = 0; i < 46; i++) { const p = document.createElement("div"); p.className = "particle"; box.appendChild(p); particles.push({ el: p, x: rand() * W, y: rand() * H, speed: 8 + rand() * 22, phase: rand() * 6.28, size: .6 + rand() * 1.4 }) }
+
+const orbWrap = document.getElementById("orbWrap"), orb = document.getElementById("orb"), halo = document.getElementById("halo")
+const sheen = document.getElementById("sheen"), face = document.getElementById("face"), eyes = face.querySelectorAll("i"), label = document.getElementById("orbLabel")
+const ripples = [document.getElementById("r1"), document.getElementById("r2")]
+const ORB = { orb: [960, 430, 330], shot: [168, 876, 150], voice: [168, 876, 0], control: [960, 520, 250], outro: [960, 400, 300] }
+
+function orbTarget(scene) { return ORB[scene.layout] || ORB.shot }
+
+window.renderAt = function renderAt(t) {
+  const level = T.envelope[Math.min(T.envelope.length - 1, Math.floor(t * T.fps))] || 0
+  document.getElementById("progress").style.width = `${(t / T.duration) * 100}%`
+  document.getElementById("grid").style.setProperty("--gy", `${(t * 18) % 64}px`)
+  for (const p of particles) {
+    const y = ((p.y - t * p.speed) % H + H) % H
+    p.el.style.transform = `translate(${p.x + Math.sin(t * .6 + p.phase) * 18}px, ${y}px) scale(${p.size})`
+    p.el.style.opacity = (.25 + .35 * Math.sin(t * 1.3 + p.phase) ** 2).toFixed(2)
+  }
+
+  let index = scenes.findIndex((scene) => t >= scene.vStart && t < scene.vEnd)
+  if (index < 0) index = scenes.length - 1
+  for (const [i, scene] of scenes.entries()) {
+    const visible = i === index
+    scene.el.style.display = visible ? "block" : "none"
+    if (!visible) continue
+    const local = t - scene.vStart, span = scene.vEnd - scene.vStart
+    const fadeIn = ease(local / .7), fadeOut = 1 - ease((local - (span - .45)) / .45)
+    scene.el.style.opacity = Math.min(fadeIn, i === scenes.length - 1 ? 1 : fadeOut).toFixed(3)
+    const win = scene.el.querySelector(".window")
+    if (win) {
+      const enter = ease(local / 1.1), exit = ease((local - (span - .45)) / .45)
+      win.style.transform = `perspective(1800px) translateX(${(1 - enter) * 260}px) translateZ(${-exit * 160}px) rotateY(${lerp(24, -3, enter) - exit * 6}deg) rotateX(${lerp(8, 2, enter)}deg)`
+      const [fx, fy, zoom] = FOCUS[scene.shot] || [960, 540, 1.05]
+      const vw = win.offsetWidth, vh = win.querySelector(".viewport").offsetHeight
+      const baseScale = vw / 1920
+      const k = easeInOut((local - .6) / Math.max(1, span - 1.2))
+      const scale = baseScale * lerp(1, zoom, k)
+      const cx = lerp(960, fx, k), cy = lerp(540, fy, k)
+      const x = clamp(vw / 2 - cx * scale, vw - 1920 * scale, 0), y = clamp(vh / 2 - cy * scale, vh - 1080 * scale, 0)
+      win.querySelector("img").style.transform = `translate(${x}px, ${y}px) scale(${scale})`
+    }
+    scene.el.querySelectorAll(".card").forEach((card, n) => {
+      const at = 1.4 + n * 1.5, k = back((local - at) / .6), o = ease((local - at) / .4)
+      card.style.opacity = o.toFixed(3)
+      card.style.transform = `perspective(900px) translateY(${(1 - k) * 40}px) rotateX(${(1 - k) * 35}deg) scale(${lerp(.85, 1, k)})`
+    })
+    scene.el.querySelectorAll(".chip").forEach((chip, n) => {
+      const at = 1.2 + n * 1.6, k = back((local - at) / .7), o = ease((local - at) / .4)
+      chip.style.opacity = o.toFixed(3)
+      chip.style.left = `${lerp(960, +chip.dataset.x, ease((local - at) / .9))}px`; chip.style.top = `${lerp(520, +chip.dataset.y, ease((local - at) / .9))}px`
+      chip.style.transform = `translate(-50%, -50%) scale(${lerp(.5, 1, k)})`
+    })
+    scene.el.querySelectorAll(".big").forEach((big, n) => { const k = ease((local - .3 - n * .35) / .9); big.style.opacity = k.toFixed(3); big.style.transform = `translateY(${(1 - k) * 30}px)` })
+    const cta = scene.el.querySelector(".cta"); if (cta) { const k = back((local - 1.6) / .7); cta.style.opacity = ease((local - 1.6) / .4).toFixed(3); cta.style.transform = `translateX(-50%) scale(${lerp(.7, 1, k)})` }
+    const caption = scene.el.querySelector(".caption")
+    if (caption) { const chunk = scene.chunks.find((c) => t >= c.from && t < c.to + .25) || (t < scene.start ? null : scene.chunks.at(-1)); caption.textContent = chunk ? chunk.text : ""; caption.style.display = chunk && t < scene.end + .3 ? "block" : "none" }
+  }
+
+  // Presenter orb: glides between layouts, breathes with the voice, blinks and glances.
+  const current = scenes[index], previous = scenes[index - 1] || current
+  const glide = easeInOut((t - current.vStart) / 1.0)
+  const [ax, ay, as] = orbTarget(previous), [bx, by, bs] = orbTarget(current)
+  const x = lerp(ax, bx, glide), y = lerp(ay, by, glide) + Math.sin(t * 1.4) * 6, size = lerp(as, bs, glide)
+  orbWrap.style.opacity = size < 4 ? "0" : "1"
+  const scale = 1 + level * .12
+  Object.assign(orb.style, { width: `${size}px`, height: `${size}px`, left: `${x - size / 2}px`, top: `${y - size / 2}px`, transform: `scale(${scale})`,
+    boxShadow: `inset 18px 16px 40px rgb(253 216 255 / .22), inset -40px -44px 64px rgb(26 5 59 / .72), 0 0 ${30 + level * 70}px rgb(127 56 242 / .85), 0 0 ${size * .5}px rgb(95 38 187 / .45)` })
+  const hs = size * (1.9 + level * .5)
+  halo.style.cssText = `width:${hs}px;height:${hs}px;left:${x - hs / 2}px;top:${y - hs / 2}px;opacity:${.55 + level * .45}`
+  ripples.forEach((ripple, n) => {
+    const phase = ((t * .8 + n * .5) % 1), rs = size * (1 + phase * .7)
+    ripple.style.cssText = `width:${rs}px;height:${rs}px;left:${x - rs / 2}px;top:${y - rs / 2}px;opacity:${(level > .08 ? (1 - phase) * .7 * Math.min(1, level * 2) : 0).toFixed(3)}`
+  })
+  sheen.style.transform = `rotate(${t * 36}deg)`
+  const lookX = current.layout === "shot" ? .35 : Math.sin(t * .5) * .25, lookY = current.layout === "shot" ? -.25 : Math.sin(t * .37) * .15
+  face.style.transform = `translate(${-10 + lookX * 30}%, ${-4 + lookY * 30}%)`
+  const blinkPhase = t % 4.3, blink = blinkPhase > 4.15 ? .12 : 1
+  eyes.forEach((eye) => { eye.style.transform = `rotate(11deg) scaleY(${(blink * (1 - level * .35)).toFixed(3)})` })
+  label.style.cssText = `left:${x}px;top:${y + size / 2 + 18}px;opacity:${current.layout === "shot" ? 1 : 0}`
+  document.getElementById("brand").style.opacity = current.layout === "outro" ? "0" : ".85"
+  return true
+}
+window.renderAt(0)
+</script>
+</body>
+</html>

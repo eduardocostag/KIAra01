@@ -19,5 +19,5 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const content = workspace === "hunter" ? <HunterClient />
     : workspace === "contacts" ? <InboxHub entries={previewEntries} prospectError="" initialView={view ?? "contacts"} initialContactId="" />
       : <WhatsAppWebWorkspace entries={[]} />
-  return <AppShell>{content}</AppShell>
+  return <AppShell previewModule={workspace === "hunter" || workspace === "contacts" ? "/app/leads" : undefined}>{content}</AppShell>
 }

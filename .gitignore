@@ -57,3 +57,7 @@ data/instagram/
 .cache/npm-freellmapi/
 .cache/npm-deploy/
 .release/
+
+# Demo video: generated assets and renders (sources stay versioned)
+marketing/demo-video/assets/
+marketing/demo-video/out/

@@ -1,0 +1,148 @@
+{
+  "voice": "pt-BR-FranciscaNeural",
+  "rate": "+4%",
+  "gap_seconds": 0.55,
+  "scenes": [
+    {
+      "id": "intro",
+      "layout": "orb",
+      "title": "Olá, eu sou a Kiara",
+      "text": "Olá! Eu sou a Kiara, uma inteligência artificial que prospecta, atende e trabalha pelo seu negócio. Nos próximos minutos, vou te mostrar tudo o que eu faço, por dentro do sistema."
+    },
+    {
+      "id": "platform",
+      "layout": "shot",
+      "shot": "landing-modules",
+      "title": "Quatro módulos. Uma Kiara.",
+      "cards": [
+        "KIARA Leads",
+        "KIARA WhatsApp",
+        "KIARA Chat",
+        "KIARA Automation"
+      ],
+      "text": "Eu sou uma plataforma com quatro módulos, que compartilham o mesmo CRM e a mesma inteligência: Leads, WhatsApp, Chat e Automation. Você começa pelo que mais precisa."
+    },
+    {
+      "id": "hunter",
+      "layout": "shot",
+      "shot": "hunter",
+      "title": "KIARA Leads · Buscar",
+      "cards": [
+        "Descreva quem você procura",
+        "Google Maps, web e redes",
+        "Telefone e endereço conferidos"
+      ],
+      "text": "No KIARA Leads, você descreve quem procura, por exemplo, dentistas sem site em Porto Alegre. Eu pesquiso no Google Maps, na web e nas redes, confiro telefone e localização, e mostro cada resultado com a fonte."
+    },
+    {
+      "id": "contacts",
+      "layout": "shot",
+      "shot": "contacts",
+      "title": "KIARA Leads · Contatos",
+      "cards": [
+        "Etapa e qualificação",
+        "Próxima ação",
+        "Anotações"
+      ],
+      "text": "Com um clique, cada oportunidade vai para o CRM. Você vê a etapa, a qualificação, a próxima ação e as anotações, tudo em um só lugar."
+    },
+    {
+      "id": "queue",
+      "layout": "shot",
+      "shot": "queue",
+      "title": "Fila do dia",
+      "cards": [
+        "Ações atrasadas primeiro",
+        "Prontos para contato",
+        "WhatsApp em um clique"
+      ],
+      "text": "E a fila do dia mostra quem precisa de atenção primeiro: ações atrasadas, quem respondeu e quem está pronto para o primeiro contato."
+    },
+    {
+      "id": "whatsapp",
+      "layout": "shot",
+      "shot": "whatsapp-inbox",
+      "title": "KIARA WhatsApp",
+      "cards": [
+        "Conexão por QR Code",
+        "Resumo de cada conversa",
+        "CRM atualizado"
+      ],
+      "text": "No KIARA WhatsApp, você conecta o seu número pelo QR Code, como no WhatsApp Web. Eu leio as conversas recentes, entendo cada cliente e atualizo o CRM com resumo, etapa e próxima ação."
+    },
+    {
+      "id": "whatsapp-rules",
+      "layout": "shot",
+      "shot": "whatsapp-automation",
+      "title": "Você define o que eu faço",
+      "cards": [
+        "Responder com o que você aprovar",
+        "Primeira mensagem e follow-up",
+        "Só contatos autorizados"
+      ],
+      "text": "Você define o que eu posso fazer: responder com as informações que você aprovar, mandar a primeira mensagem e fazer follow-up, sempre só para contatos autorizados, dentro do horário e do limite diário. Se o cliente pedir para parar, ou um atendente assumir, eu pauso."
+    },
+    {
+      "id": "chat",
+      "layout": "shot",
+      "shot": "chat",
+      "title": "KIARA Chat",
+      "cards": [
+        "Prioridades do dia",
+        "Textos e propostas",
+        "Sites e dashboards"
+      ],
+      "text": "No KIARA Chat, você conversa comigo como em um assistente de inteligência artificial. Eu organizo prioridades, escrevo textos e propostas, e crio sites, dashboards e planos de tarefas."
+    },
+    {
+      "id": "voice",
+      "layout": "voice",
+      "shot": "voice",
+      "title": "Conversa por voz",
+      "text": "E você também pode simplesmente falar comigo. No modo conversa, eu escuto, penso e respondo em voz alta, do jeito que estou fazendo agora."
+    },
+    {
+      "id": "automation",
+      "layout": "shot",
+      "shot": "automation-run",
+      "title": "KIARA Automation",
+      "cards": [
+        "Blocos ligados por linhas",
+        "Agenda, mensagens e redes",
+        "Execução acompanhada"
+      ],
+      "text": "No KIARA Automation, você monta automações ligando blocos, sem programar. Um resumo diário do CRM, um post semanal no Instagram, boas-vindas no WhatsApp. Você vê cada passo sendo executado."
+    },
+    {
+      "id": "ads",
+      "layout": "shot",
+      "shot": "automation-ads",
+      "title": "Anúncios com custo claro",
+      "cards": [
+        "Meta, Google e LinkedIn",
+        "Custo por dia e total",
+        "Como cada plataforma cobra"
+      ],
+      "text": "Eu também preparo campanhas de anúncios no Meta, no Google e no LinkedIn, mostrando antes quanto custa por dia, o total da campanha e como cada plataforma cobra.",
+      "cardsSide": "left"
+    },
+    {
+      "id": "control",
+      "layout": "control",
+      "title": "Você no controle",
+      "cards": [
+        "Confirmação para ações sensíveis",
+        "Limites e horários",
+        "Só contatos autorizados",
+        "IA local opcional"
+      ],
+      "text": "Em tudo isso, você está no controle. Ações sensíveis pedem a sua confirmação, os limites são respeitados, e as conversas podem ser analisadas por uma inteligência artificial no seu próprio computador."
+    },
+    {
+      "id": "outro",
+      "layout": "outro",
+      "title": "Você aprova. A Kiara executa.",
+      "text": "Eu sou a Kiara. Você aprova, e eu executo. Vamos colocar o seu negócio para trabalhar?"
+    }
+  ]
+}

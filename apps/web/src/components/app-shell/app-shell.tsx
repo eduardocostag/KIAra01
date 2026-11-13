@@ -116,16 +116,19 @@ function Navigation({
 
 export function AppShell({
   children,
+  previewModule,
 }: {
   children: React.ReactNode;
   /** Kept for callers; Administração is now reached from the module selector. */
   isSystemAdmin?: boolean;
+  /** Development preview only: render a module's sidebar outside its real route. */
+  previewModule?: string;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   
   // Detecta o módulo ativo
-  const modulePrefix = modulePrefixForPath(pathname);
+  const modulePrefix = previewModule ?? modulePrefixForPath(pathname);
   const isModuleActive = !!modulePrefix && pathname !== '/app';
   const isWhatsApp = modulePrefix === "/app/whatsapp";
   const isChat = modulePrefix === "/app/chat";
