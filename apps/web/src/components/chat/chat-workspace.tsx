@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { blobBase64, chatRequest, fetchVideo, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { cn } from "@/lib/utils"
+import { pollVideoJob } from "@/lib/video-polling"
 import { VoiceConversation, type VoiceBackends } from "./voice-conversation"
 
 type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
@@ -81,14 +82,21 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
   const [job, setJob] = useState(initial)
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
+  const [pollPaused, setPollPaused] = useState(false)
+  const [pollAttempt, setPollAttempt] = useState(0)
   useEffect(() => {
-    if (job.status !== "running") return
-    const timer = setTimeout(async () => {
-      try { const payload = await chatRequest(transport, "video", { action: "status", job_id: job.id }) as { video?: unknown }; setJob(parseVideoJob(payload.video)) }
-      catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível acompanhar o vídeo.") }
-    }, 4000)
-    return () => clearTimeout(timer)
-  }, [job, transport])
+    if (initial.status !== "running") return
+    return pollVideoJob({
+      read: async (signal) => {
+        const statusSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+        const payload = await chatRequest(transport, "video", { action: "status", job_id: initial.id }, statusSignal) as { video?: unknown }
+        return parseVideoJob(payload.video)
+      },
+      onUpdate: (current) => { setJob(current); setError(""); setPollPaused(false) },
+      onError: (reason) => setError(reason instanceof Error ? reason.message : "Não foi possível acompanhar o vídeo."),
+      onPaused: () => setPollPaused(true),
+    })
+  }, [initial.id, initial.status, transport, pollAttempt])
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
   async function load() {
     setError("")
@@ -103,6 +111,7 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
         <p className="text-xs text-muted-foreground" role="status">{job.status === "failed" ? job.error : job.status === "done" ? `Pronto${job.duration ? ` · ${Math.floor(job.duration / 60)}min${String(Math.round(job.duration % 60)).padStart(2, "0")}` : ""} · gerado neste computador` : job.message}</p>
       </div>
       {job.status === "done" && !url ? <Button type="button" size="sm" variant="outline" onClick={() => void load()}><Video aria-hidden="true" />Assistir</Button> : null}
+      {pollPaused && job.status === "running" ? <Button type="button" size="sm" variant="outline" onClick={() => { setPollPaused(false); setError(""); setPollAttempt((attempt) => attempt + 1) }}><RefreshCw aria-hidden="true" />Retomar acompanhamento</Button> : null}
       {url ? <Button type="button" size="sm" variant="outline" asChild><a href={url} download={name}><Download aria-hidden="true" />Baixar</a></Button> : null}
     </div>
     {job.status === "running" ? <div className="h-1 bg-muted"><div className="h-full bg-primary transition-[width] duration-700" style={{ width: `${Math.max(3, job.progress * 100)}%` }} /></div> : null}
@@ -427,7 +436,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
               <div className="min-w-0 flex-1">
                 <div className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</div>
                 {message.artifact && <Artifact artifact={message.artifact} />}
-                {message.video && <VideoJob initial={message.video} transport={transport} />}
+                {message.video && <VideoJob key={message.video.id} initial={message.video} transport={transport} />}
                 {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}
                 <div className="mt-1 flex gap-0.5 text-muted-foreground">
                   <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void copy(message)} aria-label="Copiar resposta">{copied === message.id ? <Check /> : <Copy />}</Button>

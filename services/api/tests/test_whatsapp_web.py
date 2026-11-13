@@ -115,7 +115,7 @@ def test_events_require_timezone_and_bounded_batches():
 def test_routes_require_auth_context_and_forbid_viewer_writes():
     app = FastAPI()
     app.include_router(create_whatsapp_web_router(WhatsAppWebRepository()))
-    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "viewer", "req")
+    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "viewer", "req", email="admin@kiara.local")
     client = TestClient(app)
     assert client.get("/v1/whatsapp-web/config").json()["enabled"] is False
     with pytest.raises(ApiError) as exc:
@@ -126,7 +126,7 @@ def test_routes_require_auth_context_and_forbid_viewer_writes():
             "contacts": [{"phone": "5511999999999", "name": "Teste", "enabled": True}],
         })
     assert exc.value.status_code == 403
-    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "owner", "req")
+    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "owner", "req", email="admin@kiara.local")
     assert client.put("/v1/whatsapp-web/config", json={"enabled": True}).status_code == 422
     assert client.put("/v1/whatsapp-web/config", json={
         "enabled": True,
@@ -142,13 +142,13 @@ def test_analysis_job_is_operator_scoped_and_idempotently_imports_results():
     app = FastAPI()
     repository = WhatsAppWebRepository()
     app.include_router(create_whatsapp_web_router(repository))
-    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "viewer", "req")
+    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "viewer", "req", email="admin@kiara.local")
     client = TestClient(app)
     with pytest.raises(ApiError) as exc:
         client.post("/v1/whatsapp-web/analysis", json={"limit": 30})
     assert exc.value.status_code == 403
 
-    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "operator", "req")
+    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "a", "m", "operator", "req", email="admin@kiara.local")
     requested = client.post("/v1/whatsapp-web/analysis", json={"limit": 30})
     assert requested.status_code == 200
     job_id = requested.json()["id"]

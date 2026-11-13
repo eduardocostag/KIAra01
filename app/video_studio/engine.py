@@ -28,7 +28,8 @@ import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 
-from app.voice.kiara_style import PRONUNCIATION, RATE as SPEECH_RATE, VOICE, spoken  # noqa: F401 - re-exported
+from app.voice.kiara_style import PRONUNCIATION, VOICE, spoken  # noqa: F401 - re-exported
+from app.voice.kiara_style import RATE as SPEECH_RATE
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = Path(__file__).with_name("template.html")

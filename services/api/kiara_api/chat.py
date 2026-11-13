@@ -74,6 +74,8 @@ def _configuration() -> tuple[str, str, str]:
 
 
 def _authorize(context: RequestContext) -> None:
+    if (context.email or "").strip().lower() != "admin@kiara.local":
+        raise ApiError(403, "system_admin_required", "Acesso exclusivo do administrador durante o acesso antecipado.")
     if context.role not in {"owner", "admin", "operator"}:
         raise ApiError(403, "chat_forbidden", "Seu perfil não pode usar o Kiara Chat.")
 

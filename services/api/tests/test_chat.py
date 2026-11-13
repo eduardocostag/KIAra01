@@ -38,7 +38,7 @@ def client(monkeypatch, role="owner", configured=True, reply="Resposta real do a
         return JSONResponse({"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status_code)
 
     if role:
-        app.dependency_overrides[authenticated_context] = lambda: RequestContext("user", "org", "member", role, "req")
+        app.dependency_overrides[authenticated_context] = lambda: RequestContext("user", "org", "member", role, "req", email="admin@kiara.local")
     return TestClient(app), calls
 
 

@@ -3,7 +3,7 @@
     {
       "id": "conversation-1787771212289594",
       "title": "teste do usuário",
-      "updated_at": "2026-09-23T19:55:14.881040+00:00",
+      "updated_at": "2026-11-13T11:54:00.534995+00:00",
       "messages": [
         {
           "author": "Você",
@@ -439,6 +439,51 @@
           "author": "Você",
           "text": "busque empresas",
           "created_at": "2026-09-23T19:55:14.881040+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-11-13T11:53:31.332249+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-11-13T11:53:31.345812+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-11-13T11:53:31.838705+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-11-13T11:53:51.699140+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-11-13T11:53:51.711835+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-11-13T11:53:52.171737+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "teste do usuário",
+          "created_at": "2026-11-13T11:54:00.227874+00:00"
+        },
+        {
+          "author": "Kiara",
+          "text": "teste da assistente",
+          "created_at": "2026-11-13T11:54:00.236628+00:00"
+        },
+        {
+          "author": "Você",
+          "text": "busque empresas",
+          "created_at": "2026-11-13T11:54:00.534995+00:00"
         }
       ]
     },

@@ -29,6 +29,7 @@ voice = [
 ]
 openai = ["openai>=1.60"]
 browser = ["playwright>=1.49", "tzdata>=2024.1"]
+video = ["imageio-ffmpeg==0.6.0", "edge-tts>=7.2,<8", "playwright>=1.49"]
 web = [
   "fastapi>=0.115,<1",
   "psycopg[binary]>=3.2,<4",

@@ -145,10 +145,12 @@ def _supabase_identity(token: str) -> None:
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             identity = json.loads(response.read(64_001))
-        if not isinstance(identity, dict) or not isinstance(identity.get("id"), str):
+        if not isinstance(identity, dict) or not isinstance(identity.get("id"), str) or not identity["id"]:
             raise TypeError("Invalid Supabase identity response.")
     except (OSError, TypeError, ValueError, UnicodeError, json.JSONDecodeError):
         raise BridgeError(401, "Sessão da Kiara inválida ou expirada. Entre novamente no site.") from None
+    if str(identity.get("email") or "").strip().lower() != "admin@kiara.local":
+        raise BridgeError(403, "Acesso exclusivo do administrador durante o acesso antecipado.")
 
 
 def _model_request(messages: list[dict[str, str]], model: str, endpoint: str, api_key: str, *, json_mode: bool = False) -> str:

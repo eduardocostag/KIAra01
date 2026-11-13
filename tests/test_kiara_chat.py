@@ -131,13 +131,13 @@ class FakeOpener:
 
 @pytest.mark.parametrize("member", [{"user_id": "different", "role": "owner", "organization": {"id": "org"}}, {"user_id": "u", "role": "operator", "organization": {"id": "org"}}, {"user_id": "u", "role": "admin", "organization": {}}])
 def test_auth_verifies_identity_role_and_membership(member):
-    verifier = SupabaseAuthorizationVerifier("https://project.supabase.co", "public", "https://api.example.test", opener=FakeOpener({"id": "u"}, member))
+    verifier = SupabaseAuthorizationVerifier("https://project.supabase.co", "public", "https://api.example.test", opener=FakeOpener({"id": "u", "email": "admin@kiara.local"}, member))
     with pytest.raises(AuthorizationError):
         verifier.verify("test-access-token")
 
 
 def test_auth_returns_tenant_identity():
-    verifier = SupabaseAuthorizationVerifier("https://project.supabase.co", "public", "https://api.example.test", opener=FakeOpener({"id": "u"}, {"user_id": "u", "role": "admin", "organization": {"id": "org"}}))
+    verifier = SupabaseAuthorizationVerifier("https://project.supabase.co", "public", "https://api.example.test", opener=FakeOpener({"id": "u", "email": "admin@kiara.local"}, {"user_id": "u", "role": "admin", "organization": {"id": "org"}}))
     assert verifier.verify("test-access-token") == SiteIdentity("u", "org", "admin")
 
 

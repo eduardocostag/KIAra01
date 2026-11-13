@@ -57,6 +57,7 @@ class SupabaseAuthorizationVerifier:
             member = self._read(self.api_url + "/v1/me", token)
             organization = member.get("organization")
             if (not isinstance(user.get("id"), str) or not user["id"]
+                    or str(user.get("email") or "").strip().lower() != "admin@kiara.local"
                     or member.get("user_id") != user["id"]
                     or member.get("role") not in {"owner", "admin"}
                     or not isinstance(organization, dict)
@@ -65,4 +66,4 @@ class SupabaseAuthorizationVerifier:
             return SiteIdentity(user["id"], organization["id"], member["role"])
         except Exception:  # noqa: BLE001 - identity/provider errors must never expose tokens
             # Provider responses can contain tokens and private identity fields.
-            raise AuthorizationError("Sessão inválida ou sem permissão owner/admin. Entre novamente na Kiara.") from None
+            raise AuthorizationError("Sessão inválida ou sem acesso administrativo à Kiara. Entre novamente na Kiara.") from None

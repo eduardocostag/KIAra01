@@ -1,4 +1,6 @@
 import http.client
+import io
+import json
 import threading
 from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
@@ -6,6 +8,20 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import run_whatsapp_local_bridge as bridge
+
+
+@pytest.mark.parametrize("email,allowed", [("admin@kiara.local", True), ("member@example.com", False), (None, False)])
+def test_local_whatsapp_requires_verified_admin_identity(monkeypatch, email, allowed):
+    monkeypatch.setattr(bridge, "_config_value", lambda name, *_args, **_kwargs: "https://project.supabase.co" if name == "NEXT_PUBLIC_SUPABASE_URL" else "public")
+    monkeypatch.setattr(bridge.urllib.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(json.dumps({
+        "id": "user", "email": email, "user_metadata": {"email": "admin@kiara.local"},
+    }).encode()))
+    if allowed:
+        bridge._supabase_identity("test-token")
+    else:
+        with pytest.raises(bridge.BridgeError) as error:
+            bridge._supabase_identity("test-token")
+        assert error.value.status == 403
 
 
 @pytest.mark.parametrize("stdout_state", ["windowless", "closed_pipe"])

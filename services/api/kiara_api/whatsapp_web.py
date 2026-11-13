@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .adapters.postgres import PostgresRepository, _uuid
 from .http.context import RequestContext
-from .http.dependencies import authenticated_context
+from .http.dependencies import authenticated_context, system_administrator_context
 from .http.errors import ApiError
 
 
@@ -385,7 +385,7 @@ class WhatsAppWebRepository:
 
 
 def create_whatsapp_web_router(repository: WhatsAppWebRepository):
-    router = APIRouter(prefix="/v1/whatsapp-web", tags=["whatsapp-web"])
+    router = APIRouter(prefix="/v1/whatsapp-web", tags=["whatsapp-web"], dependencies=[Depends(system_administrator_context)])
 
     @router.get("/config")
     async def get_config(context: Annotated[RequestContext, Depends(authenticated_context)]):
