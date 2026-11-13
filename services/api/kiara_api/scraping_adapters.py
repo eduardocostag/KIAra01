@@ -37,7 +37,13 @@ def fetch_public_with_scrapling(url: str) -> tuple[str, list[str], str]:
     SSRF boundary. This deliberately uses the lightweight HTTP fetcher rather
     than a logged-in or stealth browser session.
     """
-    from scrapling.fetchers import Fetcher
+    try:
+        from scrapling.fetchers import Fetcher
+    except ImportError:
+        # On Vercel Scrapling's fetchers are unavailable (they pull Patchright, which exhausts the
+        # Function disk). curl_cffi is the engine behind Scrapling's HTTP fetcher: the same
+        # Chrome TLS/HTTP2 fingerprint that keeps public sites from blocking the request.
+        return fetch_public_with_curl_cffi(url)
 
     page = Fetcher.get(
         url,
@@ -63,6 +69,43 @@ def fetch_public_with_scrapling(url: str) -> tuple[str, list[str], str]:
     final_url = str(getattr(page, "url", "") or url)
     text, links = parse_with_scrapling(body.decode(encoding, errors="replace"), final_url)
     return text, links, final_url
+
+
+def fetch_public_with_curl_cffi(url: str, max_redirects: int = 5) -> tuple[str, list[str], str]:
+    """Fetch a public HTML page impersonating Chrome, re-checking SSRF on every redirect."""
+    from urllib.parse import urljoin as join
+
+    from curl_cffi import requests as curl_requests
+
+    from .hunter import _assert_public_destination
+
+    current = url
+    for _ in range(max_redirects + 1):
+        _assert_public_destination(current)
+        response = curl_requests.get(
+            current, impersonate="chrome", allow_redirects=False, timeout=12, stream=True,
+            headers={"Accept": "text/html,application/xhtml+xml;q=0.9", "Accept-Language": "pt-BR,pt;q=0.9"},
+        )
+        try:
+            if response.status_code in {301, 302, 303, 307, 308} and response.headers.get("location"):
+                current = join(current, response.headers["location"])
+                continue
+            if not 200 <= response.status_code < 300:
+                raise OSError(f"public_page_http_{response.status_code}")
+            content_type = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+            if content_type and content_type not in {"text/html", "application/xhtml+xml"}:
+                raise ValueError("unsupported_content")
+            body = bytearray()
+            for chunk in response.iter_content():
+                body.extend(chunk)
+                if len(body) > MAX_PUBLIC_PAGE_BYTES:
+                    raise ValueError("page_too_large")
+            charset = re.search(r"charset=([\w-]+)", response.headers.get("content-type") or "", re.IGNORECASE)
+            text, links = parse_with_scrapling(bytes(body).decode(charset.group(1) if charset else "utf-8", errors="replace"), current)
+            return text, links, current
+        finally:
+            response.close()
+    raise ValueError("too_many_redirects")
 
 
 def analyze_with_scrapegraph(source_url: str, prompt: str) -> dict[str, Any]:

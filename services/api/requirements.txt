@@ -8,3 +8,5 @@ playwright>=1.50,<2
 # and exhaust Vercel's temporary runtime disk. Public fetching has an SSRF-safe
 # native fallback; Playwright above remains available for remote CDP sessions.
 scrapling==0.4.15
+# Chrome-impersonating HTTP engine used by Scrapling's fetcher; small and browser-free.
+curl_cffi>=0.13,<1
