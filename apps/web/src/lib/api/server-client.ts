@@ -1,5 +1,6 @@
 import "server-only"
-import { AuthenticationRequiredError, requireAccessToken } from "@/lib/auth"
+import { AdministratorRequiredError, AuthenticationRequiredError, requireAccessToken, requireSystemAdmin } from "@/lib/auth"
+import { EARLY_ACCESS_API_PREFIXES } from "@/lib/early-access"
 
 type ApiErrorPayload = {
   error: { code: string; message: string; request_id: string; details?: Record<string, unknown> }
@@ -33,8 +34,12 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
 
   let token: string
   try {
+    if (path === "/v1/integrations" || path.startsWith("/v1/integrations/")) await requireSystemAdmin()
+    // Early-access modules (Chat, WhatsApp) stay administrator-only until launch.
+    if (EARLY_ACCESS_API_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) await requireSystemAdmin()
     token = await requireAccessToken()
   } catch (error) {
+    if (error instanceof AdministratorRequiredError) return errorResponse(403, "system_admin_required", "Acesso exclusivo do administrador.", requestId)
     if (!(error instanceof AuthenticationRequiredError)) throw error
     log("error", "kiara_api.session_missing")
     return errorResponse(401, "session_missing", "Sua sessão não forneceu um token válido. Entre novamente na Kiara.", requestId)

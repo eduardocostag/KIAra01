@@ -5,7 +5,8 @@ export type ChatStatus = { connected: boolean; provider: string; model: string; 
 export type ChatMessage = { role: "user" | "assistant"; content: string }
 export type ChatArtifact = { name: string; mime: "text/html"; content: string }
 export type ChatPlan = { id: string; steps: string[]; requires_approval: true }
-export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan }
+export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null }
+export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
 export const CHAT_AUDIO_MAX_BYTES = 5 * 1024 * 1024
 const audioTypes = new Set(["audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac"])
 
@@ -47,7 +48,30 @@ export function parseChatReply(value: unknown): ChatReply {
     })
     reply.plan = { id: plan.id, steps, requires_approval: true }
   }
+  if (data.video != null) reply.video = parseVideoJob(data.video)
   return reply
+}
+
+export function parseVideoJob(value: unknown): ChatVideoJob {
+  const data = object(value)
+  if (typeof data.id !== "string" || !/^[0-9a-f]{32}$/.test(data.id) || !["running", "queued", "done", "failed"].includes(String(data.status))) throw new Error("O serviço retornou uma tarefa de vídeo inválida.")
+  return {
+    id: data.id, status: data.status === "queued" ? "running" : data.status as ChatVideoJob["status"],
+    progress: typeof data.progress === "number" ? Math.min(1, Math.max(0, data.progress)) : 0,
+    message: typeof data.message === "string" ? data.message.slice(0, 200) : "", title: typeof data.title === "string" ? data.title.slice(0, 120) : "Vídeo",
+    duration: typeof data.duration === "number" ? data.duration : null,
+    warnings: Array.isArray(data.warnings) ? data.warnings.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
+    error: typeof data.error === "string" ? data.error.slice(0, 400) : null,
+  }
+}
+
+/** Downloads a finished video from the local bridge (videos are produced on this computer). */
+export async function fetchVideo(jobId: string): Promise<Blob> {
+  const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store" })))
+  if (typeof session.access_token !== "string" || !session.access_token) throw new Error("Não foi possível autorizar o acesso ao serviço local.")
+  const response = await fetch("http://127.0.0.1:3008/api/video", { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ action: "download", job_id: jobId }), signal: AbortSignal.timeout(300_000) })
+  if (!response.ok || response.headers.get("Content-Type") !== "video/mp4") { await jsonResponse(response); throw new Error("O vídeo não pôde ser baixado.") }
+  return await response.blob()
 }
 
 export function validateChatAudio(file: Pick<File, "size" | "type">): string {

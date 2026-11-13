@@ -1,7 +1,15 @@
 {
-  "voice": "pt-BR-ThalitaMultilingualNeural",
+  "voice": "pt-BR-FranciscaNeural",
   "rate": "+2%",
   "gap_seconds": 0.45,
+  "meta": {
+    "brand": "KIARA",
+    "audience": [
+      "Dani",
+      "Bruno"
+    ],
+    "cta": "Conheça a Kiara · kiaralead.vercel.app"
+  },
   "scenes": [
     {
       "id": "hello",
@@ -12,14 +20,13 @@
       "words": [
         {
           "text": "Dani",
-          "cue": "Dáni"
+          "cue": "Dani"
         },
         {
           "text": "Bruno",
           "cue": "Bruno"
         }
-      ],
-      "speech": "Olá, Dáni e Bruno! Que bom ter vocês aqui. Eu sou a Kiara, e preparei esta apresentação especialmente para vocês."
+      ]
     },
     {
       "id": "intro",
@@ -337,7 +344,8 @@
           "text": "Sob medida",
           "cue": "medida"
         }
-      ]
+      ],
+      "kicker": "Feita sob medida"
     },
     {
       "id": "control",
@@ -354,13 +362,14 @@
           "text": "Limites e horários respeitados",
           "cue": "limites"
         }
-      ]
+      ],
+      "kicker": "Você no controle"
     },
     {
       "id": "outro",
       "layout": "outro",
       "accent": "#c4a1ff",
-      "title": "Você aprova. A Kiara executa.",
+      "title": "Vocês aprovam. A Kiara executa.",
       "text": "Dani, Bruno: vocês aprovam, e eu executo. Vamos colocar o negócio de vocês para trabalhar?"
     }
   ]

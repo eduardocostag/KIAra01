@@ -1,4 +1,5 @@
 import { kiaraApi } from "@/lib/api/server-client"
+import { requireWorkspace } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 
 const headers = { "Cache-Control": "no-store, private", "Pragma": "no-cache" }
@@ -11,6 +12,10 @@ function rejected(status: number) {
 export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return rejected(403)
   try {
+    // Chat and WhatsApp are in early access: only the system administrator gets a lease.
+    const workspace = await requireWorkspace().catch(() => null)
+    if (!workspace) return rejected(401)
+    if (!workspace.isSystemAdmin) return rejected(403)
     const supabase = await createClient()
     const { data, error } = await supabase.auth.getSession()
     const session = data.session

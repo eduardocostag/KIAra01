@@ -1,7 +1,7 @@
 """Capture real Kiara screens (1920x1080) from the development preview, with demo data.
 
 Requires `npx next dev -p 3100` in apps/web. APIs are mocked: no real customer data,
-no messages sent. Output: assets/shots/<name>.png
+no messages sent. Output: shots/<name>.png
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parent
-SHOTS = ROOT / "assets" / "shots"
+SHOTS = ROOT / "shots"
 BASE = "http://localhost:3100"
 PREVIEW = f"{BASE}/ui-verification"
 HIDE_DEV = "nextjs-portal, [data-nextjs-toast], [data-next-badge-root] { display: none !important; }"

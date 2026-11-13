@@ -17,6 +17,7 @@ from app.chat.service import LocalChatService, freellmapi_health, router_health
 from app.providers.freellmapi import FreeLLMAPIProvider
 from app.providers.omniroute import OmniRouteProvider
 from app.providers.remote import ProviderConfigurationError
+from app.video_studio.jobs import VideoJobs
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -65,7 +66,9 @@ def create_bridge() -> ChatBridge:
                                    ollama_url=values.get("KIARA_CHAT_OLLAMA_URL", "http://127.0.0.1:11434"),
                                    voice=voice, whisper_model=whisper_model)
     automation = ControlledAutomation(ROOT / "data/kiara-chat-audit.jsonl")
-    return ChatBridge(service, verifier, origins, automation)
+    # Presentation videos: the chat model writes the script; voice, frames and encoding run here.
+    videos = VideoJobs(ROOT / "data/videos", service._generate, workers=int(values.get("KIARA_VIDEO_WORKERS", "0") or 0))
+    return ChatBridge(service, verifier, origins, automation, videos)
 
 
 def main():

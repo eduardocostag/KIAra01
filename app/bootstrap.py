@@ -102,6 +102,7 @@ from app.tools.web_studio import (
     GenerateBusinessSiteTool,
     ValidateBusinessSiteTool,
 )
+from app.tools.video_studio import CreatePresentationVideoTool, PresentationVideoStatusTool
 from app.tools.windows import NetworkPingTool, OpenApplicationTool, OpenUrlTool, ScreenshotTool
 from app.voice.adapters import (
     EdgeNeuralSynthesizer,
@@ -111,6 +112,7 @@ from app.voice.adapters import (
     SoundDeviceMicrophone,
 )
 from app.voice.service import VoiceService
+from app.video_studio.jobs import VideoJobs
 from app.web_studio import BusinessSiteGenerator, SitePreviewValidator
 from app.workflows import ConversationalWorkflowBuilder, WorkflowStore
 
@@ -396,6 +398,11 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
         )
         registry.register(GenerateBusinessSiteTool(site_generator, site_validator))
         registry.register(ValidateBusinessSiteTool(site_validator))
+    if settings.get("video_studio.enabled", True):
+        video_jobs = VideoJobs(settings.root / "data" / "videos", provider.generate,
+                               workers=int(settings.get("video_studio.workers", 0)))
+        registry.register(CreatePresentationVideoTool(video_jobs))
+        registry.register(PresentationVideoStatusTool(video_jobs))
     perception = ScreenPerception(EventBus(), PerceptionOptions.from_settings(settings))
     if site_generator is not None and site_validator is not None:
         registry.register(

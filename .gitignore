@@ -59,5 +59,7 @@ data/instagram/
 .release/
 
 # Demo video: generated assets and renders (sources stay versioned)
-marketing/demo-video/assets/
+marketing/demo-video/build/
+marketing/demo-video/shots/
+data/videos/
 marketing/demo-video/out/

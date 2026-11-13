@@ -1,27 +1,29 @@
-# Vídeo de demonstração da Kiara
+# Vídeo de demonstração da Kiara (Dani e Bruno)
 
-Vídeo de cerca de 2min30 para enviar a clientes: telas reais do sistema, cartões em 3D,
-o orbe da Kiara apresentando e narração em português (voz neural pt-BR).
+Vídeo de cerca de 2 minutos para enviar a clientes: saudação com o nome deles, telas reais do
+sistema, cards em 3D sincronizados com a fala e o orbe da Kiara narrando em português do Brasil.
+
+É um projeto do **Kiara Video Studio** (`app/video_studio`), o mesmo motor que a Kiara usa no
+KIARA Chat (modo Vídeo). Guia completo: `app/resources/operational_skills/kiara-video-studio/SKILL.md`.
 
 ## Como regerar
 
-Pré-requisitos: ffmpeg no PATH e o ambiente Python do projeto (`.venv`, com Playwright e edge-tts).
+Pré-requisitos: o ambiente Python do projeto (`.venv`, com Playwright e edge-tts) e ffmpeg
+(`winget install Gyan.FFmpeg`; o motor encontra a instalação do winget sozinho).
 
 ```powershell
-cd marketing/demo-video
-# 1. Narração e linha do tempo (texto em script.json)
-..\..\.venv\Scripts\python.exe narrate.py
-# 2. Telas reais, com o site em modo de desenvolvimento rodando (apps/web: npx next dev -p 3100)
-..\..\.venv\Scripts\python.exe capture.py
-# 3. Vídeo final (cerca de 10 minutos de renderização)
-..\..\.venv\Scripts\python.exe render.py
+# 1. Telas reais, com o site em modo de desenvolvimento rodando (apps/web: npx next dev -p 3100)
+.venv\Scripts\python.exe marketing\demo-video\capture.py
+# 2. Fala + vídeo (renderização em paralelo)
+.venv\Scripts\python.exe -m app.video_studio make marketing\demo-video --output marketing\demo-video\out\kiara-demo.mp4
 ```
 
-Resultado: `out/kiara-demo.mp4` (1920×1080, H.264 + AAC).
-
-- **Mudar a fala:** edite `script.json` e apague `assets/audio/<cena>.mp3` das cenas alteradas antes do passo 1.
-- **Mudar uma tela:** ajuste `capture.py` (as APIs são simuladas com dados de demonstração; nada real é lido ou enviado).
-- **Mudar o visual:** `composition.html` desenha tudo em função do tempo; abra no navegador e chame `renderAt(segundos)` no console para conferir um quadro.
+- **Mudar a fala ou os cards:** edite `script.json`. Só as cenas alteradas são regravadas.
+- **Conferir a pronúncia:** `python -m app.video_studio narrate marketing\demo-video --check`.
+- **Conferir quadros sem renderizar tudo:** `python -m app.video_studio preview marketing\demo-video 5 40 90`
+  (as imagens ficam em `build/preview`).
+- **Voz:** `pt-BR-FranciscaNeural`, nativa do português do Brasil. A ThalitaMultilingual soava espanhola
+  em nomes e na saudação.
 
 A narração usa o serviço de voz do Microsoft Edge (o texto do roteiro é enviado a ele).
-Os dados exibidos (clínicas, telefones, mensagens) são fictícios.
+Os dados exibidos nas telas (clínicas, telefones, mensagens) são fictícios.

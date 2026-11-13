@@ -62,6 +62,7 @@ class OperationalSkills:
             "google-maps-scraper": {"maps", "mapas", "prospeccao", "prospectar", "captar", "captacao"},
             "kiara-freellmapi": {"freellmapi"},
             "kiara-chatwoot": {"chatwoot"},
+            "kiara-video-studio": {"video", "videos", "apresentacao", "narracao", "narrado", "mp4"},
             "ig-reel": {"reel", "reels", "roteiro", "gancho", "hook", "ganchos"},
             "ig-caption": {"legenda", "legendas", "caption", "hashtags"},
             "ig-carousel": {"carrossel", "carrosseis", "carousel", "slides"},

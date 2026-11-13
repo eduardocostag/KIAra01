@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Kiara — vídeo de demonstração</title>
+<title>Kiara Video Studio</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 1920px; height: 1080px; overflow: hidden; background: #05040b; }
@@ -41,6 +41,7 @@
   .caption span.now { color: var(--accent); text-shadow: 0 0 18px var(--accent); }
   #progress { position: absolute; left: 0; bottom: 0; height: 4px; z-index: 70; background: linear-gradient(90deg, #7c4dff, #38bdf8, #f0abfc); box-shadow: 0 0 16px #7c4dff; }
   #brand { position: absolute; top: 40px; left: 52px; display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .26em; font-size: 19px; z-index: 65; }
+  #brand em { font-style: normal; }
   #brand span { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 40% 28%, #e7d4ff, #8b4dff 50%, #2e135e 95%); box-shadow: 0 0 16px #7c4dff; }
   #forWho { position: absolute; top: 40px; right: 52px; z-index: 65; font-size: 17px; color: rgb(255 255 255 / .6); letter-spacing: .04em; }
   #forWho b { color: white; }
@@ -90,11 +91,11 @@
   <div class="streak" id="s1"></div><div class="streak" id="s2"></div>
   <div id="flash"></div>
   <div id="vignette"></div>
-  <div id="brand"><span></span>KIARA</div>
-  <div id="forWho">Apresentação para <b>Dani</b> e <b>Bruno</b></div>
+  <div id="brand"><span></span><em></em></div>
+  <div id="forWho"></div>
   <div id="progress"></div>
 </div>
-<script src="assets/timeline.js"></script>
+<script src="timeline.js"></script>
 <script>
 const T = window.TIMELINE, W = 1920, H = 1080
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v))
@@ -109,35 +110,45 @@ const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
 
 const scenes = T.scenes.map((scene, i) => ({ ...scene, vStart: i === 0 ? 0 : scene.start - .4, vEnd: i + 1 < T.scenes.length ? T.scenes[i + 1].start - .4 : T.duration }))
 const root = document.getElementById("scenes")
-const MODULES = [["KIARA Leads", "#38bdf8"], ["KIARA WhatsApp", "#34d399"], ["KIARA Chat", "#c4a1ff"], ["KIARA Automation", "#facc15"]]
+const META = T.meta || {}
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]))
+const color = (v, fallback) => /^#[0-9a-fA-F]{6}$/.test(v || "") ? v : fallback
+const TILES = [["Leads", "#38bdf8"], ["WhatsApp", "#34d399"], ["Chat", "#c4a1ff"], ["Automation", "#facc15"]]
+const AUDIENCE = (META.audience || []).slice(0, 3)
+document.querySelector("#brand em").textContent = META.brand || "KIARA"
+document.getElementById("forWho").innerHTML = AUDIENCE.length ? `${esc(META.for_label || "Apresentação para")} ${AUDIENCE.map((n) => `<b>${esc(n)}</b>`).join(AUDIENCE.length === 2 ? " e " : ", ")}` : ""
 
 // ---------- Build scenes ----------
 for (const scene of scenes) {
-  const el = document.createElement("div"); el.className = "scene"; el.style.setProperty("--accent", scene.accent); scene.el = el
+  const el = document.createElement("div"); el.className = "scene"; scene.accent = color(scene.accent, "#a78bfa"); el.style.setProperty("--accent", scene.accent); scene.el = el
   const words = scene.caption.split(/\s+/)
   // Split into short chunks (sentence / comma boundaries) so captions stay on one or two lines.
   scene.chunkOf = []; let chunk = 0, length = 0
   words.forEach((w, i) => { scene.chunkOf.push(chunk); length += w.length + 1; if ((/[.!?]$/.test(w) && length > 25) || (/[,:]$/.test(w) && length > 48) || length > 80) { chunk += 1; length = 0 } })
-  const caption = `<div class="caption">${words.map((w) => `<span>${w}</span>`).join(" ")}</div>`
+  const caption = `<div class="caption">${words.map((w) => `<span>${esc(w)}</span>`).join(" ")}</div>`
   if (scene.layout === "shot") {
-    el.innerHTML = `<div class="kicker">${scene.kicker}</div><div class="reflection"></div>
-      <div class="window"><div class="bar"><i></i><i></i><i></i><span>app.kiara · ${scene.kicker}</span></div><div class="viewport">
-      ${scene.shots.map((s) => `<div class="layer"><img src="assets/shots/${s.shot}.png"></div>`).join("")}
+    el.innerHTML = `<div class="kicker">${esc(scene.kicker)}</div><div class="reflection"></div>
+      <div class="window"><div class="bar"><i></i><i></i><i></i><span>${esc(META.app_label || "app.kiara")} · ${esc(scene.kicker)}</span></div><div class="viewport">
+      ${scene.shots.map((s) => `<div class="layer"><img src="../shots/${encodeURIComponent(s.shot)}.png"></div>`).join("")}
       ${(scene.spots || []).map(() => `<div class="spot"><div class="spotPulse"></div></div>`).join("")}</div><div class="glare"></div></div>
-      ${(scene.cards || []).map((c, i) => `<div class="card" style="top:${280 + i * 124}px;${scene.cardsSide === "left" ? "left:56px;right:auto" : ""}"><b>${i + 1}</b><span>${c.text}</span><div class="shine"></div></div>`).join("")}${caption}`
+      ${(scene.cards || []).map((c, i) => `<div class="card" style="top:${280 + i * 124}px;${scene.cardsSide === "left" ? "left:56px;right:auto" : ""}"><b>${i + 1}</b><span>${esc(c.text)}</span><div class="shine"></div></div>`).join("")}${caption}`
   } else if (scene.layout === "hello") {
-    el.innerHTML = `<div class="big" style="top:62px;font-size:44px;font-weight:600;letter-spacing:-.02em;color:rgb(255 255 255 / .75)">Olá,</div>
-      <div class="person" style="left:340px">Dani</div><div class="person" style="left:1290px">Bruno</div>
-      <div class="pill" style="top:900px">Uma apresentação exclusiva para vocês</div>${caption}`
+    const names = scene.words || [], spots = [[960], [500, 1440], [420, 960, 1500]][Math.max(0, names.length - 1)] || []
+    el.innerHTML = `<div class="big" style="top:62px;font-size:44px;font-weight:600;letter-spacing:-.02em;color:rgb(255 255 255 / .75)">${esc(scene.greeting || "Olá,")}</div>
+      ${names.slice(0, 3).map((w, n) => `<div class="person" style="left:${spots[n]}px;font-size:${names.length > 2 ? 92 : 120}px">${esc(w.text)}</div>`).join("")}
+      ${scene.pill === "" ? "" : `<div class="pill" style="top:900px">${esc(scene.pill || "Uma apresentação exclusiva para vocês")}</div>`}${caption}`
   } else if (scene.layout === "orb") {
-    el.innerHTML = (scene.words || []).map((w) => `<div class="card" style="right:auto;width:auto;padding:16px 24px"><b>✦</b><span>${w.text}</span><div class="shine"></div></div>`).join("") + caption
+    el.innerHTML = (scene.words || []).map((w) => `<div class="card" style="right:auto;width:auto;padding:16px 24px"><b>✦</b><span>${esc(w.text)}</span><div class="shine"></div></div>`).join("") + caption
   } else if (scene.layout === "custom") {
-    el.innerHTML = `<div class="kicker">Feita sob medida</div>` + MODULES.map(([name, tone]) => `<div class="tile" style="--tone:${tone}"><i></i>${name.replace("KIARA ", "")}</div>`).join("") +
-      `<div class="tile new"><i>+</i>Novo módulo</div>` + (scene.cards || []).map((c, i) => `<div class="pill" style="top:${830}px">${c.text}</div>`).join("") + caption
+    scene.tileList = (scene.tiles || TILES.map(([text, tone]) => ({ text, color: tone }))).slice(0, 6)
+    el.innerHTML = `<div class="kicker">${esc(scene.kicker || "Feita sob medida")}</div>` + scene.tileList.map((tile) => `<div class="tile" style="--tone:${color(tile.color, scene.accent)}"><i></i>${esc(tile.text)}</div>`).join("") +
+      (scene.new_tile === "" ? "" : `<div class="tile new"><i>+</i>${esc(scene.new_tile || "Novo módulo")}</div>`) + (scene.cards || []).map((c) => `<div class="pill" style="top:830px">${esc(c.text)}</div>`).join("") + caption
   } else if (scene.layout === "control") {
-    el.innerHTML = `<div class="kicker">Você no controle</div><div class="shield"></div><div class="shield"></div>` + (scene.cards || []).map((c) => `<div class="pill">${c.text}</div>`).join("") + caption
+    el.innerHTML = `<div class="kicker">${esc(scene.kicker || scene.title || "")}</div><div class="shield"></div><div class="shield"></div>` + (scene.cards || []).map((c) => `<div class="pill">${esc(c.text)}</div>`).join("") + caption
   } else if (scene.layout === "outro") {
-    el.innerHTML = `<div class="big" style="top:640px;font-size:92px">Vocês aprovam.<br><span class="grad">A Kiara executa.</span></div><div class="cta" style="top:905px">Conheça a Kiara · kiaralead.vercel.app</div>`
+    const lines = String(scene.title || "").split(/(?<=[.!?])\s+/).filter(Boolean), first = lines.slice(0, -1).join(" "), last = lines[lines.length - 1] || ""
+    el.innerHTML = `<div class="big" style="top:${first ? 640 : 700}px;font-size:${Math.max(56, 92 - Math.max(0, String(scene.title || "").length - 32))}px">${first ? esc(first) + "<br>" : ""}<span class="grad">${esc(last)}</span></div>` +
+      (META.cta ? `<div class="cta" style="top:905px">${esc(META.cta)}</div>` : "")
   }
   scene.captionWords = [...el.querySelectorAll(".caption span")]
   const total = words.reduce((s, w) => s + w.length + 1, 0); let acc = 0
@@ -285,7 +296,7 @@ window.renderAt = function renderAt(t) {
 
     const cards = [...scene.el.querySelectorAll(".card")], cues = scene.layout === "orb" ? scene.words : scene.cards
     cards.forEach((card, n) => {
-      const at = cues[n].at, p = t - at, k = back(p / .65), o = ease(p / .35)
+      const at = (cues[n] || { at: scene.start }).at, p = t - at, k = back(p / .65), o = ease(p / .35)
       const newest = cues.filter((c) => c.at <= t).length - 1 === n
       if (scene.layout === "orb") {
         const a = -Math.PI / 2 + n * (2 * Math.PI / cues.length) + t * .25, rx = 470, ry = 250
@@ -300,33 +311,34 @@ window.renderAt = function renderAt(t) {
 
     if (scene.layout === "hello") {
       scene.el.querySelectorAll(".person").forEach((el, n) => {
-        const p = t - scene.words[n].at, k = back(p / .8)
+        const p = t - (scene.words[n] || { at: scene.start }).at, k = back(p / .8)
         el.style.opacity = ease(p / .4).toFixed(3)
-        el.style.transform = `perspective(900px) translateZ(${(1 - k) * -900}px) rotateY(${(1 - k) * (n ? -40 : 40)}deg) translateY(${Math.sin(t * 1.2 + n) * 8}px)`
+        el.style.transform = `translateX(-50%) perspective(900px) translateZ(${(1 - k) * -900}px) rotateY(${(1 - k) * (n ? -40 : 40)}deg) translateY(${Math.sin(t * 1.2 + n) * 8}px)`
         el.style.letterSpacing = `${lerp(.35, -.04, ease(p / 1))}em`
       })
       const big = scene.el.querySelector(".big"); big.style.opacity = ease((local - .2) / .7); big.style.transform = `translateY(${(1 - ease(local / .9)) * 20}px)`
       const pill = scene.el.querySelector(".pill"), pp = t - (scene.end - 3.2)
-      pill.style.opacity = ease(pp / .5); pill.style.transform = `translateX(-50%) scale(${lerp(.7, 1, back(pp / .6))})`
+      if (pill) { pill.style.opacity = ease(pp / .5); pill.style.transform = `translateX(-50%) scale(${lerp(.7, 1, back(pp / .6))})` }
     }
     if (scene.layout === "custom") {
-      const tiles = scene.el.querySelectorAll(".tile"), cueNew = scene.cards[1].at
+      const tiles = scene.el.querySelectorAll(".tile"), N = scene.tileList.length, hasNew = tiles.length > N
+      const cards = scene.cards || [], cueNew = (cards[Math.min(1, cards.length - 1)] || { at: scene.start + 2 }).at
       tiles.forEach((tile, n) => {
-        if (n < 4) {
-          const spread = t > cueNew ? ease((t - cueNew) / .9) : 0
-          const a = -Math.PI / 2 + lerp(n * Math.PI / 2, n * 2 * Math.PI / 5, spread) + t * .3
+        if (n < N) {
+          const spread = hasNew && t > cueNew ? ease((t - cueNew) / .9) : 0
+          const a = -Math.PI / 2 + lerp(n * 2 * Math.PI / N, n * 2 * Math.PI / (N + 1), spread) + t * .3
           const k = back((local - .3 - n * .2) / .6)
           tile.style.left = `${960 + Math.cos(a) * 520}px`; tile.style.top = `${470 + Math.sin(a) * 250}px`
           tile.style.transform = `scale(${k}) translateZ(0)`; tile.style.opacity = ease((local - .3 - n * .2) / .4)
         } else {
-          const p = t - cueNew, k = back(p / .8), a = -Math.PI / 2 + 4 * 2 * Math.PI / 5 + t * .3
+          const p = t - cueNew, k = back(p / .8), a = -Math.PI / 2 + N * 2 * Math.PI / (N + 1) + t * .3
           tile.style.left = `${lerp(960, 960 + Math.cos(a) * 520, ease(p / 1))}px`; tile.style.top = `${lerp(470, 470 + Math.sin(a) * 250, ease(p / 1))}px`
           tile.style.transform = `scale(${lerp(.2, 1.12, k)}) rotate(${(1 - k) * 90}deg)`; tile.style.opacity = ease(p / .4)
         }
       })
       scene.el.querySelectorAll(".pill").forEach((pill, n) => {
-        const p = t - scene.cards[n].at, k = back(p / .6)
-        pill.style.opacity = ease(p / .35); pill.style.left = `${[560, 960, 1360][n]}px`; pill.style.transform = `translateX(-50%) translateY(${(1 - k) * 40}px) scale(${lerp(.7, 1, k)})`
+        const p = t - (scene.cards[n] || { at: scene.start }).at, k = back(p / .6)
+        pill.style.opacity = ease(p / .35); pill.style.left = `${([[960], [700, 1220], [560, 960, 1360]][Math.min(3, cards.length) - 1] || [])[n] ?? 960}px`; pill.style.transform = `translateX(-50%) translateY(${(1 - k) * 40}px) scale(${lerp(.7, 1, k)})`
       })
     }
     if (scene.layout === "control") {
@@ -336,7 +348,7 @@ window.renderAt = function renderAt(t) {
       })
       scene.el.querySelectorAll(".pill").forEach((pill, n) => {
         const p = t - scene.cards[n].at, k = back(p / .6)
-        pill.style.opacity = ease(p / .35); pill.style.top = `${[760, 838][n]}px`; pill.style.transform = `translateX(-50%) scale(${lerp(.6, 1, k)})`
+        pill.style.opacity = ease(p / .35); pill.style.top = `${[760, 838, 916][n] ?? 916}px`; pill.style.transform = `translateX(-50%) scale(${lerp(.6, 1, k)})`
       })
     }
     if (scene.layout === "outro") {

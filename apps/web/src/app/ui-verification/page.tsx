@@ -3,6 +3,7 @@ import { WhatsAppInbox, WhatsAppSectionShell } from "@/components/app-shell/what
 import { AppShell } from "@/components/app-shell/app-shell"
 import { InboxHub } from "@/components/app-shell/inbox-hub"
 import { notFound } from "next/navigation"
+import { ComingSoon } from "@/components/early-access/coming-soon"
 import { ChatWorkspace } from "@/components/chat/chat-workspace"
 import { AutomationWorkspace } from "@/components/automation/automation-workspace"
 import { HunterClient } from "@/app/(app)/app/(leads-module)/hunter/hunter-client"
@@ -14,6 +15,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace />
   if (workspace === "automation-flow") return <AutomationWorkspace />
+  if (workspace === "soon-whatsapp" || workspace === "soon-chat" || workspace === "soon-automation") return <ComingSoon module={workspace.slice(5) as "whatsapp" | "chat" | "automation"} />
   if (workspace === "whatsapp") return <WhatsAppInbox conversations={view === "empty" ? [] : previewConversations} canSend />
   if (workspace === "automation") return <WhatsAppSectionShell title="Automação"><WhatsAppWebWorkspace entries={previewEntries} /></WhatsAppSectionShell>
   const content = workspace === "hunter" ? <HunterClient />

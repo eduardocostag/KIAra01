@@ -6,17 +6,17 @@ import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { blobBase64, chatRequest, isolatedHtml, parseChatReply, parseChatStatus, validateChatAudio, type ChatArtifact, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
+import { blobBase64, chatRequest, fetchVideo, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { cn } from "@/lib/utils"
 import { VoiceConversation, type VoiceBackends } from "./voice-conversation"
 
-type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan }
+type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
 
 const modes = [
   { id: "chat", label: "Conversar", icon: MessageCircle, placeholder: "Pergunte qualquer coisa à Kiara" },
   { id: "image", label: "Imagem", icon: ImagePlus, placeholder: "Descreva a imagem que você quer criar" },
-  { id: "video", label: "Vídeo", icon: Video, placeholder: "Descreva o vídeo: cenas, movimento e estilo" },
+  { id: "video", label: "Vídeo", icon: Video, placeholder: "Descreva o vídeo: para quem é, o que mostrar e o tom" },
   { id: "website", label: "Site", icon: Globe2, placeholder: "Descreva o site: público, páginas e identidade" },
   { id: "dashboard", label: "Dashboard", icon: ChartNoAxesCombined, placeholder: "Descreva os indicadores e filtros do dashboard" },
   { id: "automation", label: "Tarefa", icon: Workflow, placeholder: "Descreva o objetivo e a Kiara prepara um plano" },
@@ -26,6 +26,7 @@ const suggestions = [
   { mode: "chat" as const, title: "Organizar prioridades", text: "Ajude a organizar as prioridades da minha operação e sugira próximos passos." },
   { mode: "website" as const, title: "Criar um site", text: "Crie um site institucional responsivo com apresentação, serviços, perguntas frequentes e contato." },
   { mode: "dashboard" as const, title: "Montar um dashboard", text: "Crie um dashboard comercial com indicadores e filtros. Identifique claramente os dados de demonstração." },
+  { mode: "video" as const, title: "Vídeo de apresentação", text: "Crie um vídeo de apresentação da Kiara para Ana e Pedro, mostrando os módulos Leads e WhatsApp, com tom profissional e animado." },
   { mode: "automation" as const, title: "Planejar uma tarefa", text: "Prepare um plano revisável para organizar arquivos e automatizar tarefas recorrentes no computador." },
 ]
 const HISTORY_LIMIT = 30
@@ -72,6 +73,41 @@ function Artifact({ artifact }: { artifact: ChatArtifact }) {
       <Button type="button" size="sm" variant="outline" onClick={() => saveArtifact(artifact)} aria-label={`Baixar ${artifact.name}`}><Download aria-hidden="true" />Baixar</Button>
     </div>
     {preview && <iframe className="h-[480px] w-full border-t bg-white" title={`Prévia de ${artifact.name}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={isolatedHtml(artifact.content)} />}
+  </section>
+}
+
+/** A presentation video being produced on this computer: progress while rendering, player when done. */
+function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: ChatTransport }) {
+  const [job, setJob] = useState(initial)
+  const [url, setUrl] = useState("")
+  const [error, setError] = useState("")
+  useEffect(() => {
+    if (job.status !== "running") return
+    const timer = setTimeout(async () => {
+      try { const payload = await chatRequest(transport, "video", { action: "status", job_id: job.id }) as { video?: unknown }; setJob(parseVideoJob(payload.video)) }
+      catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível acompanhar o vídeo.") }
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [job, transport])
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+  async function load() {
+    setError("")
+    try { setUrl(URL.createObjectURL(await fetchVideo(job.id))) } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
+  }
+  const name = `kiara-video-${job.id.slice(0, 8)}.mp4`
+  return <section className="mt-3 overflow-hidden rounded-2xl border" aria-label="Vídeo da Kiara">
+    <div className="flex flex-wrap items-center gap-3 p-3">
+      <Video className="size-5 text-primary" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{job.title || "Vídeo de apresentação"}</p>
+        <p className="text-xs text-muted-foreground" role="status">{job.status === "failed" ? job.error : job.status === "done" ? `Pronto${job.duration ? ` · ${Math.floor(job.duration / 60)}min${String(Math.round(job.duration % 60)).padStart(2, "0")}` : ""} · gerado neste computador` : job.message}</p>
+      </div>
+      {job.status === "done" && !url ? <Button type="button" size="sm" variant="outline" onClick={() => void load()}><Video aria-hidden="true" />Assistir</Button> : null}
+      {url ? <Button type="button" size="sm" variant="outline" asChild><a href={url} download={name}><Download aria-hidden="true" />Baixar</a></Button> : null}
+    </div>
+    {job.status === "running" ? <div className="h-1 bg-muted"><div className="h-full bg-primary transition-[width] duration-700" style={{ width: `${Math.max(3, job.progress * 100)}%` }} /></div> : null}
+    {url ? <video className="aspect-video w-full border-t bg-black" src={url} controls autoPlay playsInline /> : null}
+    {error ? <p className="border-t px-3 py-2 text-xs text-destructive">{error}</p> : null}
   </section>
 }
 
@@ -214,9 +250,9 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
     abortRef.current = controller
     try {
       const action = mode === "chat" ? "chat" : mode === "website" || mode === "dashboard" ? "build" : mode === "automation" ? "plan" : mode
-      const body = mode === "chat" ? { messages: boundedHistory(history) } : action === "build" ? { prompt: content, kind: mode } : { prompt: content }
+      const body = mode === "chat" ? { messages: boundedHistory(history) } : action === "build" ? { prompt: content, kind: mode } : mode === "video" ? { action: "start", prompt: content } : { prompt: content }
       const reply = parseChatReply(await chatRequest(transport, action, body, controller.signal))
-      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan })
+      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video })
     } catch (reason) {
       if (controller.signal.aborted) setNotice("Geração interrompida. A solicitação pode já ter sido recebida pelo serviço.")
       else { setError(reason instanceof Error ? reason.message : "Não foi possível concluir a resposta."); setDraft(content) }
@@ -391,6 +427,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
               <div className="min-w-0 flex-1">
                 <div className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</div>
                 {message.artifact && <Artifact artifact={message.artifact} />}
+                {message.video && <VideoJob initial={message.video} transport={transport} />}
                 {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}
                 <div className="mt-1 flex gap-0.5 text-muted-foreground">
                   <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void copy(message)} aria-label="Copiar resposta">{copied === message.id ? <Check /> : <Copy />}</Button>
