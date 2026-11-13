@@ -49,7 +49,6 @@ const navConfigs = {
     { href: "/app/leads", label: "Visão geral", icon: House },
     { href: "/app/hunter", label: "Buscar leads", icon: Search },
     { href: "/app/pipeline", label: "Contatos", icon: UsersRound },
-    { href: "/app/settings", label: "Configurações", icon: Settings2 },
   ],
   "/app/whatsapp": [
     { href: "/app/whatsapp", label: "Visão geral", icon: House },
@@ -78,20 +77,15 @@ const navConfigs = {
 
 function Navigation({
   onNavigate,
-  isSystemAdmin,
   modulePrefix,
 }: {
   onNavigate?: () => void;
-  isSystemAdmin: boolean;
   modulePrefix: string;
 }) {
   const pathname = usePathname();
   const hash = useSyncExternalStore(subscribeHash, currentHash, emptyHash);
-  let items = navConfigs[modulePrefix as keyof typeof navConfigs] || [];
+  const items = navConfigs[modulePrefix as keyof typeof navConfigs] || [];
 
-  if (isSystemAdmin && modulePrefix === "/app/leads") {
-     items = [...items, { href: "/app/admin", label: "Administração", icon: ShieldCheck }];
-  }
 
   return (
     <nav aria-label="Navegação do módulo" className="kiara-shell-nav space-y-2">
@@ -122,9 +116,9 @@ function Navigation({
 
 export function AppShell({
   children,
-  isSystemAdmin = false,
 }: {
   children: React.ReactNode;
+  /** Kept for callers; Administração is now reached from the module selector. */
   isSystemAdmin?: boolean;
 }) {
   const pathname = usePathname();
@@ -156,7 +150,7 @@ export function AppShell({
           </Link>
           {isWhatsApp && <div className="mb-5 flex items-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-3 py-3 text-sm font-semibold text-emerald-300"><MessageCircle className="size-4" aria-hidden="true" />WhatsApp</div>}
           {isChat && <div className="mb-5 flex items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/5 px-3 py-3 text-sm font-semibold text-violet-200"><Sparkles className="size-4" aria-hidden="true" />KIARA Chat</div>}
-          <Navigation isSystemAdmin={isSystemAdmin} modulePrefix={modulePrefix!} />
+          <Navigation modulePrefix={modulePrefix!} />
           <div className="kiara-shell-sidebar-footer mt-auto px-2 pt-5">
             {isWhatsApp && <p className="mb-3 text-xs leading-5 text-sidebar-foreground/60">Conexão e análise local.<br />Automação em área própria.</p>}
             {isChat && <p className="mb-3 text-xs leading-5 text-sidebar-foreground/60">Converse, crie e planeje.<br />Recursos conforme conexão.</p>}
@@ -165,12 +159,13 @@ export function AppShell({
         </aside>
       )}
 
-      {/* Header simplificado para Plataforma/Selector */}
+      {/* Pages outside a module (settings, administration, platform): simple top bar back to the modules. */}
       {!isModuleActive && pathname !== "/app" && (
-        <header className="fixed top-0 left-0 z-30 flex w-full items-center border-b border-border bg-background/80 px-6 py-4 backdrop-blur-xl">
-           <Link href="/app" className="flex items-center gap-2 font-medium text-muted-foreground hover:text-foreground">
-             <Menu className="size-4" /> Voltar ao Início
+        <header className="fixed top-0 left-0 z-30 flex w-full items-center gap-4 border-b border-border bg-background/80 px-5 py-3 backdrop-blur-xl sm:px-8">
+           <Link href="/app" className="flex min-h-10 items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+             <ArrowLeft className="size-4" aria-hidden="true" /> Módulos
            </Link>
+           <span className="ml-auto"><KiaraBrand inverse /></span>
         </header>
       )}
 
@@ -179,7 +174,7 @@ export function AppShell({
           <Button
             variant="outline"
             size="icon"
-            className="fixed left-4 top-4 z-40 size-11 rounded-xl bg-background/90 shadow-lg backdrop-blur-xl md:hidden"
+            className={cn("fixed left-4 top-4 z-40 size-11 rounded-xl bg-background/90 shadow-lg backdrop-blur-xl md:hidden", !isModuleActive && "hidden")}
             aria-label="Abrir menu"
           >
             <Menu />
@@ -199,7 +194,6 @@ export function AppShell({
           <div className="mt-7">
             {isModuleActive && (
                 <Navigation
-                    isSystemAdmin={isSystemAdmin}
                     modulePrefix={modulePrefix!}
                     onNavigate={() => setMenuOpen(false)}
                 />
@@ -216,7 +210,7 @@ export function AppShell({
           tabIndex={-1}
           className={cn(
             "relative mx-auto min-h-screen w-full min-w-0 max-w-[1540px] outline-none sm:p-7",
-            isModuleActive ? "p-4 pt-20 md:pt-7 lg:p-8" : "p-0"
+            isModuleActive ? "p-4 pt-20 md:pt-7 lg:p-8" : pathname === "/app" ? "p-0 sm:p-0" : "px-4 pb-12 pt-24 sm:px-8 sm:pt-28"
           )}
         >
           {children}

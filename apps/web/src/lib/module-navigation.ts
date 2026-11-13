@@ -1,4 +1,5 @@
-const leadPaths = ["leads", "hunter", "pipeline", "concorrencia", "conteudo", "followups", "settings", "admin"]
+// Settings and administration live outside the modules (opened from the module selector).
+const leadPaths = ["leads", "hunter", "pipeline", "concorrencia", "conteudo", "followups"]
 // Conversations belong to the attendance side (WhatsApp), not to prospecting.
 const whatsappPaths = ["whatsapp", "inbox"]
 

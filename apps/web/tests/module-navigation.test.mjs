@@ -4,7 +4,8 @@ import { modulePrefixForPath, isModuleNavActive } from "../src/lib/module-naviga
 
 test("WhatsApp owns its pages while all lead routes keep their sidebar", () => {
   for (const path of ["/app/whatsapp", "/app/whatsapp/automacao", "/app/inbox", "/app/inbox/thread-1"]) assert.equal(modulePrefixForPath(path), "/app/whatsapp")
-  for (const path of ["/app/hunter", "/app/pipeline", "/app/leads/123", "/app/settings/integrations"]) assert.equal(modulePrefixForPath(path), "/app/leads")
+  for (const path of ["/app/hunter", "/app/pipeline", "/app/leads/123"]) assert.equal(modulePrefixForPath(path), "/app/leads")
+  for (const path of ["/app/settings", "/app/settings/integrations", "/app/admin"]) assert.equal(modulePrefixForPath(path), null)
   for (const path of ["/app/automation", "/app/automation/x"]) assert.equal(modulePrefixForPath(path), "/app/automation")
   for (const path of ["/app", "/app/platform", "/app/whatsapp-other"]) assert.equal(modulePrefixForPath(path), null)
 })
