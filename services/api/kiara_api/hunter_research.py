@@ -456,24 +456,15 @@ def lead_requirement_gaps(item: dict[str, Any], search: dict[str, Any]) -> list[
 
 
 def result_niche_matches(item: dict[str, Any], search: dict[str, Any]) -> bool:
-    """A provider ranking is not evidence that a business serves the niche."""
-    from .hunter_intelligence import understand_search
+    """A provider ranking is not evidence that a business serves the niche (see niche_match)."""
+    from .niche_match import matches_niche
 
     query = research_options(search)["provider_query"]
-    plan = understand_search(query)
-    terms = plan["services"] or plan["alternatives"] or [query]
     data = item.get("public_data") or {}
-    observed = folded(" ".join(str(value or "") for value in (
+    observed = " ".join(str(value or "") for value in (
         item.get("title"), item.get("summary"), data.get("profile_bio"), data.get("category"),
-    )))
-    for term in terms:
-        words = re.findall(r"[a-z0-9]+", folded(term))
-        if not words:
-            continue
-        pattern = r"\W+".join(re.escape(word.rstrip("s")) + r"s?" for word in words)
-        if re.search(r"(?<!\w)" + pattern + r"(?!\w)", observed):
-            return True
-    return False
+    ))
+    return matches_niche(query, observed)
 
 
 def is_editorial_or_post(item: dict[str, Any]) -> bool:
