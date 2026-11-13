@@ -151,3 +151,15 @@ def test_maps_panel_reputation_is_parsed_from_brazilian_formats():
                              {"title": "Padaria X", "loaded": True, "phone": "5133334444", "address": "Rua A, 1 - Porto Alegre - RS",
                               "rating": "4,7", "reviews": "1.234 avaliações"})
     assert row["public_data"]["rating"] == 4.7 and row["public_data"]["user_rating_count"] == 1234
+
+
+def test_temperature_is_relative_to_the_search_with_absolute_floors():
+    from kiara_api.hunter_research import assign_relative_temperature
+
+    rows = [{"public_data": {"lead_score": score}} for score in (90, 85, 80, 70, 65, 60, 40, 25, 20)]
+    assign_relative_temperature(rows)
+    temps = [row["public_data"]["temperature"] for row in rows]
+    assert temps == ["hot", "hot", "hot", "warm", "warm", "warm", "cold", "cold", "cold"]
+    weak = [{"public_data": {"lead_score": 45}}, {"public_data": {"lead_score": 10}}]
+    assign_relative_temperature(weak)
+    assert [row["public_data"]["temperature"] for row in weak] == ["warm", "cold"]

@@ -660,6 +660,27 @@ TIER_LABELS = {"confirmed": "Confirmado", "probable": "Provável", "to_review": 
 TIER_PENALTY = {"confirmed": 0, "probable": 8, "to_review": 22}
 
 
+def assign_relative_temperature(results: list[dict[str, Any]]) -> None:
+    """Hot / warm / cold relative to this search, so the card always says where to start.
+
+    The strongest third (by lead score) is hot, the next third warm, the rest cold. Absolute floors
+    still apply: a weak lead (score < 30, e.g. no contact) is never above cold, and only leads with
+    score >= 50 can be hot.
+    """
+    ranked = sorted((row for row in results if row.get("public_data", {}).get("lead_score") is not None),
+                    key=lambda row: -row["public_data"]["lead_score"])
+    total = len(ranked)
+    for position, row in enumerate(ranked):
+        data = row["public_data"]
+        share = position / total
+        temperature = "hot" if share < 1 / 3 else "warm" if share < 2 / 3 else "cold"
+        if data["lead_score"] < 30:
+            temperature = "cold"
+        elif temperature == "hot" and data["lead_score"] < 50:
+            temperature = "warm"
+        data["temperature"] = temperature
+
+
 def _verified_elsewhere(item: dict[str, Any], search: dict[str, Any]) -> bool:
     """A verified address in another city is a different market, not a weaker lead."""
     data = item["public_data"]

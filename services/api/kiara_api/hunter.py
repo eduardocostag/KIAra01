@@ -32,6 +32,7 @@ from .http.errors import ApiError
 from .hunter_crm import sync_hunter_results
 from .hunter_intelligence import expand_provider_query, understand_search
 from .hunter_research import (
+    assign_relative_temperature,
     canonical_public_identity,
     clean_summary,
     extract_contacts,
@@ -2052,6 +2053,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     # confirmed > probable > to review): weaker leads only appear when confirmed ones run out,
     # labeled on the card, so a search is never empty just because confirmation failed.
     results = results[:search["result_limit"]]
+    assign_relative_temperature(results)
     validation["accepted"] = len(results)
     if options["website_filter"] == "without_website":
         warnings.append("Sem site significa que o campo Site não foi informado no perfil do Google Maps inspecionado; não prova que um site não existe.")
