@@ -1,11 +1,48 @@
 from __future__ import annotations
 
+import asyncio
+import json
+from pathlib import Path
 from typing import Any, ClassVar
 
 from app.models import PermissionLevel, ToolResult
 from app.perception import ScreenPerception
 from app.tools.base import Tool
 from app.web_studio import BusinessSiteGenerator, SitePreviewValidator
+
+
+class LandingPageTemplatesTool(Tool):
+    name = "landing_page_templates"
+    description = "Lista os templates do Landing Page System ou cria uma prévia local isolada e demonstrativa, sem publicação."
+    permission_level = PermissionLevel.SENSITIVE_ACTION
+    schema: ClassVar[dict[str, Any]] = {
+        "properties": {"action": {"type": "string", "enum": ["list", "preview"]},
+                       "template": {"type": "string", "maxLength": 100}},
+        "required": ["action"], "additionalProperties": False,
+    }
+
+    def __init__(self, output_root: Path) -> None:
+        self.output_root = output_root
+
+    def validate(self, parameters: dict[str, Any]) -> None:
+        if parameters.keys() - {"action", "template"} or parameters.get("action") not in {"list", "preview"}:
+            raise ValueError("Use action=list ou preview.")
+        if parameters["action"] == "preview" and (
+            not isinstance(parameters.get("template"), str) or not 1 <= len(parameters["template"]) <= 100
+        ):
+            raise ValueError("Informe um template do catálogo.")
+
+    async def execute(self, action: str, template: str = "", **_: Any) -> ToolResult:
+        from app.web_studio.landing_system import build_template_preview, template_catalog
+
+        self.validate({"action": action, "template": template})
+        if action == "list":
+            items = template_catalog()
+            return ToolResult(True, output=json.dumps(items, ensure_ascii=False), metadata={"templates": items})
+        destination = await asyncio.to_thread(build_template_preview, template, self.output_root)
+        return ToolResult(True, output=f"Prévia demonstrativa criada em {destination}. Personalize e valide antes de publicar.",
+                          metadata={"project_path": str(destination), "published": False,
+                                    "personalized": False, "quality_verified": False})
 
 
 class GenerateBusinessSiteTool(Tool):

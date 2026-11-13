@@ -107,10 +107,13 @@ class BusinessSiteGenerator:
 
     @staticmethod
     def _project_prompt(name: str, information: str, design: str) -> str:
+        from app.web_studio.landing_system import generation_guidance
+
         return json.dumps(
             {
                 "task": "Create a complete responsive static website from the reference image.",
                 "business_name": name,
+                "landing_page_system": generation_guidance(),
                 "business_information": information,
                 "untrusted_visual_design_observation": design,
                 "requirements": [

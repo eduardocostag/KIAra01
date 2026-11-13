@@ -1,0 +1,43 @@
+{
+  "passed": false,
+  "title": "Clínica Aura — Odontologia",
+  "external_requests": [],
+  "accessibility_issues": [],
+  "viewports": [
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": false,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      ],
+      "page_errors": [],
+      "screenshot_checked": true
+    },
+    {
+      "name": "tablet",
+      "width": 768,
+      "height": 1024,
+      "horizontal_overflow": false,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 404 (File not found)",
+        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      ],
+      "page_errors": [],
+      "screenshot_checked": true
+    },
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "horizontal_overflow": false,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 404 (File not found)",
+        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      ],
+      "page_errors": [],
+      "screenshot_checked": true
+    }
+  ]
+}

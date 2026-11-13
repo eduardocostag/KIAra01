@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "global": {
+    "required": ["professional.name", "location.city", "location.neighborhood", "location.address", "location.mapUrl", "contact.whatsapp", "contact.email", "seo.canonical", "seo.ogImage"],
+    "rules": [
+      "Remover noindex somente após validação completa.",
+      "Nenhum CTA pode usar # ou contato fictício.",
+      "Depoimentos, avaliações, números e antes/depois exigem autorização e fonte.",
+      "Preços devem indicar escopo, validade e condições; caso contrário usar orçamento.",
+      "Imagens do profissional e clientes exigem autorização de uso."
+    ]
+  },
+  "beauty": {
+    "appliesTo": ["barbearia", "salao", "estetica", "manicure", "sobrancelhas"],
+    "required": ["business.hours", "business.cancellationPolicy", "services[].realPriceOrQuote", "portfolio[].approved"],
+    "rules": ["Informar duração, manutenção, contraindicações e teste de mecha/alergia quando aplicável.", "Antes/depois não pode prometer resultado idêntico."]
+  },
+  "dental": {
+    "appliesTo": ["odontologia", "odontopediatria"],
+    "required": ["professional.registration", "professional.credentials", "clinic.technicalResponsible", "clinic.emergencyInstructions"],
+    "rules": ["Validar publicidade com as regras vigentes do CFO/CRO.", "Não publicar diagnóstico, garantia, preço promocional ou antes/depois sem revisão ética profissional."]
+  },
+  "fitness": {
+    "appliesTo": ["educacao-fisica", "personal-trainer"],
+    "required": ["professional.registration", "professional.credentials", "serviceArea", "healthScreeningFlow"],
+    "rules": ["Informar que resultados variam e dependem de adesão e condições individuais.", "Coletar PAR-Q/anamnese por canal seguro e nunca no HTML público."]
+  }
+}

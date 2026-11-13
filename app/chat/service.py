@@ -15,7 +15,9 @@ from uuid import uuid4
 from app.providers.remote import OllamaProvider
 from app.security.redaction import redact_text
 from app.voice.adapters import FasterWhisperRecognizer, normalize_text_for_speech
-from app.voice.kiara_style import RATE as KIARA_RATE, VOICE as KIARA_VOICE, spoken
+from app.voice.kiara_style import RATE as KIARA_RATE
+from app.voice.kiara_style import VOICE as KIARA_VOICE
+from app.voice.kiara_style import spoken
 from app.web_studio.generator import BusinessSiteGenerator
 from app.whatsapp.site_auth import _NoRedirect
 
@@ -180,7 +182,7 @@ class LocalChatService:
             raise ChatError(422, "Escolha website ou dashboard.")
         instructions = BusinessSiteGenerator._project_prompt(
             "Projeto Kiara", f"Tipo: {kind}. Pedido do usuário: {prompt}",
-            "Design escuro elegante, contraste legível, layout responsivo; nenhum dado inventado.",
+            "Direção visual específica ao segmento, contraste legível e layout responsivo; use o acervo kiara-web-studio como referência e não invente dados.",
         )
         raw = await self._generate(SYSTEM + "\n" + instructions)
         try:

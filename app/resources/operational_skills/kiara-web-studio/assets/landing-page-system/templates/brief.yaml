@@ -1,0 +1,75 @@
+project:
+  name: ""
+  owner: ""
+  launch_date: ""
+
+business:
+  offer: ""
+  primary_audience: ""
+  awareness_stage: "problem-aware | solution-aware | product-aware"
+  primary_conversion: ""
+  primary_kpi: ""
+  baseline: "unknown"
+
+message:
+  problem: ""
+  promise: ""
+  mechanism: ""
+  primary_headline: ""
+  supporting_copy: ""
+  objections: []
+  proofs:
+    - type: "case | metric | testimonial | demo | credential"
+      content: ""
+      source: ""
+
+brand:
+  voice: []
+  visual_keywords: []
+  avoid: []
+  assets_available: []
+  references:
+    - url: ""
+      use: ""
+      avoid: ""
+
+experience:
+  composition: "editorial | modular | immersive | product-first"
+  contrast: "dark-luminous | light-technical | chromatic | monochrome"
+  geometry: "precise | organic | brutalist | soft"
+  image_language: "photography | 3d | product | typography | illustration"
+  motion_language: "cinematic | physical | minimal | data-driven"
+  hero_concept: ""
+  signature_moment: ""
+
+sections:
+  required: []
+  optional: []
+
+conversion:
+  primary_cta:
+    label: ""
+    destination: ""
+  secondary_cta:
+    label: ""
+    destination: ""
+  integrations: []
+  events: []
+
+constraints:
+  locales: ["pt-BR"]
+  browsers: ["latest Chrome", "latest Safari", "latest Firefox", "latest Edge"]
+  target_viewports: [320, 375, 390, 414, 768, 1024, 1440, 1920]
+  content_deadline: ""
+  legal_privacy: []
+  technical: []
+
+acceptance:
+  performance_mobile_min: 90
+  accessibility_min: 95
+  seo_min: 95
+  max_initial_js_kb_gzip: 180
+  max_lcp_seconds_p75: 2.5
+  max_cls: 0.1
+  max_inp_ms_p75: 200
+

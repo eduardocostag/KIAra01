@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "status": "reference_only",
+  "repositories": [
+    {
+      "id": "landing-page-system",
+      "kind": "local_project",
+      "source": "C:\\Users\\EduardoGonçalves\\Desktop\\sites\\landing-page-system",
+      "status": "snapshot_imported",
+      "remote": null
+    },
+    {
+      "id": "eduardocostag/landing-cinema-generator",
+      "kind": "huggingface_space",
+      "url": "https://huggingface.co/spaces/eduardocostag/landing-cinema-generator",
+      "engine": "light",
+      "status": "reference_only"
+    },
+    {
+      "id": "Lightricks/ltx-video-distilled",
+      "kind": "huggingface_space",
+      "url": "https://huggingface.co/spaces/Lightricks/ltx-video-distilled",
+      "engine": "real",
+      "default": true,
+      "status": "reference_only",
+      "local_source": "C:\\Users\\EduardoGonçalves\\Desktop\\sites\\landing-page-system\\.tools\\ltx-space-source",
+      "evidence": [
+        "assets/landing-page-system/upstream/ltx-video-distilled/app.py"
+      ]
+    },
+    {
+      "id": "Lightricks/LTX-Video",
+      "kind": "github_repository",
+      "url": "https://github.com/Lightricks/LTX-Video",
+      "status": "reference_only",
+      "evidence": [
+        "assets/landing-page-system/upstream/ltx-video-distilled/app.py"
+      ]
+    },
+    {
+      "id": "Lightricks/LTX-Video",
+      "kind": "huggingface_model",
+      "url": "https://huggingface.co/Lightricks/LTX-Video",
+      "checkpoint": "ltxv-13b-0.9.8-distilled.safetensors",
+      "status": "reference_only",
+      "evidence": [
+        "assets/landing-page-system/upstream/ltx-video-distilled/app.py"
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "name": "advogado-template-1",
+      "segment": "advogado",
+      "files": 3,
+      "bytes": 73790
+    },
+    {
+      "name": "advogado-template-2",
+      "segment": "advogado",
+      "files": 3,
+      "bytes": 90651
+    },
+    {
+      "name": "advogado-template-3",
+      "segment": "advogado",
+      "files": 3,
+      "bytes": 84782
+    },
+    {
+      "name": "advogado-template-4",
+      "segment": "advogado",
+      "files": 3,
+      "bytes": 95064
+    },
+    {
+      "name": "advogado-template-5",
+      "segment": "advogado",
+      "files": 3,
+      "bytes": 65377
+    },
+    {
+      "name": "beleza-template-1",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 474994
+    },
+    {
+      "name": "beleza-template-2",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 475162
+    },
+    {
+      "name": "beleza-template-3",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 448095
+    },
+    {
+      "name": "beleza-template-4",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 448224
+    },
+    {
+      "name": "beleza-template-5",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 447784
+    },
+    {
+      "name": "beleza-template-6",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 448343
+    },
+    {
+      "name": "beleza-template-7",
+      "segment": "beleza",
+      "files": 8,
+      "bytes": 448270
+    },
+    {
+      "name": "dentista-template-1",
+      "segment": "dentista",
+      "files": 7,
+      "bytes": 408385
+    },
+    {
+      "name": "dentista-template-2",
+      "segment": "dentista",
+      "files": 7,
+      "bytes": 408766
+    },
+    {
+      "name": "dentista-template-3",
+      "segment": "dentista",
+      "files": 7,
+      "bytes": 375134
+    },
+    {
+      "name": "dentista-template-4",
+      "segment": "dentista",
+      "files": 7,
+      "bytes": 408477
+    },
+    {
+      "name": "dentista-template-5",
+      "segment": "dentista",
+      "files": 7,
+      "bytes": 408592
+    },
+    {
+      "name": "educador-fisico-template-1",
+      "segment": "educador-fisico",
+      "files": 34,
+      "bytes": 2036639
+    },
+    {
+      "name": "educador-fisico-template-2",
+      "segment": "educador-fisico",
+      "files": 33,
+      "bytes": 1990566
+    },
+    {
+      "name": "educador-fisico-template-3",
+      "segment": "educador-fisico",
+      "files": 33,
+      "bytes": 1990992
+    },
+    {
+      "name": "educador-fisico-template-4",
+      "segment": "educador-fisico",
+      "files": 35,
+      "bytes": 2245684
+    },
+    {
+      "name": "educador-fisico-template-5",
+      "segment": "educador-fisico",
+      "files": 33,
+      "bytes": 1989865
+    },
+    {
+      "name": "nutricionista-template-1",
+      "segment": "nutricionista",
+      "files": 3,
+      "bytes": 71022
+    },
+    {
+      "name": "nutricionista-template-2",
+      "segment": "nutricionista",
+      "files": 3,
+      "bytes": 65011
+    },
+    {
+      "name": "nutricionista-template-3",
+      "segment": "nutricionista",
+      "files": 3,
+      "bytes": 85580
+    },
+    {
+      "name": "nutricionista-template-4",
+      "segment": "nutricionista",
+      "files": 3,
+      "bytes": 84746
+    },
+    {
+      "name": "nutricionista-template-5",
+      "segment": "nutricionista",
+      "files": 3,
+      "bytes": 79477
+    },
+    {
+      "name": "personal-trainer",
+      "segment": "personal-trainer",
+      "files": 8,
+      "bytes": 434060
+    },
+    {
+      "name": "psicologo-template-1",
+      "segment": "psicologo",
+      "files": 3,
+      "bytes": 86231
+    },
+    {
+      "name": "psicologo-template-2",
+      "segment": "psicologo",
+      "files": 3,
+      "bytes": 137703
+    },
+    {
+      "name": "psicologo-template-3",
+      "segment": "psicologo",
+      "files": 3,
+      "bytes": 67355
+    },
+    {
+      "name": "psicologo-template-4",
+      "segment": "psicologo",
+      "files": 3,
+      "bytes": 87156
+    },
+    {
+      "name": "psicologo-template-5",
+      "segment": "psicologo",
+      "files": 3,
+      "bytes": 64938
+    }
+  ],
+  "segments": {
+    "advogado": 5,
+    "beleza": 7,
+    "dentista": 5,
+    "educador-fisico": 5,
+    "nutricionista": 5,
+    "personal-trainer": 1,
+    "psicologo": 5
+  },
+  "skills": [
+    {
+      "name": "imagegen",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\skills\\.system\\imagegen",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/imagegen/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "sites",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\sites\\1.1.6\\skills\\sites",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/sites/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "sites-remix",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\sites\\1.1.6\\skills\\sites-remix",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/sites-remix/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "deployments-cicd",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\vercel\\0.54.1\\skills\\deployments-cicd",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/deployments-cicd/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "vercel-cli",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\vercel\\0.54.1\\skills\\vercel-cli",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/vercel-cli/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "env-vars",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\vercel\\0.54.1\\skills\\env-vars",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/env-vars/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "domains",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\vercel\\0.54.1\\skills\\domains",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/domains/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "verification",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\vercel\\0.54.1\\skills\\verification",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/verification/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    },
+    {
+      "name": "react-best-practices",
+      "source": "C:\\Users\\EduardoGonçalves\\.codex\\plugins\\cache\\openai-curated-remote\\vercel\\0.54.1\\skills\\react-best-practices",
+      "status": "reference_only",
+      "entrypoint": "references/upstream-skills/react-best-practices/SKILL.md",
+      "activation": "Requires the corresponding host skill/plugin and its own authorization; copying is not activation."
+    }
+  ],
+  "integrity_check": "python scripts/import_landing_page_system.py --verify"
+}

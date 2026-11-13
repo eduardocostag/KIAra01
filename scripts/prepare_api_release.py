@@ -31,7 +31,14 @@ def prepare_release(output: Path | None = None) -> dict[str, object]:
             if (not path.is_file() or path.is_symlink() or SKIP.intersection(relative.parts)
                     or any(part.startswith(".env") for part in relative.parts)):
                 continue
-            if path.suffix not in {".py", ".json", ".md", ".sql"} and path.name != "LICENSE":
+            landing_resource = prefix == "app" and relative.parts[:3] == (
+                "resources", "operational_skills", "kiara-web-studio",
+            )
+            landing_asset = landing_resource and path.suffix.lower() in {
+                ".html", ".css", ".js", ".mjs", ".yaml", ".yml", ".txt", ".ps1",
+                ".webp", ".avif", ".png", ".jpg", ".jpeg", ".svg", ".mp4", ".webm",
+            }
+            if path.suffix not in {".py", ".json", ".md", ".sql"} and path.name != "LICENSE" and not landing_asset:
                 continue
             target = destination / prefix / relative
             target.parent.mkdir(parents=True, exist_ok=True)

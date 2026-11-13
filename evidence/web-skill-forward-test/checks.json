@@ -1,0 +1,16 @@
+{
+  "artifact": "psicologo-template-1-02ca40e7bfce\\index.html",
+  "checks": {
+    "robots": true,
+    "scripts_removed": true,
+    "network_isolation_csp": true,
+    "no_contact_links": true,
+    "anchors_resolve": true,
+    "local_images_exist": true,
+    "page_budget": true,
+    "image_budget": true
+  },
+  "browser_verified": false,
+  "external_calls": false,
+  "published": false
+}

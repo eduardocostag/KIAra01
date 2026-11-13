@@ -11,7 +11,7 @@ from app.tools.base import Tool
 class OperationalSkillTool(Tool):
     name = "operational_skill"
     description = (
-        "Lista e lê skills de Google Maps, FreeLLMAPI, Instagram, Chatwoot e vídeos de apresentação (kiara-video-studio). "
+        "Lista e lê skills de Google Maps, FreeLLMAPI, Instagram, Chatwoot, sites (kiara-web-studio) e vídeos de apresentação (kiara-video-studio). "
         "action=list ou read; name identifica a skill; resource=SKILL.md ou referência JSON/MD. "
         "Instagram: use instagram_content_check para utilitários; caminhos ~/.claude/instagram "
         "dos exemplos upstream correspondem a data/instagram na Kiara. "

@@ -1,0 +1,81 @@
+/* CLINICAL TRUST — calm precision, measurable structure, generous white space */
+html[data-premium-family='clinical-trust'] {
+  --premium-paper:#f4f5ef; --premium-ink:#153630; --premium-muted:#62736d; --premium-accent:#74a698; --premium-accent-2:#c9a681;
+  --premium-display:'Playfair Display',Georgia,serif; --premium-radius-md:1.25rem;
+}
+html[data-premium-family='clinical-trust'] :where(h1,h2,.brand){font-family:var(--premium-display);font-weight:500;letter-spacing:-.045em}
+html[data-premium-family='clinical-trust'] :where(.card,article,[data-premium-card]){border:1px solid color-mix(in srgb,var(--premium-ink) 13%,transparent);background:color-mix(in srgb,#fff 72%,transparent);border-radius:var(--premium-radius-md)}
+html[data-premium-family='clinical-trust'] :where(.cards,[data-premium-grid]){gap:clamp(.75rem,2vw,1.5rem)}
+html[data-premium-family='clinical-trust'] :where(.photo,.portrait){border-radius:50% 50% 1.25rem 1.25rem;box-shadow:0 2.5rem 6rem rgb(21 54 48 / .14)}
+html[data-premium-tone='blush-clinic']{--premium-paper:#fbf5f3;--premium-ink:#422b32;--premium-accent:#b77b88;--premium-accent-2:#d5ab94}
+
+/* EDITORIAL LUXURY — expressive serif, asymmetry, restrained metallic accent */
+html[data-premium-family='editorial-luxury'] {
+  --premium-paper:#f2ede5; --premium-ink:#201a18; --premium-muted:#776b64; --premium-accent:#9f674b; --premium-accent-2:#c9a66b;
+  --premium-display:'Playfair Display',Georgia,serif; --premium-shadow:0 2.5rem 8rem rgb(37 25 20 / .18);
+}
+html[data-premium-family='editorial-luxury'] :where(h1,h2,.brand){font-family:var(--premium-display);font-weight:500;letter-spacing:-.055em;line-height:.94}
+html[data-premium-family='editorial-luxury'] :where(h1,h2) em{color:var(--premium-accent);font-weight:500}
+html[data-premium-family='editorial-luxury'] :where(.grid,[data-premium-grid]){column-gap:clamp(2rem,8vw,8rem)}
+html[data-premium-family='editorial-luxury'] :where(.card,article,[data-premium-card]){border:0;border-top:1px solid var(--premium-line);border-radius:0;background:transparent}
+html[data-premium-family='editorial-luxury'] :where(.photo,.portrait){border-radius:12rem 12rem .5rem .5rem;box-shadow:var(--premium-shadow)}
+html[data-premium-tone='plum-rose']{--premium-paper:#f4edf0;--premium-ink:#3e2531;--premium-accent:#a35f78;--premium-accent-2:#d4a6ad}
+html[data-premium-tone='ivory-gold']{--premium-paper:#faf7ef;--premium-ink:#29231d;--premium-accent:#9b793d;--premium-accent-2:#d2b675}
+html[data-premium-tone='terracotta']{--premium-paper:#f4ebe3;--premium-ink:#38231e;--premium-accent:#b56546;--premium-accent-2:#dda37c}
+
+/* LOCAL SERVICE — direct, tactile, memorable and conversion-led */
+html[data-premium-family='local-service'] {
+  --premium-paper:#e8e4da; --premium-ink:#17201f; --premium-muted:#53605d; --premium-accent:#df5a32; --premium-accent-2:#f0b84c;
+  --premium-display:'Manrope','Arial Black',sans-serif; --premium-radius-md:.65rem; --premium-shadow:.8rem .8rem 0 var(--premium-ink);
+}
+html[data-premium-family='local-service'] :where(h1,h2,.brand){font-family:var(--premium-display);font-weight:750;letter-spacing:-.07em;line-height:.85;text-transform:uppercase}
+html[data-premium-family='local-service'] :where(.card,article,[data-premium-card]){border:2px solid var(--premium-ink);border-radius:var(--premium-radius-md);background:var(--premium-paper)}
+html[data-premium-family='local-service'] :where(.card,article,[data-premium-card]):nth-child(even){background:var(--premium-accent);color:#fff}
+html[data-premium-family='local-service'] :where(.photo,.portrait){border:clamp(.35rem,.8vw,.75rem) solid #fff;border-radius:.5rem;box-shadow:var(--premium-shadow);rotate:-1.5deg}
+html[data-premium-tone='soft-sage']{--premium-paper:#eef0e7;--premium-ink:#26332d;--premium-accent:#829b7a;--premium-accent-2:#d7b993}
+html[data-premium-tone='warm-clay']{--premium-paper:#f2eadf;--premium-ink:#342b25;--premium-accent:#b87352;--premium-accent-2:#d8ad70}
+html[data-premium-tone='sand-orange']{--premium-paper:#ede5d5;--premium-ink:#252821;--premium-accent:#e67432;--premium-accent-2:#efc665}
+
+/* PERFORMANCE SYSTEM — instrument-panel rhythm, numeric proof, controlled glow */
+html[data-premium-family='performance-system'] {
+  --premium-paper:#071714; --premium-ink:#edf5f0; --premium-muted:#91a59d; --premium-accent:#43e3a0; --premium-accent-2:#a9ff56;
+  --premium-display:'Manrope',sans-serif; --premium-line:rgb(184 255 220 / .16); --premium-shadow:0 2rem 7rem rgb(21 255 163 / .12);
+}
+html[data-premium-family='performance-system'] body{background-color:var(--premium-paper);background-image:linear-gradient(var(--premium-line) 1px,transparent 1px),linear-gradient(90deg,var(--premium-line) 1px,transparent 1px);background-size:5rem 5rem}
+html[data-premium-family='performance-system'] :where(h1,h2,.brand){font-family:var(--premium-display);font-weight:750;letter-spacing:-.065em;line-height:.88;text-transform:uppercase}
+html[data-premium-family='performance-system'] :where(.card,article,[data-premium-card]){border:1px solid var(--premium-line);border-radius:.85rem;background:rgb(4 16 14 / .78);box-shadow:inset 0 1px rgb(255 255 255 / .05);backdrop-filter:blur(14px)}
+html[data-premium-family='performance-system'] :where(.photo,.portrait){border:1px solid var(--premium-line);border-radius:1.5rem;box-shadow:var(--premium-shadow)}
+html[data-premium-family='performance-system'] :where(small,.eyebrow,[data-kicker]){font-family:monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--premium-accent)}
+html[data-premium-tone='navy-cyan']{--premium-paper:#06141d;--premium-ink:#eef8fb;--premium-accent:#46d5ed;--premium-accent-2:#76f2c2}
+html[data-premium-tone='midnight-blue']{--premium-paper:#070d1c;--premium-ink:#f0f3fa;--premium-accent:#6aa8ff;--premium-accent-2:#a8ffdc}
+html[data-premium-tone='graphite-lime']{--premium-paper:#101310;--premium-ink:#f1f4ea;--premium-accent:#b9ed53;--premium-accent-2:#63dfad}
+
+/* PORTFOLIO FIRST — image-led gallery, quiet interface, cinematic crops */
+html[data-premium-family='portfolio-first'] {
+  --premium-paper:#f3efeb; --premium-ink:#211d1c; --premium-muted:#796f6b; --premium-accent:#a85d64; --premium-accent-2:#d6a27f;
+  --premium-display:'Playfair Display',Georgia,serif; --premium-shadow:0 2rem 6rem rgb(30 20 18 / .16);
+}
+html[data-premium-family='portfolio-first'] :where(h1,h2,.brand){font-family:var(--premium-display);font-weight:500;letter-spacing:-.05em;line-height:.92}
+html[data-premium-family='portfolio-first'] :where(.cards,[data-premium-grid]){display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(.5rem,1.5vw,1.25rem)}
+html[data-premium-family='portfolio-first'] :where(.card,article,[data-premium-card]){grid-column:span 4;padding:0;border:0;border-radius:.35rem;background:transparent;overflow:hidden}
+html[data-premium-family='portfolio-first'] :where(.card,article,[data-premium-card]):nth-child(2){transform:translateY(clamp(1.5rem,5vw,5rem))}
+html[data-premium-family='portfolio-first'] :where(.photo,.portrait){border-radius:.5rem;box-shadow:var(--premium-shadow)}
+html[data-premium-tone='pearl']{--premium-paper:#f6f4f1;--premium-ink:#2d2927;--premium-accent:#ae8d86;--premium-accent-2:#d9c1a9}
+
+/* FAMILY CARE — reassuring shapes, friendly hierarchy, zero-clinical anxiety */
+html[data-premium-family='family-care'] {
+  --premium-paper:#f6f1e8; --premium-ink:#213d3a; --premium-muted:#687b77; --premium-accent:#ef8e72; --premium-accent-2:#6baabd;
+  --premium-display:'Manrope',sans-serif; --premium-radius-md:2rem; --premium-shadow:0 2rem 5rem rgb(31 65 60 / .12);
+}
+html[data-premium-family='family-care'] :where(h1,h2,.brand){font-family:var(--premium-display);font-weight:650;letter-spacing:-.055em;line-height:.95}
+html[data-premium-family='family-care'] :where(.card,article,[data-premium-card]){border:1px solid color-mix(in srgb,var(--premium-ink) 10%,transparent);border-radius:var(--premium-radius-md);background:rgb(255 255 255 / .58)}
+html[data-premium-family='family-care'] :where(.card,article,[data-premium-card]):nth-child(3n+2){border-radius:5rem 2rem}
+html[data-premium-family='family-care'] :where(.photo,.portrait){border-radius:45% 55% 48% 52% / 55% 46% 54% 45%;box-shadow:var(--premium-shadow)}
+html[data-premium-tone='forest-sun']{--premium-paper:#f1f0df;--premium-ink:#294137;--premium-accent:#e6a846;--premium-accent-2:#73a678}
+
+@media(max-width:48rem){
+  html[data-premium-family='portfolio-first'] :where(.cards,[data-premium-grid]){grid-template-columns:1fr}
+  html[data-premium-family='portfolio-first'] :where(.card,article,[data-premium-card]){grid-column:auto}
+  html[data-premium-family='portfolio-first'] :where(.card,article,[data-premium-card]):nth-child(2){transform:none}
+  html[data-premium-family='local-service'] :where(.photo,.portrait){rotate:0;box-shadow:.4rem .4rem 0 var(--premium-ink)}
+}

@@ -46,8 +46,8 @@ class OperationalSkills:
         candidate = (path.parent / resource).resolve()
         if not candidate.is_relative_to(path.parent.resolve()):
             raise ValueError("Recurso fora da skill.")
-        if candidate.suffix.lower() not in {".md", ".json"} or not candidate.is_file():
-            raise ValueError("Somente referências Markdown/JSON da skill podem ser lidas.")
+        if candidate.suffix.lower() not in {".md", ".json", ".yaml", ".yml", ".txt"} or not candidate.is_file():
+            raise ValueError("Somente referências Markdown/JSON/YAML/TXT da skill podem ser lidas.")
         if candidate.stat().st_size > 100_000:
             raise ValueError("Referência excede o limite de leitura.")
         return candidate.read_text(encoding="utf-8-sig")[:20_000]
@@ -63,6 +63,7 @@ class OperationalSkills:
             "kiara-freellmapi": {"freellmapi"},
             "kiara-chatwoot": {"chatwoot"},
             "kiara-video-studio": {"video", "videos", "apresentacao", "narracao", "narrado", "mp4"},
+            "kiara-web-studio": {"site", "sites", "website", "landing", "pagina", "templates", "cinematografico", "ltx"},
             "ig-reel": {"reel", "reels", "roteiro", "gancho", "hook", "ganchos"},
             "ig-caption": {"legenda", "legendas", "caption", "hashtags"},
             "ig-carousel": {"carrossel", "carrosseis", "carousel", "slides"},

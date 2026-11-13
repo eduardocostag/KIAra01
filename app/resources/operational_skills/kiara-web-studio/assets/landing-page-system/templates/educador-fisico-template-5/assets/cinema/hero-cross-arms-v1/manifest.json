@@ -1,0 +1,23 @@
+﻿{
+    "schemaVersion":  1,
+    "id":  "hero-cross-arms-v1",
+    "generatedAt":  "2026-09-01T11:06:24.6678229Z",
+    "duration":  1.9,
+    "poster":  "assets/cinema/hero-cross-arms-v1/poster.webp",
+    "desktop":  {
+                    "type":  "sequence",
+                    "template":  "assets/cinema/hero-cross-arms-v1/frames/frame-{frame}.webp",
+                    "frames":  23,
+                    "fps":  12,
+                    "pad":  3
+                },
+    "mobile":  {
+                   "type":  "video",
+                   "src":  "assets/cinema/hero-cross-arms-v1/mobile.mp4",
+                   "duration":  1.9
+               },
+    "fallback":  {
+                     "type":  "poster",
+                     "src":  "assets/cinema/hero-cross-arms-v1/poster.webp"
+                 }
+}

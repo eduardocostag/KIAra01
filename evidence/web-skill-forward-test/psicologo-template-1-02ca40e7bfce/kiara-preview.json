@@ -1,0 +1,16 @@
+{
+  "template": "psicologo-template-1",
+  "published": false,
+  "personalized": "visual concept only",
+  "quality_verified": false,
+  "robots": "noindex, nofollow, noarchive",
+  "missing_real_data": [
+    "nome",
+    "telefone",
+    "cidade",
+    "registro profissional",
+    "formação",
+    "modalidades",
+    "fotografia autorizada"
+  ]
+}

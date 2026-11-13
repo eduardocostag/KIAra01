@@ -97,13 +97,15 @@ from app.tools.personal import (
 from app.tools.powershell import PowerShellTool
 from app.tools.registry import ToolRegistry
 from app.tools.social import SendSocialMessageTool
+from app.tools.video_studio import CreatePresentationVideoTool, PresentationVideoStatusTool
 from app.tools.web_studio import (
     GenerateBusinessSiteFromScreenTool,
     GenerateBusinessSiteTool,
+    LandingPageTemplatesTool,
     ValidateBusinessSiteTool,
 )
-from app.tools.video_studio import CreatePresentationVideoTool, PresentationVideoStatusTool
 from app.tools.windows import NetworkPingTool, OpenApplicationTool, OpenUrlTool, ScreenshotTool
+from app.video_studio.jobs import VideoJobs
 from app.voice.adapters import (
     EdgeNeuralSynthesizer,
     FasterWhisperRecognizer,
@@ -112,7 +114,6 @@ from app.voice.adapters import (
     SoundDeviceMicrophone,
 )
 from app.voice.service import VoiceService
-from app.video_studio.jobs import VideoJobs
 from app.web_studio import BusinessSiteGenerator, SitePreviewValidator
 from app.workflows import ConversationalWorkflowBuilder, WorkflowStore
 
@@ -385,6 +386,7 @@ def build_app(settings: Settings, confirm=None) -> tuple[AgentCore, KillSwitch]:
     site_validator = None
     if settings.get("web_studio.enabled", True):
         site_output_root = settings.root / settings.get("web_studio.output_root", "generated-sites")
+        registry.register(LandingPageTemplatesTool(site_output_root))
         site_validator = SitePreviewValidator(
             site_output_root,
             timeout_ms=int(settings.get("web_studio.preview_timeout_ms", 10_000)),

@@ -1,0 +1,22 @@
+{
+  "template": "dentista-template-1",
+  "mode": "preview",
+  "site": {
+    "name": "Clínica Aura",
+    "description": "Demonstração de landing page premium para odontologia.",
+    "canonicalUrl": ""
+  },
+  "professional": {
+    "name": "",
+    "role": "Cirurgião-dentista",
+    "credential": ""
+  },
+  "contact": {
+    "whatsapp": ""
+  },
+  "location": {
+    "street": "",
+    "city": "",
+    "region": ""
+  }
+}

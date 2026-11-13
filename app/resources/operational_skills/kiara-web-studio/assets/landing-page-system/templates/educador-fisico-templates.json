@@ -1,0 +1,11 @@
+{
+  "collection": "Educador Físico",
+  "version": 1,
+  "templates": [
+    {"id": 1, "slug": "educador-fisico-template-1", "name": "Cinematic Performance", "palette": "verde escuro, lima e ciano", "layout": "cinematográfico imersivo", "motion": "vídeo IA, entrada lateral, parallax, partículas e 3D"},
+    {"id": 2, "slug": "educador-fisico-template-2", "name": "Editorial Motion", "palette": "marfim, grafite e laranja", "layout": "editorial assimétrico", "motion": "scroll editorial, carimbo orbital e marquee"},
+    {"id": 3, "slug": "educador-fisico-template-3", "name": "Athletic Lab", "palette": "azul-noturno e verde neon", "layout": "painel esportivo técnico", "motion": "hero fixo, vídeo em recorte e cards 3D"},
+    {"id": 4, "slug": "educador-fisico-template-4", "name": "Essential Woman", "audience": "feminino", "palette": "areia, floresta e terracota", "layout": "luxo orgânico dividido", "motion": "retrato vivo, formas respirando e reveals"},
+    {"id": 5, "slug": "educador-fisico-template-5", "name": "Kinetic Energy", "palette": "azul-claro, royal e laranja", "layout": "geométrico jovem e expressivo", "motion": "tipografia cinética, vídeo inclinado e scroll morph"}
+  ]
+}

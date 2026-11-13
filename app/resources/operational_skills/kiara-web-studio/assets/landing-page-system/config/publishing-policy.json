@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "templateRoot": "templates",
+  "outputRoot": "dist",
+  "templatePattern": "*-template-*",
+  "assetBudgets": {
+    "imageBytes": 750000,
+    "videoBytes": 6000000,
+    "totalPageBytes": 9000000
+  },
+  "productionRequired": [
+    "site.name",
+    "site.description",
+    "site.canonicalUrl",
+    "professional.name",
+    "professional.role",
+    "contact.whatsapp",
+    "location.street",
+    "location.city",
+    "location.region"
+  ],
+  "credentialRequiredFor": ["dentista", "educador-fisico", "personal-trainer", "psicologo", "nutricionista", "advogado"],
+  "forbiddenProductionPatterns": [
+    "Configure cidade",
+    "Endereço do profissional",
+    "Nome do profissional",
+    "SEU_NOME",
+    "SEU_NUMERO",
+    "href=\"#\"",
+    "href='#'"
+  ],
+  "previewRobots": "noindex, nofollow, noarchive",
+  "productionRobots": "index, follow, max-image-preview:large"
+}
