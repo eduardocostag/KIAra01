@@ -1,0 +1,20 @@
+[Unit]
+Description=OmniRoute (roteador de modelos de IA da Kiara)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=@USER@
+Group=@USER@
+WorkingDirectory=@HOME@
+Environment=HOME=@HOME@
+Environment=NODE_ENV=production
+# Settings, provider keys and STORAGE_ENCRYPTION_KEY live in @HOME@/.omniroute.
+ExecStart=/usr/bin/env omniroute serve --port 20128 --no-open --no-tray
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

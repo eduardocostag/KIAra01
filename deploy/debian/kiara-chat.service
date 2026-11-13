@@ -1,0 +1,24 @@
+[Unit]
+Description=Kiara Chat (conversa, voz, transcrição e vídeos)
+Wants=network-online.target kiara-omniroute.service
+After=network-online.target kiara-omniroute.service
+
+[Service]
+User=@USER@
+Group=@USER@
+WorkingDirectory=@REPO@
+Environment=HOME=@HOME@
+Environment=PLAYWRIGHT_BROWSERS_PATH=@BROWSERS@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@REPO@/.venv/bin/python scripts/run_kiara_chat.py --host 127.0.0.1 --port 3008
+Restart=always
+RestartSec=5
+# Hardening: the bridge only needs its repository data and caches.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=@REPO@/data @REPO@/.cache @HOME@
+
+[Install]
+WantedBy=multi-user.target

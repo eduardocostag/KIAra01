@@ -65,11 +65,29 @@ export function parseVideoJob(value: unknown): ChatVideoJob {
   }
 }
 
+/**
+ * Where the Kiara server (chat, voice and videos) answers. Defaults to this computer; set
+ * NEXT_PUBLIC_KIARA_CHAT_URL to the always-on server (e.g. https://kiara.example.com).
+ * Only HTTPS, or plain HTTP on loopback, is accepted.
+ */
+export function chatServerUrl(value = process.env.NEXT_PUBLIC_KIARA_CHAT_URL): string {
+  const fallback = "http://127.0.0.1:3008"
+  if (!value) return fallback
+  try {
+    const url = new URL(value)
+    const loopback = ["127.0.0.1", "localhost"].includes(url.hostname)
+    if (url.username || url.password || url.search || url.hash || !(url.protocol === "https:" || (url.protocol === "http:" && loopback))) return fallback
+    return url.origin + url.pathname.replace(/\/+$/, "")
+  } catch {
+    return fallback
+  }
+}
+
 /** Downloads a finished video from the local bridge (videos are produced on this computer). */
 export async function fetchVideo(jobId: string): Promise<Blob> {
   const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store" })))
   if (typeof session.access_token !== "string" || !session.access_token) throw new Error("Não foi possível autorizar o acesso ao serviço local.")
-  const response = await fetch("http://127.0.0.1:3008/api/video", { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ action: "download", job_id: jobId }), signal: AbortSignal.timeout(300_000) })
+  const response = await fetch(`${chatServerUrl()}/api/video`, { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ action: "download", job_id: jobId }), signal: AbortSignal.timeout(300_000) })
   if (!response.ok || response.headers.get("Content-Type") !== "video/mp4") { await jsonResponse(response); throw new Error("O vídeo não pôde ser baixado.") }
   return await response.blob()
 }
@@ -103,11 +121,11 @@ export async function chatRequest(transport: ChatTransport, action: string, body
     }
     const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store", signal: requestSignal })))
     if (typeof session.access_token !== "string" || !session.access_token) throw new Error("Não foi possível autorizar o acesso ao serviço local.")
-    return await jsonResponse(await fetch(`http://127.0.0.1:3008/api/${action}`, { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body), signal: requestSignal }))
+    return await jsonResponse(await fetch(`${chatServerUrl()}/api/${action}`, { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body), signal: requestSignal }))
   } catch (error) {
     if (signal?.aborted) throw new DOMException("Operação interrompida.", "AbortError")
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new Error("O serviço ultrapassou o tempo de resposta. Confira a conexão e tente novamente.")
-    if (error instanceof TypeError) throw new Error(transport === "local" ? "O serviço local da Kiara não respondeu. Inicie a ponte neste computador e permita o acesso à rede local no navegador." : "Não foi possível conectar à IA. Verifique a conexão e tente novamente.")
+    if (error instanceof TypeError) throw new Error(transport === "local" ? process.env.NEXT_PUBLIC_KIARA_CHAT_URL ? "O servidor da Kiara não respondeu. Confira se ele está ligado e conectado à internet." : "O serviço local da Kiara não respondeu. Inicie a ponte neste computador e permita o acesso à rede local no navegador." : "Não foi possível conectar à IA. Verifique a conexão e tente novamente.")
     throw error
   }
 }
