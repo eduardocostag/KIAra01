@@ -288,3 +288,12 @@ def test_automation_migration_is_atomic_and_tenant_scoped():
         assert f"CREATE TABLE {table}" in sql and f"'{table}'" in sql
     assert "FORCE ROW LEVEL SECURITY" in sql
     assert "REVOKE ALL ON automation_triggers, automation_work_queue FROM PUBLIC, anon, authenticated" in sql
+
+
+def test_maps_search_is_anchored_on_brazil():
+    from kiara_api.hunter import maps_search_url
+
+    url = maps_search_url("padaria")
+    assert url.startswith("https://www.google.com/maps/search/padaria/@-14.235,-51.9253,5z")
+    assert "gl=br" in url and "hl=pt-BR" in url
+    assert "/maps/search/padaria%20Porto%20Alegre/" in maps_search_url("padaria Porto Alegre")

@@ -1539,7 +1539,10 @@ async def _collect_maps_page(context: Any, page: Any, query: str, limit: int) ->
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
     try:
-            await page.goto(f"https://www.google.com/maps/search/?api=1&query={quote(query, safe='')}&hl=pt-BR", wait_until="domcontentloaded", timeout=25_000)
+            # Kiara researches Brazilian businesses. Remote browsers run abroad (Browserbase is in the
+            # US), and Maps ranks by the map viewport/IP, so "padaria" alone returned US bakeries.
+            # Anchor the viewport on Brazil and the region on BR; a city in the query still wins.
+            await page.goto(maps_search_url(query), wait_until="domcontentloaded", timeout=25_000)
             await _dismiss_google_consent(page)
             await page.wait_for_selector('a[href*="/maps/place/"], h1.DUwDvf, [role="feed"], [role="main"]', timeout=8_000)
             # Allow the business list, not just the Maps application shell, to load.
@@ -1565,7 +1568,7 @@ async def _collect_maps_page(context: Any, page: Any, query: str, limit: int) ->
                 )
                 items = [item for item in items if safe_public_url(item.get("url"))][:min(limit, HUNTER_MAX_RESULTS)]
             # Fewer concurrent Maps tabs leave time for each business panel to hydrate.
-            slots = asyncio.Semaphore(3)
+            slots = asyncio.Semaphore(4)
 
             async def inspect(item: dict[str, Any]) -> dict[str, Any]:
                 async with slots:
@@ -1588,7 +1591,7 @@ async def _collect_maps_page(context: Any, page: Any, query: str, limit: int) ->
             tasks = [asyncio.create_task(inspect(item)) for item in items]
             if not tasks:
                 return []
-            done, pending = await asyncio.wait(tasks, timeout=50)
+            done, pending = await asyncio.wait(tasks, timeout=75)
             for task in pending:
                 task.cancel()
             await asyncio.gather(*pending, return_exceptions=True)
@@ -1599,6 +1602,14 @@ async def _collect_maps_page(context: Any, page: Any, query: str, limit: int) ->
             await page.close()
         except PlaywrightError:
             logger.warning("hunter.maps.page_cleanup_failed")
+
+
+MAPS_BRAZIL_VIEWPORT = "@-14.235,-51.9253,5z"
+
+
+def maps_search_url(query: str) -> str:
+    """Google Maps search anchored on Brazil (viewport + gl=br), in Portuguese."""
+    return f"https://www.google.com/maps/search/{quote(query, safe='')}/{MAPS_BRAZIL_VIEWPORT}?hl=pt-BR&gl=br"
 
 
 async def _read_maps_session(session: Any, query: str, limit: int) -> list[dict[str, Any]]:
