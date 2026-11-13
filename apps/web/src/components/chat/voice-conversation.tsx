@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react"
 import { Mic, MicOff, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { VoiceOrb, type VoicePhase } from "./voice-orb"
+import { pickFeminineVoice, speechChunks } from "@/lib/voice-text"
+
+/** Best female pt-BR voice the browser offers (never the default male one when a female exists). */
+export function femininePortugueseVoice(): SpeechSynthesisVoice | undefined {
+  return pickFeminineVoice(window.speechSynthesis.getVoices())
+}
 
 /** Minimal typing for the Web Speech API (Chrome exposes it as webkitSpeechRecognition). */
 type RecognitionResult = { isFinal: boolean; 0: { transcript: string } }
@@ -229,12 +235,24 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     const spoken = speakable(text)
     const synthesize = backendsRef.current.synthesize
     if (synthesize) {
+      // Sentence by sentence: Kiara starts talking after the first one is ready while the next is prepared.
+      const parts = speechChunks(spoken)
+      let index = 0
       try {
-        const blob = await synthesize(spoken)
-        if (!activeRef.current || phaseRef.current !== "speaking") return
-        await playAudio(blob)
+        let next = synthesize(parts[0])
+        for (; index < parts.length; index += 1) {
+          const blob = await next
+          if (index + 1 < parts.length) next = synthesize(parts[index + 1])
+          if (!activeRef.current || phaseRef.current !== "speaking") return
+          await playAudio(blob)
+        }
         return
-      } catch { /* Fall back to the browser voice below. */ }
+      } catch {
+        // Fall back to the browser voice for whatever was not spoken yet.
+        if (!activeRef.current || phaseRef.current !== "speaking") return
+        await speakWithBrowser(parts.slice(index).join(" "))
+        return
+      }
     }
     await speakWithBrowser(spoken)
   }
@@ -272,7 +290,7 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       if (!("speechSynthesis" in window) || !text) { resolve(); return }
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.lang = "pt-BR"
-      const voice = window.speechSynthesis.getVoices().find((item) => item.lang.toLowerCase() === "pt-br")
+      const voice = femininePortugueseVoice()
       if (voice) utterance.voice = voice
       // The browser voice exposes no audio stream; each spoken word gives the orb a pulse.
       utterance.onboundary = () => { syntheticRef.current = 0.55 + Math.random() * 0.35 }

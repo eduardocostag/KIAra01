@@ -12,3 +12,5 @@ scrapling==0.4.15
 curl_cffi>=0.13,<1
 # Raw Chrome DevTools Protocol client for remote browsers (Playwright's driver cannot run on Vercel).
 websockets>=13,<18
+# Kiara voice (Francisca) for the cloud chat voice mode; pure Python, talks to Microsoft Edge TTS.
+edge-tts>=7,<8

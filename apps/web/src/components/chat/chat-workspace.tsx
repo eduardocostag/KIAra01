@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { blobBase64, chatRequest, fetchVideo, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { cn } from "@/lib/utils"
 import { pollVideoJob } from "@/lib/video-polling"
-import { VoiceConversation, type VoiceBackends } from "./voice-conversation"
+import { femininePortugueseVoice, VoiceConversation, type VoiceBackends } from "./voice-conversation"
 
 type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
@@ -334,7 +334,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
         if (!browserVoice) throw new Error("Voz indisponível neste navegador.")
         const utterance = new SpeechSynthesisUtterance(text.slice(0, 5000))
         utterance.lang = "pt-BR"
-        const voice = window.speechSynthesis.getVoices().find((item) => item.lang.toLowerCase() === "pt-br")
+        const voice = femininePortugueseVoice()
         if (voice) utterance.voice = voice
         utterance.onend = () => setSpeaking(false)
         utterance.onerror = () => { setSpeaking(false); setError("A leitura de voz foi interrompida ou não está disponível.") }
@@ -352,7 +352,8 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
     activeIdRef.current = conversationId
     setActiveId(conversationId)
     appendMessage(conversationId, userMessage, content.replace(/\s+/g, " ").slice(0, 60))
-    const reply = parseChatReply(await chatRequest(transport, "chat", { messages: boundedHistory([...previous, userMessage]) }))
+    // Voice turns ask for a short spoken answer from a fast model (the local bridge ignores the flag).
+    const reply = parseChatReply(await chatRequest(transport, "chat", { messages: boundedHistory([...previous, userMessage]), ...(transport === "cloud" ? { voice: true } : {}) }))
     appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text })
     return reply.text
   }
