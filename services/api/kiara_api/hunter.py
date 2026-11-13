@@ -64,6 +64,16 @@ _BROWSERBASE_CIRCUIT_LOCK = threading.Lock()
 _BROWSERBASE_DISABLED_UNTIL = 0.0
 
 
+def _safe_error(exc: BaseException) -> str:
+    """Error class and a short message for logs, with URLs, query strings and secrets removed.
+
+    Vercel keeps only the log message (not `extra`), so diagnostics must travel in it.
+    """
+    text = re.sub(r"(?i)(wss?|https?)://\S+", "<url>", str(exc))
+    text = re.sub(r"(?i)(api[_-]?key|token|signing[_-]?key|secret|password)\S*", "<redacted>", text)
+    return f"{type(exc).__name__}: {' '.join(text.split())[:180]}"
+
+
 def _browserbase_circuit_open() -> bool:
     with _BROWSERBASE_CIRCUIT_LOCK:
         return time.monotonic() < _BROWSERBASE_DISABLED_UNTIL
@@ -1144,7 +1154,7 @@ def _fetch_public_page(url: str) -> tuple[str, list[str], str]:
         _assert_public_destination(final_url)
         return text, links, "scrapling_http"
     except (ImportError, ModuleNotFoundError, OSError, ValueError, TypeError, AttributeError, UnicodeError) as exc:
-        logger.info("hunter.scrapling.fetch_fallback", extra={
+        logger.info("hunter.scrapling.fetch_fallback %s", _safe_error(exc), extra={
             "url_host": urlsplit(url).hostname, "error_class": type(exc).__name__,
         })
     request = UrlRequest(url, headers={
@@ -1527,7 +1537,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
         try:
             rows = await _read_maps_local(query, limit)
         except Exception as exc:  # noqa: BLE001 — public index remains the final no-browser fallback
-            logger.warning("hunter.maps.local_browser_unavailable", extra={"error_class": type(exc).__name__})
+            logger.warning("hunter.maps.local_browser_unavailable %s", _safe_error(exc), extra={"error_class": type(exc).__name__})
             rows = []
         if not rows and not unverified_rows:
             return await maps_index_search(query, limit)
@@ -1551,7 +1561,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
             unverified_rows.extend(rows)
             logger.warning("hunter.obscura.maps_details_unverified")
         except Exception as exc:  # noqa: BLE001 — Browserbase remains the isolated fallback
-            logger.warning("hunter.obscura.maps_failed", extra={"error_class": type(exc).__name__})
+            logger.warning("hunter.obscura.maps_failed %s", _safe_error(exc), extra={"error_class": type(exc).__name__})
     if not key or not project:
         return await local_or_index()
     if _browserbase_circuit_open():
@@ -1567,7 +1577,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
         session = await _create_browserbase_session(client, project)
     except Exception as exc:  # noqa: BLE001 — indexed public Maps pages remain available
         _trip_browserbase_circuit(exc)
-        logger.warning("hunter.maps.browserbase_unavailable", extra={
+        logger.warning("hunter.maps.browserbase_unavailable %s", _safe_error(exc), extra={
             "error_class": type(exc).__name__, "provider_status": getattr(exc, "status_code", None),
         })
         client.close()
@@ -1581,7 +1591,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
             logger.warning("hunter.maps.browserbase_details_unverified")
             return await local_or_index()
         except Exception as exc:  # noqa: BLE001 — a local browser can recover a broken remote session
-            logger.warning("hunter.maps.browserbase_session_failed", extra={"error_class": type(exc).__name__})
+            logger.warning("hunter.maps.browserbase_session_failed %s", _safe_error(exc), extra={"error_class": type(exc).__name__})
             return await local_or_index()
     finally:
         try:
