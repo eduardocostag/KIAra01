@@ -32,6 +32,7 @@ from .http.errors import ApiError
 from .hunter_crm import sync_hunter_results
 from .hunter_intelligence import expand_provider_query, understand_search
 from .hunter_research import (
+    canonical_public_identity,
     clean_summary,
     extract_contacts,
     extract_public_address,
@@ -92,6 +93,13 @@ class SearchCreate(BaseModel):
     @classmethod
     def trim_text(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("query")
+    @classmethod
+    def require_business_niche(cls, value: str) -> str:
+        if re.fullmatch(r"(?:telefone|telefones|whatsapp|contatos?|leads?|empresas?|quentes?)(?:\s+(?:telefone|telefones|whatsapp|contatos?|leads?|empresas?|quentes?))*", folded(value)):
+            raise ValueError("Informe o tipo de negócio, por exemplo: psicólogos ou estúdios de pilates. Telefone e WhatsApp são filtros de contato.")
+        return value
 
     @field_validator("market")
     @classmethod
@@ -518,7 +526,14 @@ class HunterRepository:
         inferred = research_options(payload)
         payload["website_filter"] = inferred["website_filter"]
         payload["contact_filter"] = inferred["contact_filter"]
-        legacy = any(item.get("public_data", {}).get("verification_version") != 1 for item in results)
+        # Revalidate stored results too: old searches must not bypass today's
+        # minimum evidence and niche checks merely because they were saved.
+        if row["status"] == "completed" and results:
+            payload["results"], current_validation = filter_results(results, payload)
+            if len(payload["results"]) != len(results):
+                payload["validation"] = current_validation
+                payload["warnings"] = [*payload["warnings"], "Pesquisa antiga: resultados sem evidência suficiente ou fora do perfil foram ocultados. Faça uma nova busca para atualizar os dados."]
+        legacy = any(item.get("public_data", {}).get("verification_version") != 1 for item in payload["results"])
         if legacy and row["status"] == "completed":
             # Read-time compatibility only: do not delete historical records or
             # quietly import them into CRM as newly verified discoveries.
@@ -704,27 +719,91 @@ async def indexed_search(query: str, source: str, limit: int) -> list[dict[str, 
     return await asyncio.to_thread(_read_public_index, query, source, limit)
 
 
+def _social_profile_url(value: Any, source: str) -> str | None:
+    url = safe_public_url(value)
+    if not url:
+        return None
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    segments = parts.path.strip("/").split("/")
+    first = segments[0].lower()
+    if source == "instagram":
+        valid = (host == "instagram.com" and len(segments) == 1
+                 and _INSTAGRAM_HANDLE.fullmatch(segments[0]) and first not in _INSTAGRAM_RESERVED)
+    else:
+        valid = host in {"facebook.com", "fb.com"} and (
+            len(segments) == 1 and _FACEBOOK_HANDLE.fullmatch(segments[0]) and first not in _FACEBOOK_RESERVED
+            or first == "profile.php" and len(segments) == 1 and (parse_qs(parts.query).get("id") or [""])[0].isdigit()
+            or first in {"people", "pages"} and len(segments) in {2, 3}
+            and bool(segments[1]) and (len(segments) == 2 or segments[-1].isdigit())
+        )
+    return url if valid else None
+
+
+async def website_social_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    """Discover explicit profile links on public sites; never guess usernames."""
+    websites = await exa_search(query, "web", min(limit, 6))
+    slots = asyncio.Semaphore(3)
+
+    async def links_from(row: dict[str, Any]) -> list[dict[str, Any]]:
+        url = safe_public_url(row.get("url"))
+        if not url or (urlsplit(url).hostname or "").endswith(("instagram.com", "facebook.com")):
+            return []
+        async with slots:
+            try:
+                _, links, _ = await asyncio.to_thread(_fetch_public_page, url)
+            except (OSError, ValueError, RuntimeError):
+                return []
+        return [{"source": source, "title": row.get("title") or "Perfil público",
+                 "url": profile, "summary": "", "public_data": {
+                     "provider": "website_profile_link", "discovery_url": url,
+                 }} for link in links if (profile := _social_profile_url(link, source))]
+
+    batches = await asyncio.gather(*(links_from(row) for row in websites))
+    seen: set[str] = set()
+    result = []
+    for row in (item for batch in batches for item in batch):
+        identity = canonical_public_identity(row["url"])
+        if identity not in seen:
+            seen.add(identity)
+            result.append(row)
+    return result[:limit]
+
+
 async def public_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    original_query = query
     if source == "instagram":
         query = f"site:instagram.com/ {query} Instagram perfil bio"
     elif source == "facebook":
         query = f"site:facebook.com/ {query} Facebook pagina perfil contato"
+    def profiles(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [row for row in rows if _social_profile_url(row.get("url"), source)] if source in {"instagram", "facebook"} else rows
+
     try:
         rows = await exa_search(query, source, limit)
+        rows = profiles(rows)
         if rows:
             return rows
     except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
         logger.warning("hunter.exa.unavailable", extra={"source": source, "error_class": type(exc).__name__})
     try:
         rows = await firecrawl_search(query, source, limit)
+        rows = profiles(rows)
         if rows:
             return rows
     except Exception as fallback_exc:  # noqa: BLE001 - public index is credential-free
         logger.warning("hunter.firecrawl.unavailable", extra={
             "source": source, "error_class": type(fallback_exc).__name__,
         })
+    if source in {"instagram", "facebook"}:
+        try:
+            rows = await website_social_search(original_query, source, limit)
+            if rows:
+                return rows
+        except Exception as exc:  # noqa: BLE001 - independent public discovery path
+            logger.warning("hunter.website_social.unavailable", extra={"source": source, "error_class": type(exc).__name__})
     try:
-        return await indexed_search(query, source, limit)
+        return profiles(await indexed_search(query, source, limit))
     except Exception as index_exc:
         raise RuntimeError("public_index_unavailable") from index_exc
 
@@ -745,8 +824,7 @@ async def multi_public_search(queries: list[str], source: str, limit: int) -> li
         for row in batch:
             url = safe_public_url(row.get("url"))
             if url:
-                parts = urlsplit(url)
-                identity = f"{parts.scheme.lower()}://{(parts.hostname or '').lower()}{parts.path.rstrip('/').lower()}"
+                identity = canonical_public_identity(url)
             else:
                 identity = f"invalid:{row.get('url')}:{row.get('title')}"
             if identity in seen:
@@ -773,10 +851,14 @@ class _InstagramBioParser(HTMLParser):
             self.bio = self.bio or (fields.get("content") or "")
 
 
-def _read_public_instagram_bio(url: str) -> str:
+def _read_social_description(url: str, source: str) -> str:
     _assert_public_destination(url)
-    request = UrlRequest(url, headers={"User-Agent": "KiaraResearchBot/1.0", "Accept": "text/html"})
+    request = UrlRequest(url, headers={"User-Agent": "KiaraResearchBot/1.0", "Accept": "text/html",
+                                       "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7"})
     with build_opener(_SafeRedirectHandler()).open(request, timeout=8) as response:
+        # Login redirects are not profile evidence, even when they return 200.
+        if canonical_public_identity(_social_profile_url(response.geturl(), source)) != canonical_public_identity(url):
+            return ""
         if response.headers.get_content_type() != "text/html":
             raise ValueError("unsupported_content")
         payload = response.read(500_001)
@@ -784,14 +866,67 @@ def _read_public_instagram_bio(url: str) -> str:
             raise ValueError("page_too_large")
     parser = _InstagramBioParser()
     parser.feed(payload.decode("utf-8", errors="replace"))
-    return clean_summary(parser.bio, 500)
+    return _validated_social_description(parser.bio)
+
+
+def _validated_social_description(value: Any) -> str:
+    description = clean_summary(value, 500)
+    generic = folded(description)
+    if any(text in generic for text in (
+        "log in to", "login to", "sign up for", "create an account", "entre no instagram",
+        "entre no facebook", "faca login", "crie uma conta", "inicia sessao", "iniciar sesion",
+        "see instagram photos and videos", "connect with friends", "conecte-se com amigos",
+    )):
+        return ""
+    return description
+
+
+def _read_public_instagram_bio(url: str) -> str:
+    return _read_social_description(url, "instagram")
+
+
+def _firecrawl_social_description(url: str, source: str) -> str:
+    key = os.getenv("FIRECRAWL_API_KEY", "").strip()
+    if not key or not _social_profile_url(url, source):
+        return ""
+    _assert_public_destination(url)
+    response = _post_json("https://api.firecrawl.dev/v2/scrape", {
+        "Content-Type": "application/json", "Authorization": f"Bearer {key}",
+    }, {"url": url, "formats": ["rawHtml"], "onlyMainContent": False,
+        "timeout": 15000, "maxAge": 0, "proxy": "basic"})
+    data = response.get("data") or {}
+    metadata = data.get("metadata") or {}
+    # Require successful, same-profile page evidence, not search snippets,
+    # summaries generated by an LLM, or a login page returned with HTTP 200.
+    final_url = metadata.get("url") or metadata.get("sourceURL")
+    if (response.get("success") is not True or metadata.get("statusCode") != 200
+            or canonical_public_identity(_social_profile_url(final_url, source)) != canonical_public_identity(url)):
+        return ""
+    parser = _InstagramBioParser()
+    raw = data.get("rawHtml")
+    if isinstance(raw, str):
+        parser.feed(raw[:500000])
+    return _validated_social_description(parser.bio or metadata.get("ogDescription") or metadata.get("description"))
+
+
+async def _inspect_social_description(url: str, source: str, reader: Any, use_fallback: bool) -> str:
+    try:
+        description = await asyncio.to_thread(reader, url)
+    except (OSError, ValueError, TypeError, UnicodeError):
+        description = ""
+    if description or not use_fallback or not os.getenv("FIRECRAWL_API_KEY", "").strip():
+        return description
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_firecrawl_social_description, url, source), timeout=20)
+    except (OSError, ValueError, TypeError, RuntimeError, TimeoutError):
+        return ""
 
 
 async def inspect_instagram_bios(rows: list[dict[str, Any]]) -> None:
     """Verify public profile bios where Instagram serves them without login."""
     slots = asyncio.Semaphore(4)
 
-    async def inspect(row: dict[str, Any]) -> None:
+    async def inspect(row: dict[str, Any], index: int) -> None:
         url = safe_public_url(row.get("url"))
         parts = urlsplit(url) if url else None
         host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
@@ -801,16 +936,13 @@ async def inspect_instagram_bios(rows: list[dict[str, Any]]) -> None:
         data = row.setdefault("public_data", {})
         data["profile_handle"] = path
         async with slots:
-            try:
-                bio = await asyncio.to_thread(_read_public_instagram_bio, url)
-            except (OSError, ValueError, TypeError, UnicodeError):
-                bio = ""
+            bio = await _inspect_social_description(url, "instagram", _read_public_instagram_bio, index < 8)
         data["bio_status"] = "verified_public_profile" if bio else "indexed_excerpt_only"
         if bio:
             data["profile_bio"] = bio
             row["summary"] = bio
 
-    await asyncio.gather(*(inspect(row) for row in rows[:30]))
+    await asyncio.gather(*(inspect(row, index) for index, row in enumerate(rows[:30])))
 
 
 class _FacebookAboutParser(HTMLParser):
@@ -827,24 +959,14 @@ class _FacebookAboutParser(HTMLParser):
 
 
 def _read_public_facebook_about(url: str) -> str:
-    _assert_public_destination(url)
-    request = UrlRequest(url, headers={"User-Agent": "KiaraResearchBot/1.0", "Accept": "text/html"})
-    with build_opener(_SafeRedirectHandler()).open(request, timeout=8) as response:
-        if response.headers.get_content_type() != "text/html":
-            raise ValueError("unsupported_content")
-        payload = response.read(500_001)
-        if len(payload) > 500_000:
-            raise ValueError("page_too_large")
-    parser = _FacebookAboutParser()
-    parser.feed(payload.decode("utf-8", errors="replace"))
-    return clean_summary(parser.about, 500)
+    return _read_social_description(url, "facebook")
 
 
 async def inspect_facebook_pages(rows: list[dict[str, Any]]) -> None:
     """Verify public page descriptions where Facebook serves them without login."""
     slots = asyncio.Semaphore(4)
 
-    async def inspect(row: dict[str, Any]) -> None:
+    async def inspect(row: dict[str, Any], index: int) -> None:
         url = safe_public_url(row.get("url"))
         parts = urlsplit(url) if url else None
         host = (parts.hostname or "").lower().removeprefix("www.") if parts else ""
@@ -852,23 +974,30 @@ async def inspect_facebook_pages(rows: list[dict[str, Any]]) -> None:
         segments = path.split("/") if path else []
         if host not in {"facebook.com", "fb.com"}:
             return
-        if not segments or (len(segments) == 1 and (not _FACEBOOK_HANDLE.fullmatch(segments[0]) or segments[0].lower() in _FACEBOOK_RESERVED)):
+        if not segments:
             return
-        handle = segments[0] if len(segments) == 1 else (segments[1] if segments[0].lower() in {"people", "pages"} and len(segments) > 1 else segments[0])
+        first = segments[0].lower()
+        if first == "profile.php" and len(segments) == 1:
+            handle = (parse_qs(parts.query).get("id") or [""])[0]
+            if not handle.isdigit():
+                return
+        elif len(segments) == 1 and _FACEBOOK_HANDLE.fullmatch(segments[0]) and first not in _FACEBOOK_RESERVED:
+            handle = segments[0]
+        elif first in {"people", "pages"} and len(segments) in {2, 3} and (len(segments) == 2 or segments[-1].isdigit()):
+            handle = segments[-1] if segments[-1].isdigit() else segments[1]
+        else:
+            return
         data = row.setdefault("public_data", {})
         data["profile_handle"] = handle
         async with slots:
-            try:
-                about = await asyncio.to_thread(_read_public_facebook_about, url)
-            except (OSError, ValueError, TypeError, UnicodeError):
-                about = ""
+            about = await _inspect_social_description(url, "facebook", _read_public_facebook_about, index < 8)
         data["page_status"] = "verified_public_page" if about else "indexed_excerpt_only"
         data["bio_status"] = "verified_public_profile" if about else "indexed_excerpt_only"
         if about:
             data["profile_bio"] = about
             row["summary"] = about
 
-    await asyncio.gather(*(inspect(row) for row in rows[:30]))
+    await asyncio.gather(*(inspect(row, index) for index, row in enumerate(rows[:30])))
 
 
 async def enrich_results(results: list[dict[str, Any]]) -> None:
@@ -1589,7 +1718,7 @@ def _facebook_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bo
     profile = (
         (len(segments) == 1 and _FACEBOOK_HANDLE.fullmatch(segments[0]) and first not in _FACEBOOK_RESERVED)
         or (first in {"pages", "people"} and len(segments) >= 2)
-        or (first == "profile.php" and bool(parse_qs(parts.query).get("id")))
+        or (first == "profile.php" and (parse_qs(parts.query).get("id") or [""])[0].isdigit())
     )
     if not profile and not publication:
         return False

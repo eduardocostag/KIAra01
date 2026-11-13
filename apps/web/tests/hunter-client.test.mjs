@@ -22,6 +22,15 @@ test("accepts completed results and a genuine empty history", () => {
   assert.equal(parseHunterJob(job).results.length, 1)
   assert.deepEqual(parseHunterHistory({ items: [] }), [])
 })
+
+test("source-derived names retain provenance without accepting fake verification claims", () => {
+  const data = { display_name: "Clínica Aurora", source_title: "Clínica Aurora | Página inicial", name_status: "source_title", enrichment: "completed" }
+  const result = { ...job.results[0], public_data: data }
+  assert.equal(parseHunterJob({ ...job, results: [result] }).results[0].public_data.source_title, data.source_title)
+  assert.equal(hunterEvidenceLabel("web", data), "Página pública consultada")
+  assert.throws(() => parseHunterJob({ ...job, results: [{ ...result, public_data: { ...data, name_status: "verified" } }] }))
+  assert.throws(() => parseHunterJob({ ...job, results: [{ ...result, public_data: { ...data, display_name: {} } }] }))
+})
 test("does not silently treat missing or malformed payloads as no results", () => {
   for (const invalid of [{}, null, { items: {} }, { items: [{}] }]) assert.throws(() => parseHunterHistory(invalid))
   assert.throws(() => parseHunterJob({ ...job, results: null }))

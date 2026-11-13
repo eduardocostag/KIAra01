@@ -93,7 +93,8 @@ _COMMERCIAL_INTENTS = {
 
 def _contains(text: str, term: str) -> bool:
     normalized = _fold(term)
-    return bool(re.search(rf"(?<!\w){re.escape(normalized)}(?:s|es)?(?!\w)", text))
+    phrase = r"\s+".join(re.escape(word) + r"(?:s|es)?" for word in normalized.split())
+    return bool(re.search(rf"(?<!\w){phrase}(?!\w)", text))
 
 
 def understand_search(query: str, location: str | None = None) -> dict[str, Any]:

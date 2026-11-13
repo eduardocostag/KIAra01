@@ -1,4 +1,16 @@
-# Analisar um contato do WhatsApp na Kiara
+# Conectar e analisar o WhatsApp na Kiara
+
+Atualização de conexão em 12/11/2026: a ponte local usa a porta **3009**.
+Inicie com `powershell -NoProfile -File scripts/launch_whatsapp_local_bridge.ps1`.
+O launcher preserva outros processos, registra seu PID e mantém logs locais em
+`.cache/whatsapp`. Na página WhatsApp, abra **Conexão** para vincular pelo QR.
+O contato em `KIARA_WHATSAPP_ANALYSIS_PHONE` é necessário somente para resumir
+uma conversa específica; não é obrigatório para conectar a sessão.
+
+A alternativa via WhatsApp Web exige instalar a extensão no Chrome uma vez.
+O pacote atualizado está em `/downloads/kiara-whatsapp-extension.zip` no site.
+Extraia, abra `chrome://extensions`, ative o modo desenvolvedor e selecione
+**Carregar sem compactação**. Recarregue as guias da Kiara e do WhatsApp Web.
 
 A aba **WhatsApp** do site pode resumir, em modo somente leitura, a conversa de
 um contato autorizado. O WhatsApp permanece conectado ao OpenWA no computador
@@ -29,7 +41,7 @@ não faz prospecção e não lista contatos.
    python scripts/run_whatsapp_local_bridge.py
    ```
 
-   Ele escuta somente em `127.0.0.1:3007`. Para conferir a configuração sem
+   Ele escuta somente em `127.0.0.1:3009`. Para conferir a configuração sem
    conectar ao WhatsApp nem chamar o modelo, use `--check-only`.
 5. Entre na Kiara com uma conta `owner` ou `admin`, abra **WhatsApp** e clique
    em **Analisar conversa autorizada**. Se o navegador solicitar acesso à rede

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { ArrowRight, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { leadDisplayName, normalizeWhatsAppPhone, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
+import { leadDisplayName, whatsappComposerUrl, type PipelineEntry } from "@/lib/api/pipeline"
 import { cn } from "@/lib/utils"
 
 type QueueFilter = "all" | "overdue" | "replied" | "ready" | "missing"
@@ -14,7 +14,7 @@ function whatsappActivity(entry: PipelineEntry) {
 }
 
 function hasWhatsApp(entry: PipelineEntry) {
-  return Boolean(entry.consumer.whatsapp_url || normalizeWhatsAppPhone(entry.consumer.phone))
+  return whatsappComposerUrl(entry.consumer.phone, entry.consumer.whatsapp_url, "")?.confirmed === true
 }
 
 function isOverdue(entry: PipelineEntry, now: number) {
@@ -24,20 +24,21 @@ function isOverdue(entry: PipelineEntry, now: number) {
 /** One state per lead, ordered by how urgently a person should act on it. */
 function stateFor(entry: PipelineEntry, now: number) {
   const activity = whatsappActivity(entry)
+  if (entry.consumer.prospecting_status === "review_required") return { id: "missing", label: "Revisão necessária", tone: "text-amber-400", priority: 4 }
   if (isOverdue(entry, now)) return { id: "overdue", label: "Ação atrasada", tone: "text-amber-400", priority: 0 }
   if (activity?.status === "replied") return { id: "replied", label: "Respondeu", tone: "text-emerald-400", priority: 1 }
-  if (!hasWhatsApp(entry)) return { id: "missing", label: "Sem WhatsApp", tone: "text-muted-foreground", priority: 4 }
+  if (!hasWhatsApp(entry)) return { id: "missing", label: "WhatsApp não confirmado", tone: "text-muted-foreground", priority: 4 }
   if (activity?.status === "sent" || activity?.status === "opened") return { id: "waiting", label: "Aguardando retorno", tone: "text-muted-foreground", priority: 3 }
   if (activity?.status === "no_response") return { id: "waiting", label: "Sem resposta", tone: "text-muted-foreground", priority: 3 }
-  return { id: "ready", label: "Pronto para contato", tone: "text-primary", priority: 2 }
+  return { id: "ready", label: "Interesse não confirmado", tone: "text-muted-foreground", priority: 2 }
 }
 
 const filters: { id: QueueFilter; label: string }[] = [
   { id: "all", label: "Todos" },
   { id: "overdue", label: "Atrasados" },
   { id: "replied", label: "Responderam" },
-  { id: "ready", label: "Prontos para contato" },
-  { id: "missing", label: "Sem WhatsApp" },
+  { id: "ready", label: "A qualificar" },
+  { id: "missing", label: "Revisar dados" },
 ]
 
 export function LeadOperationsWorkspace({ entries, onOpen }: { entries: PipelineEntry[]; onOpen: (entryId: string) => void }) {
@@ -67,7 +68,7 @@ export function LeadOperationsWorkspace({ entries, onOpen }: { entries: Pipeline
             <p className="truncate text-xs text-muted-foreground">{entry.next_action || "Sem próxima ação definida"}</p>
           </div>
           <span className={cn("hidden shrink-0 text-xs font-medium sm:block", state.tone)}>{state.label}</span>
-          {whatsapp ? <Button asChild size="icon" variant="ghost" className="size-8 shrink-0"><a href={whatsapp.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir WhatsApp de ${name}`}><MessageCircle /></a></Button> : null}
+          {whatsapp?.confirmed && entry.consumer.prospecting_status !== "review_required" ? <Button asChild size="icon" variant="ghost" className="size-8 shrink-0"><a href={whatsapp.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir WhatsApp de ${name}`}><MessageCircle /></a></Button> : null}
           <Button size="sm" variant="outline" className="shrink-0" onClick={() => onOpen(entry.id)}>Abrir<ArrowRight /></Button>
         </li>
       })}

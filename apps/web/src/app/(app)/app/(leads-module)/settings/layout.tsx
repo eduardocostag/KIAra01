@@ -1,7 +1,9 @@
 import { LogoutButton } from "@/components/auth/logout-button"
 import { SettingsSectionNav } from "@/components/app-shell/workspace-section-nav"
+import { requireWorkspace } from "@/lib/auth"
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
+  const workspace = await requireWorkspace()
   return <div className="mx-auto w-full max-w-7xl space-y-5">
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -10,7 +12,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       </div>
       <LogoutButton />
     </header>
-    <SettingsSectionNav />
+    <SettingsSectionNav isSystemAdmin={workspace.isSystemAdmin} />
     {children}
   </div>
 }

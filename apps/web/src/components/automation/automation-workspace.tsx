@@ -1,5 +1,7 @@
 "use client"
 
+import { AdminOnly } from "@/components/app-shell/admin-access"
+
 import Link from "next/link"
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { Check, ChevronDown, CircleAlert, Copy, LayoutTemplate, LoaderCircle, Maximize2, Play, Plug, Plus, Search, Square, Trash2, Workflow as WorkflowIcon, X, ZoomIn, ZoomOut } from "lucide-react"
@@ -188,7 +190,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   </div>
 
   return <ImmersiveShell label="Fluxos da Kiara Automation" sidebar={sidebar}
-    footer={<Link href="/app/settings/integrations" className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Plug className="size-4" />Conexões</Link>}
+    footer={<AdminOnly><Link href="/app/settings/integrations" className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Plug className="size-4" />Conexões</Link></AdminOnly>}
     topBar={flow ? <>
       <WorkflowIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
       <input value={flow.name} onChange={(event) => update({ ...flow, name: event.target.value.slice(0, 80) })} aria-label="Nome do fluxo" className="min-w-0 flex-1 truncate bg-transparent text-sm font-medium outline-none" />
@@ -250,7 +252,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
           <p className="text-sm text-muted-foreground">{selectedKind.description}</p>
           {selectedKind.run === "browser"
             ? <p className="flex items-center gap-2 rounded-lg bg-emerald-400/10 px-3 py-2 text-xs text-emerald-400"><Check className="size-3.5" />Funciona agora, direto nesta página.</p>
-            : <div className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300"><p className="flex items-center gap-2 font-medium"><Plug className="size-3.5" />Precisa conectar</p><p className="mt-1">{connectionLabels[selectedKind.run]}. Ao executar sem a conexão, o fluxo para neste bloco e avisa; nada é simulado.</p><Link href="/app/settings/integrations" className="mt-1 inline-block underline">Abrir conexões</Link></div>}
+            : <div className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300"><p className="flex items-center gap-2 font-medium"><Plug className="size-3.5" />Precisa conectar</p><p className="mt-1">{connectionLabels[selectedKind.run]}. Ao executar sem a conexão, o fluxo para neste bloco e avisa; nada é simulado.</p><AdminOnly><Link href="/app/settings/integrations" className="mt-1 inline-block underline">Abrir conexões</Link></AdminOnly></div>}
           {selectedKind.fields.map((field) => {
             const id = `field-${selected.id}-${field.key}`
             const value = selected.config[field.key] ?? ""

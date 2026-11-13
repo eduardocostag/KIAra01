@@ -484,8 +484,10 @@ def handler_for(bridge: WhatsAppLocalBridge):
                     _last_analysis_at = time.monotonic()
 
         def log_message(self, _format, *_args):
-            sys.stdout.write("Kiara WhatsApp local bridge: request handled\n")
-            sys.stdout.flush()
+            # Services may run under pythonw or outlive the terminal that
+            # launched them. A missing/closed stdout must never abort an HTTP
+            # response (send_response calls log_request before writing headers).
+            return
 
     return Handler
 
@@ -493,7 +495,7 @@ def handler_for(bridge: WhatsAppLocalBridge):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1", help="Must remain loopback-only.")
-    parser.add_argument("--port", type=int, default=3007)
+    parser.add_argument("--port", type=int, default=3009)
     parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost", "::1"}:

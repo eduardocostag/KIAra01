@@ -39,6 +39,8 @@ export type PipelineEntry = {
     research_query?: string | null
     search_id?: string | null
     notes?: string | null
+    prospecting_status?: "review_required" | "public_contact"
+    quality_gaps?: string[]
   }
 }
 
@@ -101,6 +103,8 @@ export function instagramProfileUrl(username: string | null | undefined): string
 export function parsePipelineEntry(value: unknown): PipelineEntry {
   if (!value || typeof value !== "object") throw new Error("Resposta inválida do Pipeline.")
   const item = value as PipelineEntry
+  if (item.consumer?.prospecting_status != null && !["review_required", "public_contact"].includes(item.consumer.prospecting_status)) throw new Error("Validação de prospecção inválida.")
+  if (item.consumer?.quality_gaps != null && (!Array.isArray(item.consumer.quality_gaps) || !item.consumer.quality_gaps.every((gap) => typeof gap === "string"))) throw new Error("Evidências de prospecção inválidas.")
   if (item.qualification != null && (!Number.isFinite(item.qualification.score) || item.qualification.score < 0 || item.qualification.score > 100 || !["cold", "warm", "hot", "unknown"].includes(item.qualification.temperature))) throw new Error("Qualificação inválida no CRM.")
   if (typeof item.id !== "string" || !item.id || !pipelineStages.some((stage) => stage.id === item.stage) ||
     !Number.isInteger(item.version) || item.version < 1 || typeof item.updated_at !== "string" || Number.isNaN(Date.parse(item.updated_at)) ||

@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminOnly } from "@/components/app-shell/admin-access"
+
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, Loader2, RefreshCw, Send, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -101,7 +103,7 @@ export function PostizConsole() {
     });
   }
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{channels.length ? `${channels.length} ${channels.length === 1 ? "canal disponível" : "canais disponíveis"}` : "Conecte um canal para começar."} <a className="ml-1 underline underline-offset-4" href="/app/integrations">Gerenciar canais</a></p><Button type="button" aria-expanded={showComposer} aria-controls="postiz-composer" onClick={() => setShowComposer((current) => !current)}>{showComposer ? "Fechar editor" : "Criar publicação"}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{channels.length ? `${channels.length} ${channels.length === 1 ? "canal disponível" : "canais disponíveis"}` : "Conecte um canal para começar."} <AdminOnly><a className="ml-1 underline underline-offset-4" href="/app/integrations">Gerenciar canais</a></AdminOnly></p><Button type="button" aria-expanded={showComposer} aria-controls="postiz-composer" onClick={() => setShowComposer((current) => !current)}>{showComposer ? "Fechar editor" : "Criar publicação"}</Button></div>
     {notice && <Alert variant={failed ? "destructive" : "default"}><AlertTitle>{failed ? "Operação não concluída" : "Conteúdo atualizado"}</AlertTitle><AlertDescription>{notice}</AlertDescription></Alert>}
     <div className={`grid min-w-0 gap-4 ${showComposer ? "lg:grid-cols-2" : ""}`}>
       {showComposer && <Card id="postiz-composer" className="min-w-0"><CardHeader><CardTitle>Criar publicação</CardTitle></CardHeader><CardContent>
@@ -131,6 +133,6 @@ export function PostizConsole() {
       </CardContent></Card>
     </div>
     <details className="rounded-2xl border bg-card"><summary className="cursor-pointer p-5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">Métricas dos canais</summary><div className="space-y-4 border-t p-5"><div className="grid max-w-sm gap-2"><Label htmlFor="postiz-metrics-channel">Canal</Label><select id="postiz-metrics-channel" className={selectClass} value={channelId} onChange={(event) => { setChannelId(event.target.value); setMetrics(null); }}><option value="">Selecione um canal</option>{channels.map((item) => <option key={item.id} value={item.id} disabled={item.disabled}>{item.name}</option>)}</select></div><p className="text-xs text-muted-foreground">Últimos 30 dias, conforme os dados disponibilizados pela rede.</p><Button variant="outline" disabled={busy || !channel} onClick={() => void analytics()}><BarChart3 />Consultar métricas</Button>{metrics && (metrics.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{metrics.map((metric, index) => <div key={`${metric.label}-${index}`} className="min-w-0 rounded-xl border p-4"><h3 className="font-medium">{metric.label}</h3><div className="mt-2 max-h-48 overflow-auto">{Array.isArray(metric.data) && metric.data.map((point, index) => <div key={index} className="flex justify-between gap-4 text-sm"><span>{point.date}</span><span>{point.total}</span></div>)}</div></div>)}</div> : <p className="text-sm text-muted-foreground">A rede não retornou métricas para este período.</p>)}</div></details>
-    <details className="rounded-2xl border bg-card"><summary className="cursor-pointer p-5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">Ajuda com a publicação</summary><div className="space-y-2 border-t p-5 text-sm text-muted-foreground"><p>Para publicar automaticamente, conecte suas redes no Postiz e configure a conexão em <a className="underline" href="/app/integrations">Integrações</a>.</p><p>Use Preparar conteúdo para criar rascunhos e concluir a publicação manualmente na rede social.</p></div></details>
+    <details className="rounded-2xl border bg-card"><summary className="cursor-pointer p-5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">Ajuda com a publicação</summary><div className="space-y-2 border-t p-5 text-sm text-muted-foreground"><p>Para publicar automaticamente, conecte suas redes no Postiz e configure a conexão em <AdminOnly><a className="underline" href="/app/integrations">Integrações</a></AdminOnly>.</p><p>Use Preparar conteúdo para criar rascunhos e concluir a publicação manualmente na rede social.</p></div></details>
   </div>;
 }

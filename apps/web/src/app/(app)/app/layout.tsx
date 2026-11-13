@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell/app-shell"
+import { AdminAccessProvider } from "@/components/app-shell/admin-access"
 import { AuthenticationRequiredError, requireWorkspace } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import "./reference-surfaces.css"
@@ -13,5 +14,5 @@ export default async function OperationalLayout({ children }: { children: React.
     if (error instanceof AuthenticationRequiredError) redirect("/sign-in")
     throw error
   }
-  return <AppShell isSystemAdmin={isSystemAdmin}>{children}</AppShell>
+  return <AdminAccessProvider allowed={isSystemAdmin}><AppShell isSystemAdmin={isSystemAdmin}>{children}</AppShell></AdminAccessProvider>
 }

@@ -13,7 +13,7 @@ export const EARLY_ACCESS: Record<EarlyAccessModule, { name: string; href: strin
   },
   chat: {
     name: "KIARA Chat", href: "/app/chat", accent: "#c4a1ff",
-    headline: "Converse com a Kiara. Até por voz.",
+    headline: "Converse com a Kiara.",
     pitch: "Uma assistente para pensar, escrever e criar: propostas, sites, painéis e vídeos narrados por ela.",
     teasers: ["Modo conversa por voz", "Sites e dashboards", "Vídeos de apresentação"],
   },

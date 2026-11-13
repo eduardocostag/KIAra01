@@ -1,0 +1,29 @@
+{
+  "checked_at": "2026-11-13T03:11:00.009916+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 58.52,
+  "requested": 3,
+  "accepted": 3,
+  "requested_limit_reached": true,
+  "all_sources_succeeded": true,
+  "sources": {
+    "google_maps": 3
+  },
+  "with_phone": 3,
+  "with_public_whatsapp": 2,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 12,
+    "accepted": 3,
+    "excluded": 6,
+    "unknown": 0,
+    "incomplete": 5,
+    "source_failures": 0
+  },
+  "warnings": [
+    "5 candidato(s) excluído(s) por não apresentar nome/empresa, telefone ou WhatsApp, cidade/endereço comprovado e URL pública da fonte.",
+    "Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados."
+  ],
+  "error": null,
+  "passed": true
+}

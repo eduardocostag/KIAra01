@@ -35,7 +35,7 @@ export function prepareWhatsAppWeb() {
     const timeout = setTimeout(() => {
       window.removeEventListener("message", handleMessage)
       reject(new Error("Extensão Kiara não encontrada. Instale-a no Chrome e recarregue esta página e o WhatsApp Web."))
-    }, 45000)
+    }, 220000)
     function handleMessage(event: MessageEvent) {
       if (event.source !== window || event.origin !== window.location.origin) return
       if (event.data?.source !== "kiara-whatsapp-extension" || event.data.type !== "whatsapp-ready" || event.data.requestId !== requestId) return

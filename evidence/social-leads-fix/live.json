@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-11-13T02:25:46.135769+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 18.11,
+  "requested": 2,
+  "accepted": 0,
+  "requested_limit_reached": false,
+  "all_sources_succeeded": true,
+  "sources": {},
+  "with_phone": 0,
+  "with_public_whatsapp": 0,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 8,
+    "accepted": 0,
+    "excluded": 8,
+    "unknown": 0,
+    "incomplete": 0,
+    "source_failures": 0
+  },
+  "warnings": [
+    "Perfis do Instagram sem bio atual verificável foram excluídos; confirme o acesso público ou pesquise outra fonte.",
+    "Páginas do Facebook sem descrição atual verificável foram excluídas; confirme o acesso público ou pesquise outra fonte."
+  ],
+  "error": null,
+  "passed": false
+}

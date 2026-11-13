@@ -2,6 +2,9 @@ export type HunterSource = "web" | "google_maps" | "instagram" | "facebook"
 export type WebsiteFilter = "any" | "without_website" | "with_website"
 export type ContactFilter = "any" | "phone" | "whatsapp"
 export type HunterPublicData = {
+  display_name?: string | null
+  source_title?: string | null
+  name_status?: "source_title"
   crm_skip_reason?: string | null
   criterion_status?: "verified" | "not_verified" | "not_requested" | "manual_review"
   manual_import?: boolean
@@ -104,7 +107,8 @@ export function parseHunterJob(value: unknown): HunterJob {
         if (result.public_data != null) {
           if (typeof result.public_data !== "object" || Array.isArray(result.public_data)) return false
           const data = result.public_data
-          const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.email, data.whatsapp_url, data.address, data.address_evidence, data.source_url, data.enrichment, data.lead_id, data.pipeline_entry_id, data.crm_status, data.profile_handle, data.profile_bio, data.user_notes]
+          const textFields = [data.research_objective, data.website_url, data.website_evidence, data.phone, data.email, data.whatsapp_url, data.address, data.address_evidence, data.source_url, data.enrichment, data.lead_id, data.pipeline_entry_id, data.crm_status, data.profile_handle, data.profile_bio, data.user_notes, data.display_name, data.source_title]
+          if (data.name_status != null && data.name_status !== "source_title") return false
           if (data.bio_status && !["verified_public_profile", "indexed_excerpt_only"].includes(data.bio_status)) return false
           if (data.page_status && !["verified_public_page", "indexed_excerpt_only"].includes(data.page_status)) return false
           if (data.content_kind && !["profile", "publication"].includes(data.content_kind)) return false
@@ -163,6 +167,7 @@ export function hunterMissingEvidence(data: HunterPublicData | undefined): strin
     phone_or_whatsapp: "telefone ou WhatsApp público",
     verified_location: "localização confirmada",
     source_url: "fonte pública válida",
+    niche_match: "correspondência com o nicho pesquisado",
   }
   return [...new Set(data?.lead_requirements_missing ?? [])].map((field) => labels[field] ?? field)
 }

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Kiara WhatsApp",
   "description": "Conecta a sessão WhatsApp Web existente à caixa de atendimento e à operação autorizada da Kiara.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtxNI3JkyVpQ2HsNcBdBdiQbULEktz/TRsQUUACcPayRNEpN0T7tewfBhtpTeHoI85Vr4vJDFrL547nqDZPKjqYhvIObZ6NI+9SUKLzrzD5WE24W1hHIigoNwGHSFGtZzCesxnxOPhuFREVfMmtLQasP9uuoFWAAhozWBb2TMDOHSfR3jxPwu+BPGLCpjN82znLWTAhFIR0ZaFW45YyBiMXE4KxZBtxaoIom2mhzP3f8eD/hlaOOJrD97HcOm/yISVGg+QEXm3VfElze9csFBk2q2pEJNjqSqeN6CVunkyM38QI80rnPLT7f+X1AaeyGEDndMzCNbyu4G2VAitDVG1wIDAQAB",
   "permissions": ["tabs"],
   "host_permissions": [

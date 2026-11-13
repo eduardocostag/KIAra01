@@ -1,6 +1,44 @@
+import http.client
+import threading
+from http.server import ThreadingHTTPServer
+from types import SimpleNamespace
+
 import pytest
 
 from scripts import run_whatsapp_local_bridge as bridge
+
+
+@pytest.mark.parametrize("stdout_state", ["windowless", "closed_pipe"])
+def test_http_connection_survives_missing_or_closed_service_stdout(monkeypatch, stdout_state):
+    class ClosedPipe:
+        def write(self, _text):
+            raise BrokenPipeError("launcher pipe closed")
+
+        def flush(self):
+            raise BrokenPipeError("launcher pipe closed")
+
+    origin = "https://kiaralead.vercel.app"
+    server = ThreadingHTTPServer(("127.0.0.1", 0), bridge.handler_for(SimpleNamespace(origins={origin})))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+    try:
+        with monkeypatch.context() as scoped:
+            scoped.setattr(bridge.sys, "stdout", None if stdout_state == "windowless" else ClosedPipe())
+            connection.request("OPTIONS", "/api/connect", headers={"Origin": origin})
+            response = connection.getresponse()
+            assert response.status == 204
+            assert response.getheader("Access-Control-Allow-Origin") == origin
+            response.read()
+            connection.request("POST", "/api/status", body='{"action":"status"}', headers={"Origin": origin})
+            response = connection.getresponse()
+            assert response.status == 401
+            assert b"error" in response.read()
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
 
 
 def test_bridge_masks_contact_phone():

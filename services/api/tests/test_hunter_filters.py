@@ -98,8 +98,8 @@ def test_every_source_combination_executes_without_contract_or_orchestration_err
 
 
 def maps_result(name, *, loaded=True, website=None, phone="+55 (11) 91234-5678", whatsapp=False, website_button=False):
-    return maps_detail_result({"title": name, "url": f"https://www.google.com/maps/place/{name}/data=!1s{name}"},
-        {"title": name, "loaded": loaded, "website": website, "website_button": website_button or bool(website),
+    return maps_detail_result({"summary": "Servi?os de psicologia", "title": name, "url": f"https://www.google.com/maps/place/{name}/data=!1s{name}"},
+        {"title": name, "category": "Psicologia", "loaded": loaded, "website": website, "website_button": website_button or bool(website),
          "phone": phone, "address": "São Paulo", "links": ["https://wa.me/5511912345678"] if whatsapp else []})
 
 
@@ -406,9 +406,9 @@ def test_raw_markdown_is_not_exposed_even_in_legacy_enrichment():
 def test_arbitrary_criteria_stay_unverified_for_any_niche():
     for request in [search("restaurantes com estacionamento"),
                     search("lojas de roupas", research_mode="focused", objective="que vendem no Instagram")]:
-        kept, _ = filter_results([maps_result("candidate")], request)
+        kept, _ = filter_results([{**maps_result("candidate"), "summary": request["query"]}], request)
         assert kept[0]["public_data"]["criterion_status"] == "not_verified"
-    kept, _ = filter_results([maps_result("candidate")], search("restaurantes"))
+    kept, _ = filter_results([{**maps_result("candidate"), "summary": "Restaurante"}], search("restaurantes"))
     assert kept[0]["public_data"]["criterion_status"] == "not_requested"
 
 
@@ -423,6 +423,8 @@ def test_golden_constraint_judgments_improve_precision_without_losing_eligible_c
     ]
     total = eligible = returned = correct = 0
     for request, candidates, labels in fixtures:
+        for candidate in candidates:
+            candidate["summary"] = request["query"]
         kept, _ = filter_results(deepcopy(candidates), request)
         titles = {item["title"] for item in kept}
         assert titles == labels
@@ -576,7 +578,7 @@ def test_facebook_numeric_profiles_keep_distinct_identity_parameters():
 
 
 def test_web_identity_path_remains_case_sensitive_and_tracking_is_ignored():
-    rows = [{"source": "web", "title": f"Clínica {index}",
+    rows = [{"source": "web", "title": f"Clínica {index}", "summary": "Odontologia",
              "url": f"https://clinic.example/{path}",
              "public_data": {"phone": "+5511999990000", "address": "Curitiba",
                              "address_evidence": "verified_public_page"}}
@@ -747,7 +749,8 @@ def test_provider_timeout_is_bounded_and_persistable_failed_job(monkeypatch):
 
 def test_filter_applied_before_result_limit_and_web_crawl_skipped_for_no_site(monkeypatch):
     async def maps(*args):
-        return [maps_result("reject", website="https://site.example"), maps_result("accept")]
+        return [{**maps_result("reject", website="https://site.example"), "summary": "Oficina mecanica"},
+                {**maps_result("accept"), "summary": "Oficina mecanica"}]
     async def forbidden(*args):
         raise AssertionError("No-site searches must not pay to scrape sites known to fail.")
     monkeypatch.setattr(hunter, "maps_search", maps)
@@ -769,8 +772,8 @@ def test_editorial_pages_and_social_posts_are_not_crm_contacts():
         {"source": "facebook", "title": "Empresa", "url": "https://facebook.com/empresa"},
     ]
     kept, stats = filter_results(items, search("psicólogos"))
-    assert [item["title"] for item in kept] == ["Como Psicologia — Clínica"]
-    assert stats["excluded"] == 5
+    assert kept == []  # Team pages are research sources, not individual leads.
+    assert stats["excluded"] == 6
 
 
 def test_indexed_maps_pages_and_non_business_web_results_are_not_leads():

@@ -64,18 +64,17 @@ async function scanTab(tabId, limit) {
 async function prepareWhatsApp() {
   const tabId = await connectWhatsAppTab()
   let lastError
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  // A fresh WhatsApp tab normally shows its login QR first. Keep checking
+  // while the user links the device instead of failing on the first probe.
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       const response = await chrome.tabs.sendMessage(tabId, { type: "kiara-whatsapp-status" })
-      if (!response?.ready) {
-        throw new Error("WhatsApp Web não conectado. Entre na sua conta nessa guia e tente novamente.")
-      }
-      return
+      if (response?.ready) return
+      lastError = new Error("WhatsApp Web ainda não conectado. Leia o QR Code na guia aberta e tente novamente.")
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith("WhatsApp Web não conectado.")) throw error
       lastError = error
-      await new Promise(resolve => setTimeout(resolve, 500))
     }
+    await new Promise(resolve => setTimeout(resolve, 1500))
   }
   throw new Error(lastError?.message?.includes("Receiving end")
     ? "Atualize a guia do WhatsApp Web uma vez para ativar a extensão Kiara."

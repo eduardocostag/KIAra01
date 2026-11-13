@@ -34,12 +34,12 @@ export function SupportSectionNav() {
   </nav>
 }
 
-export function SettingsSectionNav() {
+export function SettingsSectionNav({ isSystemAdmin = false }: { isSystemAdmin?: boolean }) {
   const pathname = usePathname()
   const onIntegrations = pathname.startsWith("/app/settings/integrations")
 
   return <nav aria-label="Seções de configurações" className="flex flex-wrap gap-2">
     <SectionLink href="/app/settings" label="Geral" active={!onIntegrations} icon={Settings2} />
-    <SectionLink href="/app/settings/integrations" label="Integrações" active={onIntegrations} icon={Cable} />
+    {isSystemAdmin ? <SectionLink href="/app/settings/integrations" label="Integrações" active={onIntegrations} icon={Cable} /> : null}
   </nav>
 }

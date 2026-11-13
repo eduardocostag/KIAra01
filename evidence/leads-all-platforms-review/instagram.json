@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-11-13T01:59:01.731120+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 4.8,
+  "requested": 2,
+  "accepted": 0,
+  "requested_limit_reached": false,
+  "all_sources_succeeded": true,
+  "sources": {},
+  "with_phone": 0,
+  "with_public_whatsapp": 0,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 4,
+    "accepted": 0,
+    "excluded": 4,
+    "unknown": 0,
+    "incomplete": 0,
+    "source_failures": 0
+  },
+  "warnings": [
+    "Perfis do Instagram sem bio atual verificável foram excluídos; confirme o acesso público ou pesquise outra fonte."
+  ],
+  "error": null,
+  "passed": false
+}

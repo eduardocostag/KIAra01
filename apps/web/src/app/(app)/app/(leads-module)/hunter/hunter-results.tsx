@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { BadgeCheck, Check, ExternalLink, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Star, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
+import { hunterEvidenceLabel, hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
 
 const sourceLabels: Record<string, string> = { web: "Web", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
 const statusLabels: Record<string, string> = { completed: "Concluída", running: "Em andamento", pending_confirmation: "Não iniciada", failed: "Não concluída", cancelled: "Cancelada" }
@@ -17,6 +17,7 @@ function failureMessage(code: string | null | undefined) {
 }
 
 function resultDisplayName(result: HunterResult) {
+  if (result.source === "web" && result.public_data?.display_name?.trim()) return result.public_data.display_name.trim()
   if (result.source === "instagram" || result.source === "facebook") {
     const handle = result.public_data?.profile_handle?.trim().replace(/^@/, "") || result.title.match(/@([A-Za-z0-9._-]{1,50})/)?.[1]
     if (handle && /^[A-Za-z0-9._-]{1,50}$/.test(handle)) return `@${handle}`
@@ -49,16 +50,20 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
   const verified = !data?.manual_import && (
     (result.source === "google_maps" && data?.detail_inspected === true) ||
     (result.source === "instagram" && data?.bio_status === "verified_public_profile") ||
-    (result.source === "facebook" && data?.page_status === "verified_public_page") ||
-    (result.source === "web" && data?.enrichment === "completed")
+    (result.source === "facebook" && data?.page_status === "verified_public_page")
   )
   const name = resultDisplayName(result)
   const summary = result.summary?.replace(/\s+/g, " ").trim()
-  const missing = hunterMissingEvidence(data)
+  const locationConfirmed = Boolean(data?.address && (data?.detail_inspected || data?.address_evidence === "verified_public_page")) || Boolean(data?.bio_location_evidence)
+  const missing = [...new Set([
+    ...hunterMissingEvidence(data),
+    ...(!phone && !whatsapp ? ["telefone ou WhatsApp público"] : []),
+    ...(!locationConfirmed ? ["localização confirmada"] : []),
+  ])]
   const blocked = publication || missing.length > 0
 
   async function addLead() {
-    if (adding || added) return
+    if (adding || added || blocked) return
     setAdding(true); setAddError("")
     try {
       const response = await fetch(`/api/hunter/searches/${encodeURIComponent(searchId)}/results/${encodeURIComponent(result.id)}/add-lead`, { method: "POST" })
@@ -75,7 +80,7 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
       <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <span className="min-w-0 break-words">{name}</span>
         <span className="text-xs font-normal text-muted-foreground">{sourceLabels[result.source]}</span>
-        {verified ? <span className="inline-flex items-center gap-1 text-xs font-normal text-emerald-400"><BadgeCheck className="size-3.5" aria-hidden="true" />Conferido</span> : null}
+        <span className={`inline-flex items-center gap-1 text-xs font-normal ${verified ? "text-emerald-400" : "text-muted-foreground"}`}>{verified ? <BadgeCheck className="size-3.5" aria-hidden="true" /> : null}{hunterEvidenceLabel(result.source, data)}</span>
       </h3>
       <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -87,6 +92,7 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
         {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}
       </div>
       {summary ? <p className="line-clamp-2 text-xs text-muted-foreground">{summary}</p> : null}
+      {result.source === "web" && data?.name_status === "source_title" ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Nome extraído do título da fonte</summary><p className="mt-1 break-words">{data.source_title || result.title}</p><p>O nome comercial não foi confirmado separadamente.</p></details> : null}
       {blocked && !added ? <p className="text-xs text-amber-400">{publication ? "É uma publicação, não um perfil de negócio." : `Falta confirmar: ${missing.join(", ")}.`}</p> : null}
       {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
     </div>
@@ -129,9 +135,10 @@ export function HunterResults({ jobs, selected, loading, onRefresh, onClear, onS
     {selected.status === "cancelled" || selected.status === "pending_confirmation" ? <p className="px-5 py-6 text-sm text-muted-foreground">Esta busca não foi executada. Faça uma nova busca.</p> : null}
     {selected.status === "completed" && !selected.results.length ? <div className="px-5 py-10 text-center">
       <p className="font-medium">Nenhum lead atendeu aos critérios</p>
-      <p className="mt-1 text-sm text-muted-foreground">Tente outra região ou afrouxe os filtros.</p>
+      <p className="mt-1 text-sm text-muted-foreground">{selected.warnings?.length ? "As fontes não forneceram dados públicos suficientes para confirmar os leads. Confira os avisos abaixo ou ajuste a busca." : "Tente outra região ou ajuste os filtros."}</p>
       <Button variant="outline" className="mt-4" onClick={() => onBroaden(selected)}>Ajustar busca</Button>
     </div> : null}
+    {selected.status === "completed" && Boolean(selected.warnings?.length) ? <details className="border-t px-5 py-4 text-sm" open={!selected.results.length}><summary className="cursor-pointer font-medium">Limitações das fontes consultadas</summary><ul className="mt-2 list-disc space-y-2 pl-5 text-xs leading-5 text-muted-foreground">{selected.warnings?.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></details> : null}
     {selected.results.length ? <ul className="divide-y">{selected.results.map((result) => <LeadRow key={result.id} result={result} searchId={selected.id} location={selected.location} />)}</ul> : null}
   </section>
 }

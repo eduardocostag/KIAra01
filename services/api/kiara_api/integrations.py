@@ -22,6 +22,14 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
+
+
+async def system_admin_context(context: Annotated[RequestContext, Depends(authenticated_context)]) -> RequestContext:
+    if (context.email or "").strip().lower() != SYSTEM_ADMIN_EMAIL:
+        raise ApiError(403, "system_admin_required", "Acesso às integrações exclusivo do administrador geral.")
+    return context
+
+
 Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind", "postiz", "chatwoot"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
@@ -218,7 +226,7 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
 
 
 def create_integration_router(repository: IntegrationRepository) -> APIRouter:
-    router = APIRouter(prefix="/v1/integrations", tags=["integrations"])
+    router = APIRouter(prefix="/v1/integrations", tags=["integrations"], dependencies=[Depends(system_admin_context)])
 
     def ensure_admin(context: RequestContext) -> None:
         if context.role not in {"owner", "admin"}:
@@ -247,7 +255,6 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
         if provider == "mailerfind":
             ensure_system_admin(context)
         await repository.disconnect(context.organization_id, provider)
-        return None
 
     @router.get("/instagram-session/status")
     async def instagram_session_status(context: Annotated[RequestContext, Depends(authenticated_context)]):

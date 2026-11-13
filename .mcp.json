@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "freellmapi": {
+      "type": "http",
+      "url": "${FREELLMAPI_MCP_URL:-http://127.0.0.1:3001/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${FREELLMAPI_API_KEY}"
+      }
+    }
+  }
+}

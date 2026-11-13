@@ -1,7 +1,11 @@
 import { IntegrationSettings } from "@/components/app-shell/integration-settings"
 import { PageHeader } from "@/components/app-shell/page-header"
+import { requireWorkspace } from "@/lib/auth"
+import { redirect } from "next/navigation"
 
-export default function SettingsIntegrationsPage() {
+export default async function SettingsIntegrationsPage() {
+  const workspace = await requireWorkspace()
+  if (!workspace.isSystemAdmin) redirect("/app/settings")
   return <div className="max-w-6xl space-y-6">
     <PageHeader title="Integrações" description="Conecte os canais e serviços da sua operação." />
     <IntegrationSettings />

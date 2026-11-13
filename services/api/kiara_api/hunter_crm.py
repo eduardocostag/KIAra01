@@ -9,10 +9,16 @@ import hashlib
 import json
 import re
 from typing import Any
-from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from .hunter_research import is_editorial_or_post, lead_requirement_gaps, normalize_result
+from .hunter_research import (
+    canonical_public_identity,
+    is_editorial_or_post,
+    lead_requirement_gaps,
+    normalize_result,
+    result_niche_matches,
+)
 
 
 def _public_url(value: Any) -> str | None:
@@ -30,13 +36,7 @@ def _public_url(value: Any) -> str | None:
 
 
 def _canonical_url(value: str) -> str:
-    parts = urlsplit(value)
-    host = (parts.hostname or "").lower().removeprefix("www.")
-    port = f":{parts.port}" if parts.port and parts.port not in {80, 443} else ""
-    query = urlencode(sorted((key, item) for key, item in parse_qsl(parts.query)
-                             if not key.lower().startswith("utm_")
-                             and key.lower() not in {"fbclid", "gclid", "ref", "hl", "authuser", "entry", "g_ep"}))
-    return urlunsplit(("https", host + port, parts.path.rstrip("/") or "/", query, ""))
+    return canonical_public_identity(value) or value
 
 
 def _instagram_username(url: str) -> str | None:
@@ -79,6 +79,10 @@ def _consumer_display_name(result: dict[str, Any], username: str | None) -> str:
     """Return a human label, never the search-engine document title."""
     if username:
         return f"@{username}"[:500]
+    if result.get("source") == "web":
+        label = (result.get("public_data") or {}).get("display_name")
+        if isinstance(label, str) and label.strip():
+            return label.strip()[:500]
     title = str(result.get("title") or "")
     title = re.sub(r"\s*[•|·-]\s*Instagram(?:\s+photos?\s+and\s+videos?)?\s*$", "", title, flags=re.IGNORECASE)
     title = re.sub(r"\s*Instagram\s+photos?\s+and\s+videos?\s*$", "", title, flags=re.IGNORECASE)
@@ -128,9 +132,11 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
     }
     for key in ("phone", "email", "address", "address_evidence", "address_source_url", "address_evidence_text",
                 "website_evidence", "criterion_status", "place_id", "enrichment", "provider", "profile_bio",
-                "bio_status", "page_status"):
+                "bio_status", "page_status", "display_name", "source_title", "name_status"):
         if isinstance(data.get(key), str) and data[key].strip():
             metadata[key] = data[key][:3000]
+    if result_niche_matches(result, search):
+        metadata["niche_evidence_text"] = " ".join(str(result.get(key) or "") for key in ("title", "summary"))[:1500]
     for key in ("website_quality_score", "website_quality_signals", "match_reasons"):
         if data.get(key) is not None:
             metadata[key] = data[key]
@@ -206,6 +212,8 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
         keys = identity_keys(result)
         normalized_result = normalize_result(result)
         missing_requirements = lead_requirement_gaps(normalized_result, search_dict)
+        if not result_niche_matches(normalized_result, search_dict):
+            missing_requirements.append("niche_match")
         criterion_reason = _skip_reason(search_dict, normalized_result)
         if user_selected and criterion_reason in {"criterion_not_matched", "criterion_not_verified"}:
             criterion_reason = None

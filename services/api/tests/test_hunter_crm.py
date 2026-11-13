@@ -100,7 +100,7 @@ def search(**overrides):
 
 
 def result(**overrides):
-    row = {"id": uuid4(), "title": "Clínica teste", "source": "google_maps",
+    row = {"id": uuid4(), "title": "Clínica teste", "summary": "Psicologia", "source": "google_maps",
            "url": "https://www.google.com/maps/place/Clinica/data=!4m2!3m1!1s0x123:0xabc?hl=pt",
            "public_data": {"phone": "+55 11 99999-0000", "address": "São Paulo",
                            "detail_inspected": True, "website_status": "not_listed", "criterion_status": "verified",

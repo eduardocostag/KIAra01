@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { connectWhatsAppWeb, whatsappWebRequest, type WhatsAppEvents } from "@/lib/whatsapp-web-client"
 
-const BRIDGE_URL = "http://127.0.0.1:3007"
+const BRIDGE_URL = "http://127.0.0.1:3009"
 const PAIRING_TIMEOUT_MS = 3 * 60_000
 
 type BridgeStatus = { connected: boolean; state: string; phone: string; model: string }
@@ -160,7 +160,7 @@ export function WhatsAppConnectionPanel() {
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer">Detalhes técnicos</summary>
       <div className="mt-2 space-y-2">
-        <p>A sessão é mantida pelo OpenWA (porta 3006) e acessada pela ponte da Kiara: <code>python scripts/run_whatsapp_local_bridge.py</code> (porta 3007). No servidor, os dois rodam como serviço.</p>
+        <p>A sessão é mantida pelo OpenWA (porta 3006) e acessada pela ponte local da Kiara (porta 3009). Para iniciar neste computador, use <code>scripts/launch_whatsapp_local_bridge.ps1</code>.</p>
         <p>Exige conta owner/admin. O navegador pode pedir acesso à rede local.</p>
       </div>
     </details>
@@ -198,7 +198,16 @@ export function WhatsAppWebConnectionPanel() {
 
   const online = Boolean(events?.online)
   return <div className="space-y-3">
-    <p className="text-sm text-muted-foreground">Usa o WhatsApp Web aberto neste Chrome, por meio da extensão Kiara WhatsApp.</p>
+    <p className="text-sm text-muted-foreground">{connecting ? "Entre no WhatsApp na guia aberta e leia o QR Code com o celular. A Kiara aguarda a confirmação por até 3 minutos." : "Usa o WhatsApp Web aberto neste Chrome, por meio da extensão Kiara WhatsApp."}</p>
+    <details className="rounded-lg border p-3 text-sm">
+      <summary className="cursor-pointer font-medium">Instalar ou atualizar a extensão Kiara</summary>
+      <ol className="mt-3 list-decimal space-y-2 pl-5 text-muted-foreground">
+        <li><a className="font-medium text-primary underline" href="/downloads/kiara-whatsapp-extension.zip" download>Baixe a extensão</a> e extraia o ZIP em uma pasta fixa.</li>
+        <li>No Chrome, abra <code>chrome://extensions</code> e habilite o Modo do desenvolvedor.</li>
+        <li>Clique em Carregar sem compactação e selecione a pasta extraída. Se já estiver instalada, atualize os arquivos e clique em Recarregar.</li>
+        <li>Atualize as guias da Kiara e do WhatsApp Web e tente conectar novamente.</li>
+      </ol>
+    </details>
     <div className="flex flex-wrap items-center gap-3">
       <span className="inline-flex items-center gap-1.5 text-sm"><span className={cn("size-2 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{checking ? "Verificando…" : online ? "Extensão conectada" : "Extensão não conectada"}</span>
       <Button type="button" size="sm" variant="outline" onClick={() => void connect()} disabled={connecting}>{connecting ? <LoaderCircle className="animate-spin" /> : null}Conectar pela extensão</Button>

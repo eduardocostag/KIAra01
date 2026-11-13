@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-11-13T02:13:06.330583+00:00",
+  "mode": "real_providers_no_persistence",
+  "elapsed_seconds": 3.08,
+  "requested": 2,
+  "accepted": 0,
+  "requested_limit_reached": false,
+  "all_sources_succeeded": false,
+  "sources": {},
+  "with_phone": 0,
+  "with_public_whatsapp": 0,
+  "requirement_gaps": {},
+  "validation": {
+    "checked": 0,
+    "accepted": 0,
+    "excluded": 0,
+    "unknown": 0,
+    "incomplete": 0,
+    "source_failures": 1
+  },
+  "warnings": [
+    "Facebook não concluiu a consulta porque o índice público está temporariamente indisponível. Tente novamente em alguns minutos; se persistir, peça ao administrador para verificar EXA_API_KEY e FIRECRAWL_API_KEY. Os resultados das outras fontes foram preservados."
+  ],
+  "error": "public_index_unavailable",
+  "passed": false
+}

@@ -104,6 +104,22 @@ def safe_public_url(value: Any) -> str | None:
     return value[:3000]
 
 
+def canonical_public_identity(value: Any) -> str | None:
+    """Keep resource identity at every deduplication stage, dropping tracking only."""
+    safe = safe_public_url(value)
+    if not safe:
+        return None
+    parts = urlsplit(safe)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    if ":" in host:
+        host = f"[{host}]"
+    port = f":{parts.port}" if parts.port and parts.port not in {80, 443} else ""
+    query = urlencode(sorted((key, item) for key, item in parse_qsl(parts.query, keep_blank_values=True)
+                             if not key.lower().startswith("utm_")
+                             and key.lower() not in {"fbclid", "gclid", "ref", "hl", "authuser", "entry", "g_ep"}))
+    return urlunsplit(("https", host + port, parts.path.rstrip("/") or "/", query, ""))
+
+
 def clean_summary(value: Any, limit: int = 500) -> str:
     """Produce a compact plain-language excerpt, never raw crawl Markdown."""
     if not isinstance(value, str):
@@ -122,8 +138,17 @@ def clean_summary(value: Any, limit: int = 500) -> str:
 def phone_number(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
-    value = value.removeprefix("tel:").strip()
-    digits = re.sub(r"\D", "", value)
+    value = html.unescape(value).strip()
+    is_link = value[:4].lower() == "tel:"
+    value = unquote(value[4:] if is_link else value)
+    if is_link:
+        # RFC 3966 parameters are not part of the subscriber number. Never
+        # concatenate an extension or phone-context into a different phone.
+        value = value.split(";", 1)[0]
+    value = value.strip()
+    if not re.fullmatch(r"\+?[0-9(][0-9\s().-]*", value):
+        return None
+    digits = re.sub(r"[^0-9]", "", value)
     if not 10 <= len(digits) <= 15 or len(set(digits)) < 3:
         return None
     # Preserve the observed national number; never infer a country code.
@@ -151,7 +176,7 @@ def extract_contacts(text: str, links: list[str] | None = None) -> dict[str, Any
     links = [link for link in links or [] if isinstance(link, str)]
     candidates = links + re.findall(r"https?://[^\s<>\]\)\"']+", html.unescape(text))
     whatsapp = next((match for link in candidates if (match := whatsapp_link(link))), None)
-    tel = next((phone_number(link) for link in links if link.startswith("tel:") and phone_number(link)), None)
+    tel = next((phone_number(link) for link in links if link[:4].lower() == "tel:" and phone_number(link)), None)
     # Only context-labelled phone numbers, not unrelated dates/IDs in a page.
     match = re.search(r"(?:telefone|phone|celular|tel\.?|whatsapp)\s*[:\-]?\s*(\+?[\d (][\d ()\-]{8,22}\d)", text, re.IGNORECASE)
     tel = tel or (phone_number(match.group(1)) if match else None)
@@ -243,6 +268,13 @@ def is_profile_url(value: str) -> bool:
 
 def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
     data = dict(item.get("public_data") or {})
+    if item.get("source") == "web":
+        # Preserve the source title: a readable label is not a verified name.
+        raw_title = data.get("source_title") or item.get("title") or ""
+        raw_title = raw_title if isinstance(raw_title, str) else ""
+        data["source_title"] = raw_title[:500]
+        data["name_status"] = "source_title"
+        data["display_name"] = web_source_name(raw_title, str(item.get("url") or ""))
     if item.get("source") == "instagram":
         profile_url = safe_public_url(item.get("url"))
         parts = urlsplit(profile_url) if profile_url else None
@@ -298,6 +330,29 @@ def normalize_result(item: dict[str, Any]) -> dict[str, Any]:
     data["address"] = clean_summary(data.get("address"), 300) or None
     return {**item, "title": clean_summary(item.get("title"), 300) or "Contato público",
             "summary": clean_summary(text), "public_data": data}
+
+
+def web_source_name(title: str, url: str) -> str:
+    """Shorten a delimited title only when the segment matches the source host."""
+    fallback = clean_summary(title, 300) or "Página sem nome"
+    safe = safe_public_url(url)
+    if not safe:
+        return fallback
+    host = re.sub(r"[^a-z0-9]", "", folded(urlsplit(safe).hostname or ""))
+    generic = {"clinica", "clinicas", "odontologia", "odontologica", "dentista", "dentistas",
+               "medica", "medicas", "saude", "site", "oficial", "home", "inicio", "contato", "blog", "rede"}
+    candidates = []
+    parts = re.split(r"\s*[|•·]\s*|\s+[-–—]\s+", html.unescape(title))
+    if len(parts) < 2:
+        return fallback
+    for part in parts:
+        label = clean_summary(part, 300)
+        tokens = {token for token in re.findall(r"[a-z0-9]+", folded(label))
+                  if len(token) >= 4 and token not in generic}
+        matches = sum(token in host for token in tokens)
+        if matches and 2 <= len(label) <= 120:
+            candidates.append((matches, -len(label), label))
+    return max(candidates)[2] if candidates else fallback
 
 
 _BRAZIL_STATES = {
@@ -364,6 +419,9 @@ def lead_requirement_gaps(item: dict[str, Any], search: dict[str, Any]) -> list[
     })
     if item.get("source") in {"instagram", "facebook"} and data.get("profile_handle"):
         has_name = True
+    label = data.get("display_name") or title
+    if len(str(label)) > 140:
+        has_name = False
     missing = [] if has_name else ["name"]
     if not phone_number(data.get("phone")) and not whatsapp_link(data.get("whatsapp_url")):
         missing.append("phone_or_whatsapp")
@@ -394,6 +452,27 @@ def lead_requirement_gaps(item: dict[str, Any], search: dict[str, Any]) -> list[
     if not safe_public_url(data.get("source_url") or item.get("url")):
         missing.append("source_url")
     return missing
+
+
+def result_niche_matches(item: dict[str, Any], search: dict[str, Any]) -> bool:
+    """A provider ranking is not evidence that a business serves the niche."""
+    from .hunter_intelligence import understand_search
+
+    query = research_options(search)["provider_query"]
+    plan = understand_search(query)
+    terms = plan["services"] or plan["alternatives"] or [query]
+    data = item.get("public_data") or {}
+    observed = folded(" ".join(str(value or "") for value in (
+        item.get("title"), item.get("summary"), data.get("profile_bio"), data.get("category"),
+    )))
+    for term in terms:
+        words = re.findall(r"[a-z0-9]+", folded(term))
+        if not words:
+            continue
+        pattern = r"\W+".join(re.escape(word.rstrip("s")) + r"s?" for word in words)
+        if re.search(r"(?<!\w)" + pattern + r"(?!\w)", observed):
+            return True
+    return False
 
 
 def is_editorial_or_post(item: dict[str, Any]) -> bool:
@@ -431,8 +510,18 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
                     or (len(segments) >= 3 and segments[1].lower() in {"posts", "photos", "videos"}))
     if item.get("source") == "web":
         title = folded(str(item.get("title") or ""))
+        host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+        # An aggregator's contact page belongs to the directory, not to every
+        # business listed there. Do not import its footer phone as a prospect.
+        directory_hosts = {"doctoralia.com.br", "locaisdobrasil.com.br", "maisnobairro.com.br",
+                           "dentmap.com.br", "gyms1.com", "telelistas.net", "guiamais.com.br",
+                           "apontador.com.br", "solutudo.com.br"}
         return bool(
             is_profile_url(url)
+            or any(host == domain or host.endswith("." + domain) for domain in directory_hosts)
+            or host in {"drive.google.com", "docs.google.com"}
+            or re.search(r"\b(?:dicionario|significado|sinonimos|enciclopedia)\b", title)
+            or re.search(r"/(?:equipe|equipe-tecnica|team|profissionais)(?:/|$)", path)
             or re.search(r"/(?:blog|artigos?|noticias?|news|posts?|search|maps/search)(?:/|$)", path)
             or re.match(
                 r"^(?:(?:\d+\s+)?(?:melhores|principais|top)\b|"
@@ -471,18 +560,10 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             if not has_relevant_profile:
                 counts["excluded"] += 1
                 continue
-        source_parts = urlsplit(data["source_url"]) if data["source_url"] else None
         # Identity query parameters (Facebook id, Maps cid/place_id, etc.)
         # distinguish real businesses. Drop tracking only; path-only keys used
         # to collapse unrelated profiles into a single result.
-        normalized_source = urlunsplit((
-            "https", (source_parts.netloc or "").lower().removeprefix("www."),
-            source_parts.path.rstrip("/") or "/",
-            urlencode(sorted((key, value) for key, value in parse_qsl(source_parts.query)
-                             if not key.lower().startswith("utm_")
-                             and key.lower() not in {"fbclid", "gclid", "ref", "hl", "authuser", "entry", "g_ep"})),
-            "",
-        )) if source_parts else ""
+        normalized_source = canonical_public_identity(data["source_url"]) or ""
         identities = {f"url:{normalized_source}"} if normalized_source else set()
         if data.get("place_id"):
             identities.add(f"place:{str(data['place_id']).lower()}")
@@ -502,6 +583,9 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
         if lead_requirement_gaps(item, search):
             counts["excluded"] += 1
             counts["incomplete"] += 1
+            continue
+        if not result_niche_matches(item, search):
+            counts["excluded"] += 1
             continue
         website = options["website_filter"]
         contact = options["contact_filter"]

@@ -358,6 +358,30 @@ class PostgresRepository:
                 consumer[key] = [str(item) for item in hunter[key] if isinstance(item, str)][:20]
         if isinstance(hunter.get("website_quality_score"), (int, float)):
             consumer["website_quality_score"] = hunter["website_quality_score"]
+        if hunter:
+            from ..hunter_research import (
+                is_editorial_or_post,
+                lead_requirement_gaps,
+                normalize_result,
+                result_niche_matches,
+            )
+
+            source_result = normalize_result({"source": hunter.get("source"), "title": row["display_name"] or "",
+                "url": hunter.get("source_url") or "", "summary": hunter.get("niche_evidence_text") or hunter.get("profile_bio") or "",
+                "public_data": hunter})
+            search = {"query": hunter.get("research_query") or "", "location": hunter.get("location")}
+            gaps = lead_requirement_gaps(source_result, search)
+            if is_editorial_or_post(source_result):
+                gaps.append("business_identity")
+            if not result_niche_matches(source_result, search):
+                gaps.append("niche_match")
+            consumer["prospecting_status"] = "review_required" if gaps else "public_contact"
+            consumer["quality_gaps"] = list(dict.fromkeys(gaps))
+            if len(consumer["display_name"]) > 140 or "business_identity" in gaps:
+                from urllib.parse import urlsplit
+
+                host = urlsplit(hunter.get("source_url") or "").hostname
+                consumer["display_name"] = f"Contato a revisar · {host}" if host else "Contato a revisar"
         return {"id": str(row["id"]), "consumer": consumer,
             "qualification": (row.get("attributes") or {}).get("qualification"),
             "stage": row["stage"], "next_action": row["next_action"],
