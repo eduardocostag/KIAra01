@@ -1,0 +1,50 @@
+# Kiara gateway: the only door from the internet (Tailscale Funnel) to the Debian services.
+#
+# - Every route except /healthz requires `Authorization: Bearer $KIARA_GATEWAY_TOKEN`.
+# - The real OmniRoute and OpenWA keys are injected here and never leave the server.
+# - Only the inference API (/v1) and the WhatsApp API (/api) pass; dashboards, Ollama and Redis do not.
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+http://:8088 {
+	bind 127.0.0.1
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# OpenAI-compatible inference through OmniRoute (cloud providers + local Ollama qwen3:1.7b).
+	handle /ai/v1/* {
+		route {
+			@denied not header Authorization "Bearer {$KIARA_GATEWAY_TOKEN}"
+			respond @denied "unauthorized" 401
+			uri strip_prefix /ai
+			reverse_proxy 127.0.0.1:20128 {
+				header_up Host {upstream_hostport}
+				header_up Authorization "Bearer {$OMNIROUTE_API_KEY}"
+				flush_interval -1
+			}
+		}
+	}
+
+	# WhatsApp REST API through OpenWA.
+	handle /wa/api/* {
+		route {
+			@denied not header Authorization "Bearer {$KIARA_GATEWAY_TOKEN}"
+			respond @denied "unauthorized" 401
+			uri strip_prefix /wa
+			reverse_proxy 127.0.0.1:2785 {
+				header_up Host {upstream_hostport}
+				header_up -Authorization
+				header_up X-API-Key "{$OPENWA_API_KEY}"
+			}
+		}
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}

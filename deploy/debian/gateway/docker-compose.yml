@@ -1,0 +1,28 @@
+# Installed at /opt/kiara/gateway. Secrets live in /opt/kiara/gateway/.env (root, 0600):
+#   KIARA_GATEWAY_TOKEN  random 64 hex chars; the only secret the Kiara API on Vercel holds
+#   OMNIROUTE_API_KEY    key created in the OmniRoute dashboard for "kiara-gateway"
+#   OPENWA_API_KEY       copied from the openwa-api container (/app/data/.api-key)
+# Published to the internet only through `tailscale funnel --bg 8088`.
+services:
+  gateway:
+    image: caddy:2.10.2-alpine
+    container_name: kiara-gateway
+    network_mode: host
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    read_only: true
+    tmpfs:
+      - /data:uid=65534,gid=65534
+      - /config:uid=65534,gid=65534
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]  # the caddy binary carries this file capability
+    security_opt:
+      - no-new-privileges:true
+    user: "65534:65534"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8088/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

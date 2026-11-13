@@ -15,5 +15,6 @@ def _no_live_discovery_providers(monkeypatch):
 
     monkeypatch.setattr(hunter, "indexed_search", offline)
     for name in ("EXA_API_KEY", "FIRECRAWL_API_KEY", "GOOGLE_PLACES_API_KEY", "KIARA_MAPS_SCRAPER_EXECUTABLE",
-                 "OBSCURA_CDP_URL", "BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID", "KIARA_SCRAPEGRAPH_MODEL"):
+                 "OBSCURA_CDP_URL", "BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID", "KIARA_SCRAPEGRAPH_MODEL",
+                 "KIARA_SERVER_GATEWAY_URL", "KIARA_SERVER_GATEWAY_TOKEN"):
         monkeypatch.delenv(name, raising=False)

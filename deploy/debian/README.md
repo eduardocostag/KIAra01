@@ -100,3 +100,25 @@ Sem o Debian ligado, qualquer serviço gratuito de cron (por exemplo, cron-job.o
 
 ## Ainda não incluído
 O OpenWA, a conexão oficial do WhatsApp, entra num próximo passo. O launcher atual dele é específico do Windows.
+
+## Servidor atual (Docker em /opt/kiara) e gateway da Kiara
+
+O Debian em produção (192.168.1.12, `ssh kiara-debian`) roda OmniRoute, OpenWA, Ollama e Redis em Docker,
+todos presos a 127.0.0.1. A única porta para fora é o gateway (`gateway/`, Caddy em 127.0.0.1:8088),
+publicado por `tailscale funnel --bg 8088` (HTTPS com certificado do Tailscale).
+
+- Todas as rotas, exceto `/healthz`, exigem `Authorization: Bearer $KIARA_GATEWAY_TOKEN`.
+- `/ai/v1/*` → OmniRoute (`/v1`), `/wa/api/*` → OpenWA (`/api`). Painéis, Ollama e Redis não passam.
+- As chaves reais do OmniRoute e do OpenWA ficam só em `/opt/kiara/gateway/.env` (root, 0600).
+- Na Vercel (projeto kiara-api): `KIARA_SERVER_GATEWAY_URL` (https://kiara-debian.<tailnet>.ts.net),
+  `KIARA_SERVER_GATEWAY_TOKEN` e `KIARA_CHAT_MODEL` (modelo/combo do OmniRoute).
+  `GET /v1/server/status` (administrador) mostra o estado do gateway, da IA e das sessões do WhatsApp.
+
+Instalar/atualizar o gateway:
+
+```bash
+scp deploy/debian/gateway/{Caddyfile,docker-compose.yml} kiara-debian:/tmp/
+ssh kiara-debian 'sudo install -m 644 /tmp/Caddyfile /opt/kiara/gateway/ && sudo install -m 600 /tmp/docker-compose.yml /opt/kiara/gateway/ && sudo sh -c "cd /opt/kiara/gateway && docker compose up -d --force-recreate"'
+```
+
+Trocar o token: gere outro em `.env` (`openssl rand -hex 32`), recrie o contêiner e atualize a Vercel.

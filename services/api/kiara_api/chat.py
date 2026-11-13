@@ -57,6 +57,12 @@ def _configuration() -> tuple[str, str, str]:
     base = os.getenv("KIARA_CHAT_API_BASE_URL", "").strip().rstrip("/")
     model = os.getenv("KIARA_CHAT_MODEL", "").strip()
     key = os.getenv("KIARA_CHAT_API_KEY", "").strip()
+    if not base:
+        # The always-on Debian server: OmniRoute behind the Kiara gateway (the gateway holds the real key).
+        from .server_gateway import gateway_configuration
+        gateway, token = gateway_configuration()
+        if gateway:
+            base, key = f"{gateway}/ai/v1", key or token
     if not base and os.getenv("AI_GATEWAY_API_KEY"):
         base = "https://ai-gateway.vercel.sh/v1"
         key = key or os.environ["AI_GATEWAY_API_KEY"]
