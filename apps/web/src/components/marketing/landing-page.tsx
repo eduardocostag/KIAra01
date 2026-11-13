@@ -7,7 +7,7 @@ import { CtaOrb, HeroScene, Reveal, TiltCard, WordRotator } from "./landing-inte
 import { AutomationPreview, LeadsPreview, VoicePreview, WhatsAppPreview } from "./module-previews"
 import styles from "./landing.module.css"
 
-const channels = ["Google Maps", "Instagram", "Facebook", "WhatsApp", "LinkedIn", "Google Ads", "Meta Ads", "Google Agenda", "CRM integrado", "Voz em português", "Chatwoot"]
+const channels = ["Google Maps", "Instagram", "Facebook", "WhatsApp", "LinkedIn", "Google Ads", "Meta Ads", "Google Agenda", "CRM integrado", "Voz em português"]
 
 const modules = [
   { icon: Search, tone: "#38bdf8", eyebrow: "KIARA Leads", title: "Encontre e organize clientes.", copy: "Descreva quem você procura e a Kiara pesquisa, confere contato e localização e leva cada oportunidade para o CRM com a próxima ação.", bullets: ["Busca por nicho, região e presença digital", "Contato e endereço conferidos na fonte", "Pipeline com etapas e follow-ups"], preview: LeadsPreview },
