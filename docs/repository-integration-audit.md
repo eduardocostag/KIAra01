@@ -15,6 +15,15 @@ Situação conferida em 13/11/2026 na API do Hunter (Vercel), olhando código, d
 | google/skills | Skills de Google Ads, Data Manager e Analytics orientam as integrações; veja `google-growth-skills.md` | Não são SDK nem scraping; ações de Ads exigem OAuth e conta do cliente |
 | Tanishq200307/postz-app | Nenhuma chamada | O endereço enviado não está acessível; não é seguro substituir por outro projeto sem confirmar a origem e a licença |
 
+## Como as fontes trabalham juntas
+
+1. **Descoberta na web:** Exa, Firecrawl e o índice público são consultados ao mesmo tempo (`public_search`). Os resultados se intercalam e URLs repetidas são descartadas. No Instagram e no Facebook entram também os links de perfil achados nos sites das empresas.
+2. **Google Maps:** Places API e Google Maps Scraper rodam juntos. Se não chegarem à quantidade pedida, um navegador (Obscura, depois Browserbase, depois Chromium local) lê mais fichas. As fichas da mesma empresa viram uma só e uma fonte completa a outra (`merge_maps_rows`).
+3. **Enriquecimento em camadas:** primeiro o coletor próprio (Scrapling), gratuito e para todos. O Firecrawl entra só nos leads ainda incompletos, depois o Obscura nas páginas que dependem de JavaScript, e por último o ScrapeGraphAI, que dá apenas dicas.
+4. **Mesma empresa em fontes diferentes:** ficha do Maps, site e perfis são reunidos num único lead quando coincidem a ficha, o domínio próprio ou o telefone mais uma palavra do nome (`combine_same_business`). Plataformas compartilhadas (iFood, Linktree, Instagram...) nunca bastam para juntar empresas.
+
+Fonte sem credencial falha na hora e é ignorada; ao cadastrar a chave, ela passa a participar sem mudar código.
+
 Esta tabela distingue código presente, dependências necessárias e ação real em
 produção. Um caminho opcional não deve ser anunciado como ativo sem prova de
 configuração e execução. Nenhuma biblioteca pode garantir cobertura total de

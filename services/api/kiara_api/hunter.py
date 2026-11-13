@@ -55,7 +55,7 @@ ALLOWED_SOURCES = {"web", "google_maps", "instagram", "facebook"}
 DOMAIN_BY_SOURCE = {"instagram": "instagram.com", "facebook": "facebook.com", "google_maps": "google.com"}
 SOURCE_TIMEOUT_SECONDS = 130
 SOURCE_RETRY_TIMEOUT_SECONDS = 90
-ENRICHMENT_TIMEOUT_SECONDS = 25
+ENRICHMENT_TIMEOUT_SECONDS = 45
 HUNTER_MAX_RESULTS = 100
 SOURCE_LABELS = {"web": "Web pública", "google_maps": "Google Maps", "instagram": "Instagram", "facebook": "Facebook"}
 logger = logging.getLogger(__name__)
@@ -771,41 +771,64 @@ async def website_social_search(query: str, source: str, limit: int) -> list[dic
 
 
 async def public_search(query: str, source: str, limit: int) -> list[dict[str, Any]]:
+    """Ask every discovery provider at once and interleave their answers.
+
+    Exa, Firecrawl, the credential-free public index and (for social sources) profile links found
+    on business websites each see a different slice of the web. Running them together and
+    alternating their results gives a wider, more varied pool than stopping at the first answer.
+    Providers without credentials fail fast and are simply skipped.
+    """
     original_query = query
     if source == "instagram":
         query = f"site:instagram.com/ {query} Instagram perfil bio"
     elif source == "facebook":
         query = f"site:facebook.com/ {query} Facebook pagina perfil contato"
+
     def profiles(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [row for row in rows if _social_profile_url(row.get("url"), source)] if source in {"instagram", "facebook"} else rows
 
-    try:
-        rows = await exa_search(query, source, limit)
-        rows = profiles(rows)
-        if rows:
-            return rows
-    except Exception as exc:  # noqa: BLE001 — Firecrawl is an independent discovery fallback
-        logger.warning("hunter.exa.unavailable", extra={"source": source, "error_class": type(exc).__name__})
-    try:
-        rows = await firecrawl_search(query, source, limit)
-        rows = profiles(rows)
-        if rows:
-            return rows
-    except Exception as fallback_exc:  # noqa: BLE001 - public index is credential-free
-        logger.warning("hunter.firecrawl.unavailable", extra={
-            "source": source, "error_class": type(fallback_exc).__name__,
-        })
+    providers: dict[str, Any] = {
+        "exa": exa_search(query, source, limit),
+        "firecrawl": firecrawl_search(query, source, limit),
+        "index": indexed_search(query, source, limit),
+    }
     if source in {"instagram", "facebook"}:
-        try:
-            rows = await website_social_search(original_query, source, limit)
-            if rows:
-                return rows
-        except Exception as exc:  # noqa: BLE001 - independent public discovery path
-            logger.warning("hunter.website_social.unavailable", extra={"source": source, "error_class": type(exc).__name__})
-    try:
-        return profiles(await indexed_search(query, source, limit))
-    except Exception as index_exc:
-        raise RuntimeError("public_index_unavailable") from index_exc
+        providers["website_links"] = website_social_search(original_query, source, limit)
+    names = list(providers)
+    outcomes = await asyncio.gather(*providers.values(), return_exceptions=True)
+    batches: list[list[dict[str, Any]]] = []
+    for name, outcome in zip(names, outcomes, strict=True):
+        if isinstance(outcome, BaseException):
+            logger.info("hunter.discovery.provider_skipped", extra={"source": source, "provider": name, "error_class": type(outcome).__name__})
+            continue
+        rows = profiles(outcome)
+        for row in rows:
+            row.setdefault("discovered_by", name)
+        batches.append(rows)
+        logger.info("hunter.discovery.provider_completed", extra={"source": source, "provider": name, "candidate_count": len(rows)})
+    if not batches:
+        raise RuntimeError("public_index_unavailable")
+    return interleave_unique(batches, limit)
+
+
+def interleave_unique(batches: list[list[dict[str, Any]]], limit: int) -> list[dict[str, Any]]:
+    """Round-robin across providers, skipping URLs another provider already returned."""
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for position in range(max((len(batch) for batch in batches), default=0)):
+        for batch in batches:
+            if position >= len(batch):
+                continue
+            row = batch[position]
+            url = safe_public_url(row.get("url"))
+            identity = canonical_public_identity(url) if url else f"invalid:{row.get('url')}:{row.get('title')}"
+            if identity in seen:
+                continue
+            seen.add(identity)
+            merged.append(row)
+            if len(merged) >= limit:
+                return merged
+    return merged
 
 
 async def multi_public_search(queries: list[str], source: str, limit: int) -> list[dict[str, Any]]:
@@ -1000,28 +1023,41 @@ async def inspect_facebook_pages(rows: list[dict[str, Any]]) -> None:
     await asyncio.gather(*(inspect(row, index) for index, row in enumerate(rows[:30])))
 
 
+def _needs_more_contact(item: dict[str, Any]) -> bool:
+    data = item.get("public_data", {})
+    return (data.get("enrichment") != "completed"
+            or not (data.get("phone") or data.get("whatsapp_url"))
+            or item.get("source") == "web" and data.get("address_evidence") != "verified_public_page")
+
+
 async def enrich_results(results: list[dict[str, Any]]) -> None:
-    """Enrich public websites with contacts and observable opportunity signals."""
+    """Enrich in layers: each stage only works on leads the previous one left incomplete.
+
+    1. Kiara's own collector (Scrapling parser + Chrome-impersonating fetch), free, for everyone;
+    2. Firecrawl scrape, when configured, for pages that blocked or hid the contacts;
+    3. Obscura (real browser over CDP), when configured, for JavaScript-only pages;
+    4. ScrapeGraphAI hints, when configured (never treated as verified facts).
+    """
+    await native_enrich_results(results)
     key = os.getenv("FIRECRAWL_API_KEY", "").strip()
-    if not key:
-        await native_enrich_results(results)
-        pending = [item for item in results if (
-            item.get("public_data", {}).get("enrichment") != "completed"
-            or not (item.get("public_data", {}).get("phone") or item.get("public_data", {}).get("whatsapp_url"))
-            or item.get("source") == "web" and item.get("public_data", {}).get("address_evidence") != "verified_public_page"
-        )]
-        if pending:
-            try:
-                await asyncio.wait_for(obscura_enrich_results(pending), timeout=8)
-            except Exception as exc:  # noqa: BLE001 — optional renderers must not discard native facts
-                logger.warning("hunter.obscura.enrichment_unavailable", extra={"error_class": type(exc).__name__})
-        await _optional_semantic_enrichment(results)
-        return
+    pending = [item for item in results if _needs_more_contact(item)]
+    if key and pending:
+        await _firecrawl_enrich(pending[:20], key)
+        pending = [item for item in pending if _needs_more_contact(item)]
+    if pending:
+        try:
+            await asyncio.wait_for(obscura_enrich_results(pending), timeout=8)
+        except Exception as exc:  # noqa: BLE001 — optional renderers must not discard native facts
+            logger.warning("hunter.obscura.enrichment_unavailable", extra={"error_class": type(exc).__name__})
+    await _optional_semantic_enrichment(results)
+
+
+async def _firecrawl_enrich(results: list[dict[str, Any]], key: str) -> None:
     candidates = []
     for item in results:
         data = item.setdefault("public_data", {})
         target = safe_public_url(data.get("website_url")) or (safe_public_url(item.get("url")) if item.get("source") == "web" else None)
-        if target and len(candidates) < 20:
+        if target:
             data["enrichment_url"] = target
             candidates.append(item)
 
@@ -1046,14 +1082,10 @@ async def enrich_results(results: list[dict[str, Any]]) -> None:
                     "website_quality_score": quality, "website_quality_signals": signals,
                 })
                 item["summary"] = clean_summary(content)
-            else:
-                item.setdefault("public_data", {})["enrichment"] = "unavailable"
-        except (OSError, ValueError, TypeError, AttributeError):
-            item.setdefault("public_data", {})["enrichment"] = "unavailable"
+        except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
+            logger.info("hunter.firecrawl.scrape_unavailable", extra={"url_host": urlsplit(item["public_data"]["enrichment_url"]).hostname})
 
     await asyncio.gather(*(enrich(item) for item in candidates))
-    await native_enrich_results(results)
-    await _optional_semantic_enrichment(results)
 
 
 async def _optional_semantic_enrichment(results: list[dict[str, Any]]) -> None:
@@ -1366,22 +1398,107 @@ async def google_places_search(query: str, limit: int) -> list[dict[str, Any]]:
     return rows[:limit]
 
 
+def _maps_identity(row: dict[str, Any]) -> str:
+    data = row.get("public_data") or {}
+    if data.get("place_id"):
+        return f"place:{str(data['place_id']).lower()}"
+    url = safe_public_url(row.get("url")) or ""
+    token = re.search(r"!1s([^!/?&]+)", unquote(url))
+    if token:
+        return f"place:{token.group(1).lower()}"
+    phone = re.sub(r"\D", "", str(data.get("phone") or ""))[-11:]
+    if len(phone) >= 10:
+        return f"phone:{phone}:{folded(str(row.get('title') or ''))[:40]}"
+    return f"url:{canonical_public_identity(url) or row.get('title')}"
+
+
+_MAPS_FILL_FIELDS = ("phone", "website_url", "address", "rating", "user_rating_count", "business_status", "types", "email", "whatsapp_url")
+
+
+def merge_maps_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per business; a verified row is the base and other providers fill its gaps."""
+    merged: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = _maps_identity(row)
+        current = merged.get(key)
+        if current is None:
+            merged[key] = row
+            continue
+        current_verified = current.get("public_data", {}).get("detail_inspected") is True
+        row_verified = row.get("public_data", {}).get("detail_inspected") is True
+        base, other = (row, current) if row_verified and not current_verified else (current, row)
+        data, extra = base.setdefault("public_data", {}), other.get("public_data") or {}
+        for field in _MAPS_FILL_FIELDS:
+            if data.get(field) in (None, "", []) and extra.get(field) not in (None, "", []):
+                data[field] = extra[field]
+                if field == "website_url":
+                    # Another Maps source saw a website on the same business listing.
+                    data["website_status"] = "present"
+        providers = [*base.get("providers", [data.get("provider")]), *other.get("providers", [extra.get("provider")])]
+        base["providers"] = [item for item in dict.fromkeys(providers) if item]
+        merged[key] = base
+    return sorted(merged.values(), key=lambda row: row.get("public_data", {}).get("detail_inspected") is not True)
+
+
 async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
-    unverified_rows: list[dict[str, Any]] = []
+    """Google Maps from every configured source, merged into one list of businesses.
 
-    def has_verified_details(rows: list[dict[str, Any]]) -> bool:
-        return any(row.get("public_data", {}).get("detail_inspected") is True for row in rows)
+    The structured sources (Google Places API and the gosom Google Maps Scraper) run together;
+    when they do not reach the requested amount, a browser session (Obscura, Browserbase or a
+    local Chromium) reads more business panels and the public index is the last supplement.
+    """
+    def verified(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [row for row in rows if row.get("public_data", {}).get("detail_inspected") is True]
 
-    if os.getenv("KIARA_MAPS_SCRAPER_EXECUTABLE", "").strip():
+    async def places() -> list[dict[str, Any]]:
+        try:
+            return await google_places_search(query, limit)
+        except Exception as exc:  # noqa: BLE001 - every source is optional
+            logger.info("hunter.google_places.unavailable", extra={"error_class": type(exc).__name__})
+            return []
+
+    async def native() -> list[dict[str, Any]]:
+        if not os.getenv("KIARA_MAPS_SCRAPER_EXECUTABLE", "").strip():
+            return []
         try:
             from .maps_scraper import native_maps_search
 
-            native_rows = await native_maps_search(query, limit)
-            if has_verified_details(native_rows):
-                return native_rows
-            unverified_rows.extend(native_rows)
-        except Exception as exc:  # noqa: BLE001 - existing providers remain independent fallbacks
+            return await native_maps_search(query, limit)
+        except Exception as exc:  # noqa: BLE001 - every source is optional
             logger.warning("hunter.maps.native_scraper_unavailable", extra={"error_class": type(exc).__name__})
+            return []
+
+    structured = merge_maps_rows([row for batch in await asyncio.gather(places(), native()) for row in batch])
+    if len(verified(structured)) >= limit:
+        return structured[:limit]
+    try:
+        browsed = await _maps_browser_search(query, limit, [row for row in structured if row not in verified(structured)])
+    except Exception:
+        if structured:
+            return structured[:limit]
+        raise
+    return merge_maps_rows([*structured, *browsed])[:limit]
+
+
+async def _create_browserbase_session(client: Any, project: str, attempts: int = 3) -> Any:
+    """Plans limit concurrent sessions; the previous search's session may still be releasing."""
+    for attempt in range(attempts):
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
+        except Exception as exc:  # noqa: BLE001 - only "too many sessions" is retried
+            if getattr(exc, "status_code", None) != 429 or attempt == attempts - 1:
+                raise
+            logger.info("hunter.maps.browserbase_busy_retry", extra={"attempt": attempt + 1})
+            await asyncio.sleep(4 * (attempt + 1))
+    raise RuntimeError("browserbase_unavailable")
+
+
+async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Browser-based Maps reading (Obscura, Browserbase, local Chromium) with index supplement."""
+    unverified_rows = list(unverified_rows)
+
+    def has_verified_details(rows: list[dict[str, Any]]) -> bool:
+        return any(row.get("public_data", {}).get("detail_inspected") is True for row in rows)
 
     async def supplement(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         rows = sorted(rows, key=lambda row: row.get("public_data", {}).get("detail_inspected") is not True)
@@ -1416,13 +1533,6 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
             return await maps_index_search(query, limit)
         return await supplement(rows if has_verified_details(rows) else [*rows, *unverified_rows])
 
-    try:
-        places = await google_places_search(query, limit)
-        if places:
-            return await supplement(places)
-    except Exception as exc:  # noqa: BLE001 - browser/index providers remain independent fallbacks
-        logger.info("hunter.google_places.unavailable", extra={"error_class": type(exc).__name__})
-
     obscura = _obscura_connection()
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
     if not obscura and (not key or not project):
@@ -1454,7 +1564,7 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
         return await local_or_index()
     client = Browserbase(api_key=key, timeout=10, max_retries=0)
     try:
-        session = await asyncio.wait_for(asyncio.to_thread(client.sessions.create, project_id=project, keep_alive=False), timeout=12)
+        session = await _create_browserbase_session(client, project)
     except Exception as exc:  # noqa: BLE001 — indexed public Maps pages remain available
         _trip_browserbase_circuit(exc)
         logger.warning("hunter.maps.browserbase_unavailable", extra={
@@ -1755,6 +1865,67 @@ def _facebook_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bo
     )
 
 
+_SHARED_HOSTS = ("instagram.com", "facebook.com", "fb.com", "google.com", "google.com.br", "goo.gl", "wa.me",
+                 "whatsapp.com", "linktr.ee", "youtube.com", "tiktok.com", "linkedin.com", "ifood.com.br",
+                 "wixsite.com", "business.site", "negocio.site", "bit.ly", "doctoralia.com.br", "booking.com")
+_SOURCE_RANK = {"google_maps": 0, "web": 1, "instagram": 2, "facebook": 3}
+
+
+def _own_host(url: Any) -> str | None:
+    host = (urlsplit(safe_public_url(url) or "").hostname or "").lower().removeprefix("www.")
+    return host if host and not any(host == shared or host.endswith("." + shared) for shared in _SHARED_HOSTS) else None
+
+
+def _title_tokens(row: dict[str, Any]) -> set[str]:
+    return {token for token in folded(str(row.get("title") or "")).split() if len(token) >= 4}
+
+
+def combine_same_business(candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """The same business found by several sources becomes one candidate with every contact found.
+
+    Matching is conservative: the same Maps place, the business's own website domain, or the same
+    phone number together with a shared word in the name. Shared platforms (Instagram, iFood,
+    Linktree...) never identify a business on their own.
+    """
+    groups: list[dict[str, Any]] = []
+    for row in candidates:
+        data = row.get("public_data") or {}
+        keys: set[str] = set()
+        if data.get("place_id"):
+            keys.add(f"place:{str(data['place_id']).lower()}")
+        for url in (data.get("website_url"), row.get("url") if row.get("source") == "web" else None):
+            host = _own_host(url)
+            if host:
+                keys.add(f"site:{host}")
+        phone = re.sub(r"\D", "", str(data.get("phone") or ""))[-11:]
+        phone_key = f"phone:{phone}" if len(phone) >= 10 else None
+        tokens = _title_tokens(row)
+        target = next((group for group in groups if keys & group["keys"]
+                       or phone_key and phone_key in group["keys"] and tokens & group["tokens"]), None)
+        if target is None:
+            groups.append({"rows": [row], "keys": keys | ({phone_key} if phone_key else set()), "tokens": tokens})
+        else:
+            target["rows"].append(row)
+            target["keys"] |= keys | ({phone_key} if phone_key else set())
+            target["tokens"] |= tokens
+    combined, merged = [], 0
+    for group in groups:
+        rows = sorted(group["rows"], key=lambda item: (
+            item.get("public_data", {}).get("detail_inspected") is not True, _SOURCE_RANK.get(item.get("source"), 9)))
+        base, others = rows[0], rows[1:]
+        if others:
+            merged += len(others)
+            data = base.setdefault("public_data", {})
+            for other in others:
+                extra = other.get("public_data") or {}
+                for field in ("phone", "whatsapp_url", "email"):
+                    if not data.get(field) and extra.get(field):
+                        data[field] = extra[field]
+            data["also_found_on"] = [url for url in dict.fromkeys(safe_public_url(other.get("url")) for other in others) if url][:5]
+        combined.append(base)
+    return combined, merged
+
+
 async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     """Bound provider work, retain partial successes, then apply hard filters."""
     options = research_options(search)
@@ -1846,6 +2017,9 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
             warnings.append("O enriquecimento atingiu o limite de tempo; somente os contatos já encontrados foram mantidos.")
         except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
             warnings.append("O enriquecimento não foi concluído; os resultados originais foram preservados.")
+    candidates, combined_count = combine_same_business(candidates)
+    if combined_count:
+        warnings.append(f"{combined_count} resultado(s) eram a mesma empresa em outra fonte; os contatos foram reunidos em um único lead.")
     results, validation = filter_results(candidates, search)
     validation["source_failures"] = len(failures)
     results = results[:search["result_limit"]]
