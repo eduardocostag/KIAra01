@@ -28,6 +28,8 @@ import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 
+from app.voice.kiara_style import PRONUNCIATION, RATE as SPEECH_RATE, VOICE, spoken  # noqa: F401 - re-exported
+
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = Path(__file__).with_name("template.html")
 LIBRARY_SHOTS = ROOT / "app" / "resources" / "video_studio" / "shots"
@@ -35,21 +37,8 @@ FPS = 30
 RATE = 24_000
 LAYOUTS = {"hello", "orb", "shot", "custom", "control", "outro"}
 ALIASES = {"modules": "custom", "highlight": "control", "intro": "orb", "screen": "shot", "greeting": "hello", "closing": "outro"}
-# Native pt-BR voice. ThalitaMultilingual mixes languages and sounds Spanish on names and greetings.
-DEFAULT_VOICE = "pt-BR-FranciscaNeural"
+DEFAULT_VOICE = VOICE
 QUALITIES = {"1080p": 1.0, "720p": 2 / 3}
-# Words the Portuguese voices tend to mispronounce. Applied to the spoken text only.
-PRONUNCIATION = {
-    "CRM": "cê érre ême",
-    "Automation": "Automêichon",
-    "KIARA": "Kiara",
-    "IA": "I A",
-    "SDR": "ésse dê érre",
-    "ERP": "é érre pê",
-    "API": "a pê í",
-    "QR": "quê érre",
-    "SaaS": "sás",
-}
 Progress = Callable[[str, float, str], None]
 
 
@@ -65,19 +54,20 @@ def find_ffmpeg() -> str:
     for candidate in candidates:
         if candidate and Path(candidate).is_file():
             return candidate
+    try:
+        from imageio_ffmpeg import get_ffmpeg_exe
+
+        bundled = get_ffmpeg_exe()
+        if Path(bundled).is_file():
+            return bundled
+    except (ImportError, RuntimeError, OSError):
+        pass
     raise VideoError("ffmpeg não encontrado. Instale com: winget install Gyan.FFmpeg")
 
 
 def norm(text: str) -> str:
     text = unicodedata.normalize("NFD", text.lower())
     return re.sub(r"[^a-z0-9 ]", "", "".join(c for c in text if unicodedata.category(c) != "Mn"))
-
-
-def spoken(text: str, extra: dict[str, str] | None = None) -> str:
-    """Rewrite words that the voice mispronounces (e.g. CRM -> "cê érre ême")."""
-    for word, sound in {**PRONUNCIATION, **(extra or {})}.items():
-        text = re.sub(rf"(?<![\wÀ-ÿ]){re.escape(word)}(?![\wÀ-ÿ])", sound, text)
-    return text
 
 
 def _clean(value, limit: int, name: str, *, optional: bool = False) -> str:
@@ -112,7 +102,7 @@ def validate_script(script: dict, shots_dir: Path | None = None) -> dict:
     voice = script.get("voice") or DEFAULT_VOICE
     if not re.fullmatch(r"[a-z]{2}-[A-Z]{2}-[A-Za-z]+Neural", voice):
         raise VideoError("Voz inválida.")
-    rate = script.get("rate") or "+2%"
+    rate = script.get("rate") or SPEECH_RATE
     if not re.fullmatch(r"[+-]\d{1,2}%", rate):
         raise VideoError("Velocidade da voz inválida (use, por exemplo, +2%).")
     gap = float(script.get("gap_seconds", 0.45))

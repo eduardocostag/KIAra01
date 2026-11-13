@@ -15,6 +15,7 @@ from uuid import uuid4
 from app.providers.remote import OllamaProvider
 from app.security.redaction import redact_text
 from app.voice.adapters import FasterWhisperRecognizer, normalize_text_for_speech
+from app.voice.kiara_style import RATE as KIARA_RATE, VOICE as KIARA_VOICE, spoken
 from app.web_studio.generator import BusinessSiteGenerator
 from app.whatsapp.site_auth import _NoRedirect
 
@@ -82,7 +83,7 @@ class LocalChatService:
     def __init__(self, *, model: str = "kiara-stable:latest",
                  ollama_url: str = "http://127.0.0.1:11434", provider=None,
                  provider_name: str = "ollama", health=None,
-                 voice: str = "pt-BR-FranciscaNeural", whisper_model: str = "base"):
+                 voice: str = KIARA_VOICE, whisper_model: str = "base"):
         parts = urlsplit(ollama_url)
         if (parts.scheme != "http" or parts.hostname not in {"127.0.0.1", "localhost", "::1"}
                 or parts.username or parts.password or parts.query or parts.fragment
@@ -211,7 +212,7 @@ class LocalChatService:
         data = bytearray()
         try:
             async with asyncio.timeout(45):
-                communication = edge_tts.Communicate(normalize_text_for_speech(text), self.voice)
+                communication = edge_tts.Communicate(spoken(normalize_text_for_speech(text)), self.voice, rate=KIARA_RATE)
                 async for chunk in communication.stream():
                     if chunk["type"] == "audio":
                         data.extend(chunk["data"])

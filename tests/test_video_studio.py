@@ -138,3 +138,32 @@ def test_bridge_video_flow_is_tenant_bound(monkeypatch, tmp_path):
         bridge.dispatch("/api/video", {"action": "download", "job_id": job_id}, OTHER)
     with pytest.raises(ChatError):
         bridge.dispatch("/api/video", {"action": "start", "prompt": "x", "audience": ["a" * 40]}, OWNER)
+
+
+def test_chat_voice_speaks_like_the_videos(monkeypatch):
+    import asyncio
+    import importlib.util
+    import sys
+    import types
+
+    from app.chat.service import LocalChatService
+    from app.voice import kiara_style
+
+    calls = []
+
+    class FakeCommunicate:
+        def __init__(self, text, voice, **options):
+            calls.append((text, voice, options))
+
+        async def stream(self):
+            yield {"type": "audio", "data": b"mp3"}
+
+    find_spec = importlib.util.find_spec
+    monkeypatch.setitem(sys.modules, "edge_tts", types.SimpleNamespace(Communicate=FakeCommunicate))
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: object() if name == "edge_tts" else find_spec(name, *a))
+    result = asyncio.run(LocalChatService().speech({"text": "Olá! O CRM da KIARA está pronto."}))
+    assert result["mime"] == "audio/mpeg"
+    text, voice, options = calls[0]
+    assert voice == kiara_style.VOICE == engine.DEFAULT_VOICE
+    assert options["rate"] == kiara_style.RATE
+    assert "cê érre ême" in text and "Kiara" in text and "CRM" not in text

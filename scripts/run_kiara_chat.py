@@ -18,6 +18,7 @@ from app.providers.freellmapi import FreeLLMAPIProvider
 from app.providers.omniroute import OmniRouteProvider
 from app.providers.remote import ProviderConfigurationError
 from app.video_studio.jobs import VideoJobs
+from app.voice.kiara_style import VOICE as KIARA_VOICE
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -38,7 +39,7 @@ def create_bridge() -> ChatBridge:
         values.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") or values.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", ""),
         values.get("KIARA_CHAT_AUTH_API_URL", "https://kiara-api-rouge.vercel.app"),
     )
-    voice = values.get("KIARA_CHAT_VOICE", "pt-BR-FranciscaNeural")
+    voice = values.get("KIARA_CHAT_VOICE", KIARA_VOICE)
     whisper_model = values.get("KIARA_CHAT_WHISPER_MODEL", "base")
     selected = values.get("KIARA_CHAT_PROVIDER", "ollama").strip().lower()
     if selected == "omniroute":
