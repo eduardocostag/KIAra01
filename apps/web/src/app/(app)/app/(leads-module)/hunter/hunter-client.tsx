@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
-import { ChevronDown, Loader2, Search } from "lucide-react"
+import { ChevronDown, Loader2, Map as MapIcon, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -10,6 +11,12 @@ import { HunterActivity } from "./hunter-activity"
 import { HunterResults } from "./hunter-results"
 import { inferredWebsiteFilter, parseHunterHistory, parseHunterJob, requestHunter, type ContactFilter, type WebsiteFilter, type HunterSource as Source, type HunterJob as Job } from "@/lib/api/hunter-client"
 import { cn } from "@/lib/utils"
+import { coordinatesFromMapsUrl } from "@/lib/lead-geo"
+import type { MapLead } from "./lead-map-3d"
+
+// MapLibre only loads on this page, after the form is interactive.
+const LeadMap3D = dynamic(() => import("./lead-map-3d"), { ssr: false, loading: () => <div className="fx-skeleton h-[clamp(260px,46vh,460px)] rounded-2xl" /> })
+const MAP_PREFERENCE = "kiara.hunter.map"
 
 const sourceLabels: Record<Source, string> = { google_maps: "Google Maps", web: "Web", instagram: "Instagram", facebook: "Facebook" }
 const websiteLabels: Record<WebsiteFilter, string> = { any: "Com ou sem site", without_website: "Sem site", with_website: "Com site" }
@@ -35,6 +42,10 @@ export function HunterClient() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showMap, setShowMap] = useState(() => {
+    try { return typeof window === "undefined" || window.localStorage.getItem(MAP_PREFERENCE) !== "off" } catch { return true }
+  })
+  const [mapUnavailable, setMapUnavailable] = useState(false)
   const requestVersion = useRef(0)
   const inFlight = useRef(false)
 
@@ -77,6 +88,11 @@ export function HunterClient() {
   }, [jobs, loading, processQueued, router])
 
   const latest = jobs.find((job) => job.id === selectedId) ?? jobs[0]
+  const mapLeads = useMemo<MapLead[]>(() => (latest?.status === "completed" ? latest.results : []).flatMap((result) => {
+    const data = result.public_data
+    const at = coordinatesFromMapsUrl(result.source === "google_maps" ? result.url : data?.source_url)
+    return at ? [{ id: result.id, name: result.title, at, temperature: data?.temperature ?? "cold", score: data?.lead_score ?? null }] : []
+  }), [latest])
   // The SDR module prospects businesses; only an explicit end-consumer target is B2C.
   const market = /\b(?:consumidor(?:es|a|as)?|pessoas? f[ií]sicas?|clientes? finais?)\b/i.test(query) ? "b2c" : "b2b"
   const inferredWebsite = inferredWebsiteFilter(query, "")
@@ -120,6 +136,19 @@ export function HunterClient() {
       router.refresh()
     } catch (e) { setError(e instanceof Error ? e.message : "A busca falhou. Atualize os resultados para ver a busca salva.") }
     finally { setBusy(false); inFlight.current = false }
+  }
+
+  function toggleMap() {
+    setShowMap((current) => {
+      try { window.localStorage.setItem(MAP_PREFERENCE, current ? "off" : "on") } catch { /* preference is optional */ }
+      return !current
+    })
+  }
+  function focusLead(id: string) {
+    const row = document.getElementById(`lead-${id}`)
+    if (!row) return
+    row.scrollIntoView({ behavior: "smooth", block: "center" })
+    row.animate([{ backgroundColor: "color-mix(in oklab, var(--primary) 22%, transparent)" }, { backgroundColor: "transparent" }], { duration: 1800, easing: "ease-out" })
   }
 
   async function clearHistory() {
@@ -170,6 +199,10 @@ export function HunterClient() {
     </form>
 
     {error ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
+
+    {showMap && !mapUnavailable && (busy || mapLeads.length) ? <LeadMap3D scanning={busy} leads={busy ? [] : mapLeads} total={latest?.results.length ?? 0}
+      query={latest?.query || query} location={latest?.location ?? location} onSelect={focusLead} onUnavailable={() => setMapUnavailable(true)} /> : null}
+    {!mapUnavailable && (busy || mapLeads.length) ? <button type="button" onClick={toggleMap} className="-mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><MapIcon className="size-3.5" aria-hidden="true" />{showMap ? "Ocultar mapa 3D" : "Mostrar mapa 3D"}</button> : null}
 
     {busy ? <section className="rounded-xl border bg-card"><HunterActivity stage={stage} query={latest?.query || query} location={latest?.location ?? location} sources={latest?.sources ?? effectiveSources} foundCount={latest?.results.length ?? 0} /></section>
       : <HunterResults jobs={jobs} selected={latest} loading={loading || clearing} onRefresh={() => void load()} onClear={() => setClearReview(true)} onSelect={setSelectedId} onBroaden={broaden} />}

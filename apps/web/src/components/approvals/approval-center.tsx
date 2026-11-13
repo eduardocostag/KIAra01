@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { Bell, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, Globe, LoaderCircle, Mail, Megaphone, MessageCircle, Monitor, RefreshCw, Send, ShieldCheck, X, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { burst } from "@/components/fx/fx"
 import { cn } from "@/lib/utils"
 
 export type ActionRequest = {
@@ -70,7 +71,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
-function RequestCard({ item, onChange }: { item: ActionRequest; onChange: (next: ActionRequest) => void }) {
+const SWIPE_DISTANCE = 110
+
+function RequestCard({ item, onChange, swipeable = false }: { item: ActionRequest; onChange: (next: ActionRequest) => void; swipeable?: boolean }) {
+  const cardRef = useRef<HTMLElement>(null)
+  const dragRef = useRef<{ x: number } | null>(null)
+  const [dx, setDx] = useState(0)
+  const [leaving, setLeaving] = useState<-1 | 0 | 1>(0)
+  const [dragging, setDragging] = useState(false)
   const info = kindInfo(item.kind)
   const Icon = info.icon
   const field = editableFields.find((key) => typeof item.payload[key] === "string")
@@ -87,8 +95,11 @@ function RequestCard({ item, onChange }: { item: ActionRequest; onChange: (next:
     setBusy(decision); setError("")
     try {
       const payload = field && draft !== item.payload[field] ? { [field]: draft } : undefined
-      onChange(await call<ActionRequest>(`/api/approvals/${encodeURIComponent(item.id)}/decision`, { method: "POST", body: JSON.stringify({ decision, version: item.version, payload }) }))
+      const next = await call<ActionRequest>(`/api/approvals/${encodeURIComponent(item.id)}/decision`, { method: "POST", body: JSON.stringify({ decision, version: item.version, payload }) })
+      if (decision !== "reject") burst(cardRef.current, "#34d399", 22)
+      onChange(next)
     } catch (cause) {
+      setLeaving(0); setDx(0)
       setError(cause instanceof Error ? cause.message : "Não foi possível registrar a decisão.")
     } finally { setBusy("") }
   }
@@ -97,7 +108,39 @@ function RequestCard({ item, onChange }: { item: ActionRequest; onChange: (next:
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { setError("O navegador bloqueou a cópia.") }
   }
 
-  return <article className="rounded-2xl border bg-card/80 p-4 shadow-sm backdrop-blur-xl sm:p-5">
+  // Swipe like a card deck: right approves, left rejects (notices can only be acknowledged).
+  const canSwipe = swipeable && item.status === "pending" && !busy
+  function grab(event: ReactPointerEvent<HTMLElement>) {
+    if (!canSwipe || event.button !== 0 || (event.target as Element).closest("textarea, input, select, button, a, label, dl")) return
+    dragRef.current = { x: event.clientX }
+    setDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  function drag(event: ReactPointerEvent<HTMLElement>) {
+    if (dragRef.current) setDx(event.clientX - dragRef.current.x)
+  }
+  function release() {
+    if (!dragRef.current) return
+    dragRef.current = null
+    setDragging(false)
+    if (dx > SWIPE_DISTANCE) { setLeaving(1); void decide("approve") }
+    else if (dx < -SWIPE_DISTANCE && !notice) { setLeaving(-1); void decide("reject") }
+    else setDx(0)
+  }
+  const offset = leaving ? leaving * 900 : dx
+  const swipeStyle = swipeable ? {
+    transform: `translateX(${offset}px) rotate(${offset / 22}deg)`,
+    transition: dragging ? "none" : "transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s",
+    opacity: leaving ? 0 : 1, touchAction: "pan-y" as const,
+  } : undefined
+  const approveHint = Math.max(0, Math.min(1, dx / SWIPE_DISTANCE)), rejectHint = notice ? 0 : Math.max(0, Math.min(1, -dx / SWIPE_DISTANCE))
+
+  return <article ref={cardRef} style={swipeStyle} onPointerDown={grab} onPointerMove={drag} onPointerUp={release} onPointerCancel={release}
+    className={cn("relative rounded-2xl border bg-card/80 p-4 shadow-sm backdrop-blur-xl sm:p-5", canSwipe && "cursor-grab active:cursor-grabbing")}>
+    {swipeable ? <>
+      <span aria-hidden="true" style={{ opacity: approveHint }} className="pointer-events-none absolute left-1/2 top-6 z-10 -translate-x-1/2 rotate-[-10deg] rounded-lg border-2 border-emerald-400 bg-card/90 px-3 py-1 text-sm font-bold tracking-widest text-emerald-400">{notice ? "VISTO" : "APROVAR"}</span>
+      <span aria-hidden="true" style={{ opacity: rejectHint }} className="pointer-events-none absolute left-1/2 top-6 z-10 -translate-x-1/2 rotate-[10deg] rounded-lg border-2 border-rose-400 bg-card/90 px-3 py-1 text-sm font-bold tracking-widest text-rose-400">RECUSAR</span>
+    </> : null}
     <header className="flex items-start gap-3">
       <span className="grid size-10 shrink-0 place-items-center rounded-xl" style={{ background: `color-mix(in oklab, ${info.color} 18%, transparent)`, color: info.color }}><Icon className="size-5" aria-hidden="true" /></span>
       <div className="min-w-0 flex-1">
@@ -132,6 +175,24 @@ function RequestCard({ item, onChange }: { item: ActionRequest; onChange: (next:
       </> : null}
     </footer>
   </article>
+}
+
+/** Pending requests as a card deck (top card swipeable); approved ones waiting for execution listed below. */
+function PendingDeck({ items, onChange }: { items: ActionRequest[]; onChange: (next: ActionRequest) => void }) {
+  const deck = items.filter((item) => item.status === "pending")
+  const rest = items.filter((item) => item.status !== "pending")
+  const [top, ...behind] = deck
+  return <>
+    {top ? <div className="fx-rise">
+      <p className="mb-2 text-xs text-muted-foreground">{deck.length > 1 ? `1 de ${deck.length} · ` : ""}Arraste para a direita para aprovar, para a esquerda para recusar, ou use os botões.</p>
+      <RequestCard key={`${top.id}-${top.version}`} item={top} onChange={onChange} swipeable />
+      {behind.slice(0, 2).map((item, index) => <div key={item.id} aria-hidden="true" className="mx-auto h-3 rounded-b-2xl border border-t-0 bg-card/50" style={{ width: `${94 - index * 6}%`, opacity: .8 - index * .3 }} />)}
+    </div> : null}
+    {rest.length ? <div className="space-y-3 pt-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Aprovados, aguardando execução</p>
+      {rest.map((item, index) => <div key={`${item.id}-${item.version}`} className="fx-rise" style={{ "--i": index } as React.CSSProperties}><RequestCard item={item} onChange={onChange} /></div>)}
+    </div> : null}
+  </>
 }
 
 /** `preview` renders fixed items without calling the API (UI verification only). */
@@ -181,7 +242,8 @@ export function ApprovalCenter({ preview }: { preview?: ActionRequest[] } = {}) 
     <section className="mt-5 space-y-3" aria-live="polite">
       {error ? <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">{error}</p>
         : loading && !items.length ? <p className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Carregando…</p>
-          : items.length ? items.map((item) => <RequestCard key={`${item.id}-${item.version}`} item={item} onChange={changed} />)
+          : items.length ? tab === "pending" ? <PendingDeck items={items} onChange={changed} />
+            : items.map((item, index) => <div key={`${item.id}-${item.version}`} className="fx-rise" style={{ "--i": index } as React.CSSProperties}><RequestCard item={item} onChange={changed} /></div>)
             : <div className="rounded-2xl border border-dashed p-10 text-center">
               <CheckCheck className="mx-auto size-8 text-emerald-400" aria-hidden="true" />
               <p className="mt-3 font-medium">{tab === "pending" ? "Tudo em dia." : "Nenhuma decisão ainda."}</p>

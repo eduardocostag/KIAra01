@@ -21,6 +21,7 @@
 }
 
 .orb {
+  z-index: 1;
   position: relative;
   display: grid;
   width: 78%;

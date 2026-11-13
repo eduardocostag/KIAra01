@@ -1,0 +1,141 @@
+/* Kiara motion layer: shared visual effects for every module.
+   Everything here is decorative and switches off with "reduce motion". */
+
+/* Pointer spotlight + 3D tilt. FxPointer writes --mx/--my (px) and --rx/--ry (deg) on hover. */
+.fx-spot {
+  position: relative;
+  isolation: isolate;
+}
+.fx-spot::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, -200px), color-mix(in oklab, var(--primary) 16%, transparent), transparent 62%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+.fx-spot:hover::after { opacity: 1; }
+
+.fx-tilt {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
+  transform-style: preserve-3d;
+  transition: transform .5s cubic-bezier(.2, .8, .2, 1), border-color .2s, background-color .2s;
+  will-change: transform;
+}
+.fx-tilt[data-fx-active] { transition: transform .08s linear, border-color .2s, background-color .2s; }
+.fx-tilt .fx-pop { transform: translateZ(36px); transition: transform .5s cubic-bezier(.2, .8, .2, 1); }
+
+/* Staggered entrance: set --i on each item. */
+.fx-rise {
+  animation: fx-rise .6s cubic-bezier(.2, .8, .2, 1) both;
+  animation-delay: calc(min(var(--i, 0), 24) * 45ms);
+}
+@keyframes fx-rise {
+  from { opacity: 0; transform: translateY(14px) scale(.985); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+/* Hot leads breathe with a warm halo. */
+.fx-hot {
+  position: relative;
+}
+.fx-hot::before {
+  position: absolute;
+  inset: 0;
+  border-left: 2px solid rgb(251 113 133 / .85);
+  background: linear-gradient(90deg, rgb(244 63 94 / .10), transparent 45%);
+  content: "";
+  pointer-events: none;
+  animation: fx-breathe 2.8s ease-in-out infinite;
+}
+.fx-warm::before { border-left-color: rgb(251 191 36 / .7); background: linear-gradient(90deg, rgb(251 191 36 / .07), transparent 40%); animation: none; }
+.fx-cold::before { border-left-color: rgb(56 189 248 / .45); background: none; animation: none; }
+@keyframes fx-breathe { 50% { opacity: .45; } }
+
+/* Skeleton shimmer for loading states. */
+.fx-skeleton {
+  border-radius: .5rem;
+  background: linear-gradient(100deg, color-mix(in oklab, var(--foreground) 6%, transparent) 30%, color-mix(in oklab, var(--foreground) 13%, transparent) 50%, color-mix(in oklab, var(--foreground) 6%, transparent) 70%);
+  background-size: 300% 100%;
+  animation: fx-shimmer 1.6s linear infinite;
+}
+@keyframes fx-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* Particle burst used on success (lead added, approval, deal won). */
+.fx-burst { position: relative; }
+.fx-burst > .fx-particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fx-color, var(--primary));
+  pointer-events: none;
+  animation: fx-particle .7s cubic-bezier(.1, .7, .3, 1) forwards;
+}
+@keyframes fx-particle {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2); }
+}
+
+/* Route change: the old screen folds back in depth, the new one arrives. */
+::view-transition-old(.fx-route) { animation: fx-route-out .28s cubic-bezier(.4, 0, 1, 1) both; }
+::view-transition-new(.fx-route) { animation: fx-route-in .42s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes fx-route-out { to { opacity: 0; transform: perspective(1200px) translateZ(-80px) rotateX(4deg); filter: blur(3px); } }
+@keyframes fx-route-in { from { opacity: 0; transform: perspective(1200px) translateZ(60px); filter: blur(4px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-tilt, .fx-tilt .fx-pop { transform: none !important; }
+  .fx-rise, .fx-hot::before, .fx-skeleton, .fx-burst > .fx-particle { animation: none !important; }
+  ::view-transition-old(.fx-route), ::view-transition-new(.fx-route) { animation: none !important; }
+}
+
+/* Kiara "thinking": three dots on a wave. */
+.kiara-thinking { display: inline-flex; width: 1.75rem; height: 1.75rem; align-items: center; justify-content: center; gap: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); }
+.kiara-thinking i { width: 4px; height: 4px; border-radius: 50%; background: var(--primary); animation: kiara-wave 1s ease-in-out infinite; }
+.kiara-thinking i:nth-child(2) { animation-delay: .15s; }
+.kiara-thinking i:nth-child(3) { animation-delay: .3s; }
+@keyframes kiara-wave { 0%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+
+/* Rotating light halo around an icon. */
+.kiara-halo { position: relative; isolation: isolate; }
+.kiara-halo::before { position: absolute; inset: -6px; z-index: -1; border-radius: inherit; background: conic-gradient(from 0deg, transparent, var(--primary), #f472b6, transparent 70%); content: ""; filter: blur(6px); opacity: .75; animation: kiara-spin 4s linear infinite; }
+@keyframes kiara-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .kiara-thinking i, .kiara-halo::before { animation: none !important; }
+}
+
+/* Particles falling through the pipeline funnel. */
+.kiara-funnel-drop { animation: kiara-drop 3.3s cubic-bezier(.5, 0, .7, 1) infinite; opacity: 0; }
+@keyframes kiara-drop {
+  0% { opacity: 0; transform: translate(var(--x), 6px); }
+  15% { opacity: 1; }
+  85% { opacity: .9; }
+  100% { opacity: 0; transform: translate(160px, var(--h)); }
+}
+@media (prefers-reduced-motion: reduce) { .kiara-funnel-drop { display: none; } }
+
+/* Animated gradient headline. */
+.kiara-gradient-text {
+  background: linear-gradient(100deg, var(--foreground) 20%, #c4a5ff 40%, #f0abfc 50%, var(--foreground) 70%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: fx-rise .6s cubic-bezier(.2, .8, .2, 1) both, kiara-shine 7s ease-in-out infinite;
+}
+@keyframes kiara-shine { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
+
+/* Icon halo that lights up on card hover. */
+.kiara-halo-hover { position: relative; isolation: isolate; }
+.kiara-halo-hover::before { position: absolute; inset: -4px; z-index: -1; border-radius: inherit; background: conic-gradient(from 0deg, transparent, var(--primary), #f472b6, transparent 70%); content: ""; filter: blur(8px); opacity: 0; transition: opacity .3s; animation: kiara-spin 4s linear infinite; }
+.group:hover .kiara-halo-hover::before { opacity: .9; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kiara-gradient-text, .kiara-halo-hover::before { animation: none !important; }
+}

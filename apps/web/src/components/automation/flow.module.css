@@ -16,6 +16,8 @@
 .edge { fill: none; stroke: color-mix(in oklab, var(--foreground) 32%, transparent); stroke-width: 2; pointer-events: stroke; cursor: pointer; transition: stroke .2s; }
 .edge:hover { stroke: var(--destructive); }
 .edgeActive { stroke: var(--primary); stroke-width: 2.5; stroke-dasharray: 7 7; animation: flow .6s linear infinite; }
+.edgeDone { stroke: rgb(52 211 153 / .75); stroke-width: 2.5; filter: drop-shadow(0 0 4px rgb(52 211 153 / .6)); }
+.comet { pointer-events: none; }
 .edgeDraft { fill: none; stroke: var(--primary); stroke-width: 2; stroke-dasharray: 5 5; }
 @keyframes flow { to { stroke-dashoffset: -14; } }
 
@@ -33,7 +35,8 @@
 .node::before { position: absolute; inset: 0 0 auto; height: 3px; border-radius: 16px 16px 0 0; background: var(--accent-color); content: ""; }
 .node.selected { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color), 0 14px 40px -16px color-mix(in oklab, var(--accent-color) 70%, transparent); }
 .node.running { animation: pulse 1.2s ease-in-out infinite; }
-.node.done { border-color: rgb(52 211 153 / .6); }
+.node.done { border-color: rgb(52 211 153 / .6); animation: doneFlash .9s ease-out; }
+@keyframes doneFlash { 0% { box-shadow: 0 0 0 0 rgb(52 211 153 / .7), 0 0 40px rgb(52 211 153 / .6); } 100% { box-shadow: 0 0 0 14px rgb(52 211 153 / 0), 0 10px 30px -18px rgb(0 0 0 / .6); } }
 .node.blocked { border-color: rgb(245 165 36 / .7); }
 .node.error { border-color: var(--destructive); }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-color) 35%, transparent); } }
@@ -67,4 +70,4 @@
 .edgeDelete { position: absolute; display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--card); color: var(--muted-foreground); transform: translate(-50%, -50%); cursor: pointer; }
 .edgeDelete:hover { color: var(--destructive); }
 
-@media (prefers-reduced-motion: reduce) { .edgeActive, .node.running { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .edgeActive, .node.running, .node.done { animation: none; } .comet { display: none; } }

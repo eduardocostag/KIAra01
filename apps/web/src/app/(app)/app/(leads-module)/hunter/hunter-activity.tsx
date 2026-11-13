@@ -25,7 +25,10 @@ export function HunterActivity({ stage, query, location, sources, foundCount = 0
     <Loader2 className="size-6 animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
     <p className="mt-4 font-medium" role="status" aria-live="polite">{stage}</p>
     {query ? <p className="mt-1 text-sm text-muted-foreground">{query}{location ? ` · ${location}` : ""}</p> : null}
-    <p className="mt-3 text-xs text-muted-foreground">{activeSources.map((source) => sourceLabels[source]).join(" · ")} · {foundCount} encontrado{foundCount === 1 ? "" : "s"} · {seconds}s</p>
+    <ul className="mt-4 flex flex-wrap justify-center gap-2" aria-label="Fontes consultadas">{activeSources.map((source, index) => <li key={source} style={{ animationDelay: `${index * 0.35}s` }} className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs motion-safe:animate-pulse">
+      <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />{sourceLabels[source]}</li>)}</ul>
+    <div className="mt-4 h-1 w-full max-w-xs overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="fx-skeleton h-full w-full" style={{ background: "linear-gradient(90deg, transparent, var(--primary), transparent)", backgroundSize: "50% 100%", backgroundRepeat: "no-repeat" }} /></div>
+    <p className="mt-3 text-xs text-muted-foreground">{foundCount} encontrado{foundCount === 1 ? "" : "s"} · {seconds}s</p>
     {seconds >= 60 ? <p className="mt-4 max-w-sm text-xs text-muted-foreground">Uma fonte está demorando mais que o normal. A busca fica salva e continua sozinha.</p> : null}
   </div>
 }

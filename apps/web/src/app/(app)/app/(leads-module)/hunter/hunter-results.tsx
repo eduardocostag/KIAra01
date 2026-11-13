@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState, type CSSProperties } from "react"
 import { BadgeCheck, Check, ExternalLink, Flame, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Snowflake, Star, Sun, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { burst } from "@/components/fx/fx"
 import { hunterEvidenceLabel, hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
 
 const sourceLabels: Record<string, string> = { web: "Web", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
@@ -61,7 +62,8 @@ function resultDisplayName(result: HunterResult) {
     .replace(/\s+/g, " ").trim() || "Resultado sem nome"
 }
 
-function LeadRow({ result, searchId, location }: { result: HunterResult; searchId: string; location: string | null }) {
+function LeadRow({ result, searchId, location, index }: { result: HunterResult; searchId: string; location: string | null; index: number }) {
+  const addRef = useRef<HTMLSpanElement>(null)
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(Boolean(result.public_data?.lead_id && result.public_data?.pipeline_entry_id))
   const [addError, setAddError] = useState("")
@@ -95,12 +97,14 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body?.error?.message || "Não foi possível adicionar este lead.")
       setAdded(true)
+      burst(addRef.current, "#34d399")
     } catch (error) {
       setAddError(error instanceof Error ? error.message : "Não foi possível adicionar este lead.")
     } finally { setAdding(false) }
   }
 
-  return <li className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start">
+  const temperatureClass = data?.temperature === "hot" ? "fx-hot" : data?.temperature === "warm" ? "fx-hot fx-warm" : data?.temperature === "cold" ? "fx-hot fx-cold" : ""
+  return <li id={`lead-${result.id}`} style={{ "--i": index } as CSSProperties} className={`fx-rise fx-spot flex scroll-mt-24 flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start ${temperatureClass}`}>
     <div className="min-w-0 flex-1 space-y-1">
       <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <span className="min-w-0 break-words">{name}</span>
@@ -126,7 +130,7 @@ function LeadRow({ result, searchId, location }: { result: HunterResult; searchI
       {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
     </div>
     <div className="flex shrink-0 items-center gap-2">
-      <Button type="button" size="sm" variant={added ? "ghost" : "outline"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "Adicionado" : "Adicionar"}</Button>
+      <span ref={addRef} className="relative inline-flex"><Button type="button" size="sm" variant={added ? "ghost" : "outline"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "Adicionado" : "Adicionar"}</Button></span>
       <Button asChild size="icon" variant="ghost" className="size-8"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`} title="Abrir fonte"><ExternalLink /></a></Button>
     </div>
   </li>
@@ -136,7 +140,7 @@ export function HunterResults({ jobs, selected, loading, onRefresh, onClear, onS
   jobs: HunterJob[]; selected?: HunterJob; loading: boolean
   onRefresh: () => void; onClear: () => void; onSelect: (id: string) => void; onBroaden: (job: HunterJob) => void
 }) {
-  if (loading && !selected) return <p role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Carregando buscas…</p>
+  if (loading && !selected) return <div role="status" aria-label="Carregando buscas" className="space-y-3 rounded-xl border bg-card p-5">{[0, 1, 2, 3].map((row) => <div key={row} className="space-y-2"><div className="fx-skeleton h-4 w-1/3" /><div className="fx-skeleton h-3 w-2/3" /></div>)}</div>
   if (!selected) return <p className="py-12 text-center text-sm text-muted-foreground">Os leads encontrados aparecem aqui.</p>
 
   const withContact = selected.results.filter((result) => publicPhone(result.public_data?.phone) || publicWhatsappUrl(result.public_data?.whatsapp_url)).length
@@ -172,6 +176,6 @@ export function HunterResults({ jobs, selected, loading, onRefresh, onClear, onS
       <Button variant="outline" className="mt-4" onClick={() => onBroaden(selected)}>Ajustar busca</Button>
     </div> : null}
     {selected.status === "completed" && Boolean(selected.warnings?.length) ? <details className="border-t px-5 py-4 text-sm" open={!selected.results.length}><summary className="cursor-pointer font-medium">Limitações das fontes consultadas</summary><ul className="mt-2 list-disc space-y-2 pl-5 text-xs leading-5 text-muted-foreground">{selected.warnings?.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></details> : null}
-    {selected.results.length ? <ul className="divide-y">{selected.results.map((result) => <LeadRow key={result.id} result={result} searchId={selected.id} location={selected.location} />)}</ul> : null}
+    {selected.results.length ? <ul className="divide-y">{selected.results.map((result, index) => <LeadRow key={result.id} index={index} result={result} searchId={selected.id} location={selected.location} />)}</ul> : null}
   </section>
 }

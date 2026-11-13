@@ -429,9 +429,9 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
     {messages.length ? <>
       <div className="min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions">
         <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
-          {messages.map((message) => message.role === "user"
-            ? <div key={message.id} className="flex justify-end"><div className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-6">{message.content}</div></div>
-            : <article key={message.id} className="flex gap-3" aria-label="Resposta da Kiara">
+          {messages.map((message, index) => message.role === "user"
+            ? <div key={message.id} className={cn("flex justify-end", index >= messages.length - 2 && "fx-rise")}><div className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-6">{message.content}</div></div>
+            : <article key={message.id} className={cn("flex gap-3", index >= messages.length - 2 && "fx-rise")} aria-label="Resposta da Kiara">
               <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-card text-primary"><Bot className="size-4" aria-hidden="true" /></span>
               <div className="min-w-0 flex-1">
                 <div className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</div>
@@ -444,7 +444,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
                 </div>
               </div>
             </article>)}
-          {busy ? <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status"><span className="grid size-7 place-items-center rounded-full border bg-card"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /></span>{notice.startsWith("Transcrevendo") ? "Transcrevendo áudio…" : "Pensando…"}</div> : null}
+          {busy ? <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status"><span className="kiara-thinking" aria-hidden="true"><i /><i /><i /></span>{notice.startsWith("Transcrevendo") ? "Transcrevendo áudio…" : "Pensando…"}</div> : null}
           <div ref={endRef} />
         </div>
       </div>
@@ -455,10 +455,10 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
       </div>
     </> : <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-10">
       <div className="w-full max-w-3xl">
-        <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full border bg-card text-primary"><Sparkles className="size-5" aria-hidden="true" /></span>
+        <span className="kiara-halo mx-auto mb-4 grid size-12 place-items-center rounded-full border bg-card text-primary"><Sparkles className="size-5" aria-hidden="true" /></span>
         <h1 className="mb-8 text-center text-2xl font-medium tracking-tight sm:text-3xl">Como posso ajudar hoje?</h1>
         {composer}
-        <div className="mt-6 grid gap-2 sm:grid-cols-2">{suggestions.map((item) => <button key={item.title} type="button" onClick={() => { setMode(item.mode); setDraft(item.text); draftRef.current?.focus() }} className="rounded-2xl border px-4 py-3 text-left transition hover:bg-muted/50"><p className="text-sm font-medium">{item.title}</p><p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{item.text}</p></button>)}</div>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">{suggestions.map((item) => <button key={item.title} type="button" onClick={() => { setMode(item.mode); setDraft(item.text); draftRef.current?.focus() }} style={{ "--i": suggestions.indexOf(item) } as React.CSSProperties} className="fx-rise fx-spot fx-tilt rounded-2xl border px-4 py-3 text-left hover:bg-muted/50" data-tilt="5"><p className="text-sm font-medium">{item.title}</p><p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{item.text}</p></button>)}</div>
       </div>
     </div>}
 

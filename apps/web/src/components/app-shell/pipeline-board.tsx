@@ -6,6 +6,8 @@ import { ArrowRight, AtSign, Check, Loader2, MapPin, MessageCircle, Phone, Refre
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { PipelineFunnel } from "./pipeline-funnel"
+import { burst } from "@/components/fx/fx"
 import { temperatureLabels } from "@/lib/api/inbox-contract"
 import { instagramProfileUrl, leadDisplayName, parsePipeline, phoneHref, PipelineRequestError, pipelineStages, requestPipeline, type PipelineEntry, type PipelineStage, whatsappComposerUrl } from "@/lib/api/pipeline"
 import { cn } from "@/lib/utils"
@@ -94,7 +96,8 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
       }
       const updated = parsePipeline({ items: [saved] })[0]
       onEntriesChange(base.map((entry) => entry.id === updated.id ? updated : entry))
-      setNotice("Salvo.")
+      setNotice(updated.stage === "won" && selected.stage !== "won" ? "Negócio fechado! 🎉" : "Salvo.")
+      if (updated.stage === "won" && selected.stage !== "won") burst(document.querySelector<HTMLElement>("aside[aria-label^='Contato']"), "#34d399", 32)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível salvar.")
     } finally { setSaving(false) }
@@ -108,6 +111,7 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
   ]
 
   return <div className="space-y-4">
+    <PipelineFunnel counts={counts} active={stageFilter} onPick={(stage) => setStageFilter((current) => current === stage ? "active" : stage)} />
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
       <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0" role="group" aria-label="Filtrar por etapa">
         {filters.map((filter) => <button key={filter.id} type="button" aria-pressed={stageFilter === filter.id} onClick={() => setStageFilter(filter.id)} className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition", stageFilter === filter.id ? "border-primary/50 bg-primary/15 text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
@@ -129,10 +133,10 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
     <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
       <section aria-label="Contatos" className="min-w-0 overflow-hidden rounded-xl border bg-card">
         {filtered.length ? <ul className="max-h-[680px] divide-y overflow-y-auto">
-          {filtered.map((entry) => {
+          {filtered.map((entry, index) => {
             const name = leadDisplayName(entry.consumer)
             const active = entry.id === selected?.id
-            return <li key={entry.id}><button type="button" aria-current={active ? "true" : undefined} onClick={() => { setSelectedId(entry.id); setNotice("") }} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/40", active && "bg-primary/10")}>
+            return <li key={entry.id} className="fx-rise fx-spot" style={{ "--i": index } as React.CSSProperties}><button type="button" aria-current={active ? "true" : undefined} onClick={() => { setSelectedId(entry.id); setNotice("") }} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/40", active && "bg-primary/10")}>
               <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{initials(name)}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-2"><span className="truncate text-sm font-medium">{name}</span>{entry.consumer.fit ? <FitChip fit={entry.consumer.fit} /> : null}</span>
@@ -166,7 +170,7 @@ function ContactPanel({ entry, saving, notice, onSave }: { entry: PipelineEntry;
   const qualification = entry.qualification
   const changed = stage !== entry.stage || nextAction.trim() !== (entry.next_action ?? "") || notes.trim() !== (entry.consumer.notes ?? "").trim()
 
-  return <aside aria-label={`Contato ${name}`} className="h-fit space-y-5 rounded-xl border bg-card p-5 lg:sticky lg:top-6">
+  return <aside aria-label={`Contato ${name}`} className="fx-rise h-fit space-y-5 rounded-xl border bg-card p-5 lg:sticky lg:top-6">
     <header>
       <h2 className="flex items-center gap-2 text-lg font-semibold leading-tight">{name}{entry.consumer.fit ? <FitChip fit={entry.consumer.fit} detailed /> : null}</h2>
       <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{entry.consumer.address || "Localização não informada"}</p>

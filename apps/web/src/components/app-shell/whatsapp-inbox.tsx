@@ -3,14 +3,18 @@
 import Link from "next/link"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowUp, Bot, Cable, Hand, Info, LoaderCircle, MessageCircle, RefreshCw, Search, Workflow } from "lucide-react"
+import { ArrowLeft, ArrowUp, Bot, Cable, Hand, Info, LoaderCircle, MessageCircle, RefreshCw, Search, Sparkles, Workflow } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
+import { ConversationConstellation } from "@/components/app-shell/conversation-constellation"
 import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel } from "@/components/app-shell/whatsapp-gateway-workspace"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { channelLabels, deliveryLabels, sendOutcome, temperatureLabels, type InboxConversationDTO } from "@/lib/api/inbox-contract"
 import { cn } from "@/lib/utils"
+
+// Soft tint over the conversation that follows the contact's commercial temperature.
+const moodColor: Record<string, string> = { hot: "rgb(244 63 94 / .10)", warm: "rgb(251 191 36 / .08)", cold: "rgb(56 189 248 / .07)" }
 
 const footerLink = "flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"
 
@@ -50,6 +54,7 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
   const [uncertain, setUncertain] = useState<Record<string, boolean>>({})
   const [connectionOpen, setConnectionOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [skyOpen, setSkyOpen] = useState(false)
   const pending = useRef<{ id: string; text: string; key: string } | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const needle = query.trim().toLowerCase()
@@ -123,14 +128,15 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{initials(active.name)}</span>
       <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{active.name}</p><p className="truncate text-xs text-muted-foreground">{channelLabels[active.channel] ?? active.channel} · {active.handle}</p></div>
       <Button type="button" size="sm" variant="outline" disabled={busy || !canSend} onClick={() => void action("automation")}>{active.automationEnabled ? <Hand /> : <Bot />}<span className="hidden sm:inline">{active.automationEnabled ? "Assumir conversa" : "Retomar IA"}</span></Button>
+      <Button type="button" variant="ghost" size="icon" aria-label="Constelação de conversas" title="Constelação de conversas" onClick={() => setSkyOpen(true)}><Sparkles /></Button>
       <Button type="button" variant="ghost" size="icon" aria-label="Detalhes do contato" onClick={() => setDetailsOpen(true)}><Info /></Button>
     </> : <><span className="font-medium">WhatsApp</span><Button type="button" variant="ghost" size="icon" className="ml-auto" aria-label="Atualizar" onClick={() => router.refresh()}><RefreshCw /></Button></>}
   >
     {loadError ? <p role="alert" className="m-4 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{loadError}</p> : null}
     {active ? <>
-      <div className="min-h-0 flex-1 overflow-y-auto" role="log" aria-label={`Mensagens com ${active.name}`} aria-live="polite">
+      <div className="min-h-0 flex-1 overflow-y-auto transition-[background] duration-700" role="log" aria-label={`Mensagens com ${active.name}`} aria-live="polite" style={{ background: `radial-gradient(120% 60% at 50% 0%, ${moodColor[active.temperature] ?? "transparent"}, transparent 70%)` }}>
         <div className="mx-auto w-full max-w-3xl space-y-3 px-4 py-6">
-          {active.messages.length ? active.messages.map((message) => <div key={message.id} className={cn("flex", message.from === "operator" ? "justify-end" : "justify-start")}>
+          {active.messages.length ? active.messages.map((message, index) => <div key={message.id} className={cn("flex", message.from === "operator" ? "justify-end" : "justify-start", index >= active.messages.length - 3 && "fx-rise")}>
             <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2", message.from === "operator" ? "rounded-br-md bg-primary/15" : "rounded-bl-md bg-muted")}>
               <p className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.text}</p>
               <p className="mt-1 text-right text-[11px] text-muted-foreground">{message.time}{message.from === "operator" && message.status ? ` · ${deliveryLabels[message.status] ?? message.status}` : ""}</p>
@@ -175,6 +181,13 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
       <div className="mt-6 flex flex-wrap justify-center gap-2"><Button type="button" onClick={() => setConnectionOpen(true)}><Cable />Conectar WhatsApp</Button><Button asChild variant="outline"><Link href="/app/whatsapp/automacao">Configurar automação</Link></Button></div>
     </div>}
     <ConnectionDialog open={connectionOpen} onOpenChange={setConnectionOpen} />
+    <Dialog open={skyOpen} onOpenChange={setSkyOpen}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader><DialogTitle>Constelação de conversas</DialogTitle><DialogDescription>Cada estrela é uma conversa. Clique para abrir.</DialogDescription></DialogHeader>
+        {skyOpen ? <ConversationConstellation activeId={active?.id} onPick={(id) => { setSelected(id); setSkyOpen(false) }}
+          stars={conversations.map((item) => ({ id: item.id, name: item.name, unread: item.unread, temperature: item.temperature, score: item.score }))} /> : null}
+      </DialogContent>
+    </Dialog>
   </ImmersiveShell>
 }
 

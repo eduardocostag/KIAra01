@@ -132,7 +132,16 @@ export function FlowCanvas({ workflow, onChange, view, onViewChange, selectedId,
     role="application" aria-label="Editor de fluxo: arraste para mover a tela, use a roda do mouse para zoom">
     <div className={styles.world} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}>
       <svg className={styles.edges} width="1" height="1">
-        {edgeGeometry.map(({ edge, d }) => <path key={edge.id} d={d} className={cn(styles.edge, activeEdges.has(edge.id) && styles.edgeActive)} onPointerDown={(event) => { event.stopPropagation(); setSelectedEdge(edge.id); onSelect("") }} />)}
+        <defs><filter id="flow-comet-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" /></filter></defs>
+        {edgeGeometry.map(({ edge, d }) => {
+          const done = statuses[edge.to] === "done" || statuses[edge.to] === "blocked"
+          return <path key={edge.id} d={d} className={cn(styles.edge, activeEdges.has(edge.id) && styles.edgeActive, done && !activeEdges.has(edge.id) && styles.edgeDone)} onPointerDown={(event) => { event.stopPropagation(); setSelectedEdge(edge.id); onSelect("") }} />
+        })}
+        {/* Energy running through the wires that are executing right now. */}
+        {edgeGeometry.filter(({ edge }) => activeEdges.has(edge.id)).map(({ edge, d }) => <g key={`comet-${edge.id}`} className={styles.comet} aria-hidden="true">
+          <circle r="9" fill="var(--primary)" opacity=".55" filter="url(#flow-comet-glow)"><animateMotion dur="0.9s" repeatCount="indefinite" path={d} /></circle>
+          <circle r="3.5" fill="#fff"><animateMotion dur="0.9s" repeatCount="indefinite" path={d} /></circle>
+        </g>)}
         {draft ? <path d={curve(draft.from, draft.to)} className={styles.edgeDraft} /> : null}
       </svg>
       {deletable ? <button type="button" className={styles.edgeDelete} style={{ left: deletable.mid.x, top: deletable.mid.y }} aria-label="Remover conexão" onPointerDown={(event) => event.stopPropagation()} onClick={() => { onChange({ ...workflow, edges: workflow.edges.filter((edge) => edge.id !== selectedEdge) }); setSelectedEdge("") }}><X className="size-3" /></button> : null}
