@@ -17,6 +17,7 @@ def test_gateway_requires_https_url_and_token(monkeypatch):
 def test_status_reports_each_service_without_secrets(monkeypatch):
     monkeypatch.setenv("KIARA_SERVER_GATEWAY_URL", "https://kiara-debian.example.ts.net")
     monkeypatch.setenv("KIARA_SERVER_GATEWAY_TOKEN", "secret-token")
+    monkeypatch.setenv("KIARA_CHAT_MODEL", "ollama/qwen3:1.7b")
     seen = []
 
     def fake_get(url, token):
@@ -31,7 +32,7 @@ def test_status_reports_each_service_without_secrets(monkeypatch):
 
     monkeypatch.setattr(server_gateway, "_get", fake_get)
     result = asyncio.run(server_gateway.server_status())
-    assert result == {"configured": True, "gateway": "ok", "ai": {"state": "ok", "models": ["ollama/qwen3:1.7b"]},
+    assert result == {"configured": True, "gateway": "ok", "ai": {"state": "ok", "model_count": 1, "chat_model": "ollama/qwen3:1.7b", "chat_model_available": True},
                       "whatsapp": {"state": "ok", "sessions": [{"name": "kiara", "status": "qr"}]}}
     assert ("https://kiara-debian.example.ts.net/healthz", None) in seen  # health check never sends the token
     assert "secret-token" not in repr(result)

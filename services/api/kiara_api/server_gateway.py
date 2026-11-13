@@ -19,7 +19,7 @@ from .http.context import RequestContext
 from .http.dependencies import system_administrator_context
 
 TIMEOUT_SECONDS = 8
-MAX_BODY = 512 * 1024
+MAX_BODY = 4 * 1024 * 1024  # OmniRoute lists 1000+ models
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -85,7 +85,13 @@ def _model_ids(data: Any) -> list[str]:
     items = (data or {}).get("data") if isinstance(data, dict) else None
     if not isinstance(items, list):
         return []
-    return [str(item["id"])[:120] for item in items[:200] if isinstance(item, dict) and item.get("id")]
+    return [str(item["id"])[:120] for item in items[:5000] if isinstance(item, dict) and item.get("id")]
+
+
+def _ai_summary(status: int, models: list[str]) -> dict[str, Any]:
+    chat_model = os.getenv("KIARA_CHAT_MODEL", "").strip()
+    return {"state": _state(status), "model_count": len(models), "chat_model": chat_model or None,
+            "chat_model_available": bool(chat_model) and chat_model in models}
 
 
 async def server_status() -> dict[str, Any]:
@@ -101,7 +107,7 @@ async def server_status() -> dict[str, Any]:
     return {
         "configured": True,
         "gateway": _state(gateway[0]),
-        "ai": {"state": _state(ai[0]), "models": _model_ids(ai[1])},
+        "ai": _ai_summary(ai[0], _model_ids(ai[1])),
         "whatsapp": {"state": _state(whatsapp[0]), "sessions": _session_summary(sessions[1]) if sessions[0] == 200 else []},
     }
 
