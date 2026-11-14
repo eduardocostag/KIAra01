@@ -58,6 +58,11 @@ async def test_config_removal_disables_stale_thread_automation_for_same_tenant(e
 
     class Connection:
         async def execute(self, sql, params):
+            if sql.startswith("SELECT config FROM whatsapp_web_config"):
+                class NoPreviousConfig:
+                    async def fetchone(self):
+                        return None
+                return NoPreviousConfig()
             if sql.startswith("INSERT INTO whatsapp_web_config"):
                 return
             if "SET automation_enabled=false" in sql:

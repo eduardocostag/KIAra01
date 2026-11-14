@@ -6,6 +6,8 @@ export type WhatsAppConfig = {
   initial_outreach_enabled?: boolean; outreach_template?: string; pilot_consent_confirmed: boolean; enabled: boolean
   ai_context: string; reply_template: string; followup_template: string; followup_hours: number
   contact_start: string; contact_end: string; contacts: WhatsAppContact[]
+  /** Kiara SDR on the always-on server: off, approval (pilot: a human approves each message) or auto. */
+  sdr_mode?: "off" | "approval" | "auto"; sdr_since?: string
 }
 export type WhatsAppActivity = { id: string; phone: string; kind: string; text: string; occurred_at: string; status: string }
 export type WhatsAppEvents = { items: WhatsAppActivity[]; last_heartbeat_at: string | null; online: boolean }

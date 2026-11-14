@@ -54,6 +54,10 @@ class WhatsAppConfig(BaseModel):
     contact_start: str = Field(default="09:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
     contact_end: str = Field(default="18:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
     contacts: list[Contact] = Field(default_factory=list, max_length=500)
+    # Kiara SDR on the always-on server (OpenWA): "approval" = every message waits for a human in the Approvals
+    # center; "auto" = sends by itself in conversations with AI on. Both use the anti-ban sending rules.
+    sdr_mode: Literal["off", "approval", "auto"] = "off"
+    sdr_since: str = Field(default="", max_length=40)  # set by the server when the SDR is turned on
 
     @model_validator(mode="after")
     def validate_contacts(self):
@@ -70,6 +74,8 @@ class WhatsAppConfig(BaseModel):
             raise ValueError("Informe as informações autorizadas da empresa antes de habilitar a automação.")
         if self.contact_start >= self.contact_end:
             raise ValueError("O horário final deve ser posterior ao inicial.")
+        if self.sdr_mode != "off" and not self.ai_context.strip():
+            raise ValueError("Para ligar a Kiara SDR, descreva o que ela pode dizer sobre sua empresa.")
         return self
 
 
@@ -121,6 +127,15 @@ class AnalysisCompletion(BaseModel):
     error: str | None = Field(default=None, max_length=500)
 
 
+def _sdr_since(previous: dict, data: dict) -> str:
+    """When the SDR was turned on: it never answers messages older than this (no replies to old history)."""
+    if data.get("sdr_mode", "off") == "off":
+        return ""
+    if previous.get("sdr_mode", "off") != "off" and previous.get("sdr_since"):
+        return previous["sdr_since"]
+    return datetime.now(UTC).isoformat()
+
+
 def writable(context: RequestContext):
     if context.role not in {"owner", "admin", "operator"}:
         raise ApiError(403, "whatsapp_forbidden", "Seu perfil permite apenas consultar o atendimento.")
@@ -143,10 +158,16 @@ class WhatsAppWebRepository:
     async def save_config(self, organization_id: str, config: WhatsAppConfig):
         data = config.model_dump()
         if self.postgres is None:
+            previous = self.configs.get(organization_id, {})
+            data["sdr_since"] = _sdr_since(previous, data)
             self.configs[organization_id] = data
         else:
             async with self.postgres._transaction(organization_id) as connection:
+                row = await (await connection.execute("SELECT config FROM whatsapp_web_config WHERE organization_id=%s", (_uuid("organization", organization_id),))).fetchone()
+                data["sdr_since"] = _sdr_since(row["config"] if row else {}, data)
                 await connection.execute("INSERT INTO whatsapp_web_config(organization_id,config) VALUES(%s,%s) ON CONFLICT(organization_id) DO UPDATE SET config=EXCLUDED.config,updated_at=now()", (_uuid("organization", organization_id), Jsonb(data)))
+                if data["sdr_mode"] != "off":
+                    return data  # the server SDR manages AI per conversation; the legacy allowlist does not apply
                 # Reconcile the full allowlist, including contacts removed from
                 # this configuration. Updating only the remaining contacts left
                 # old inbox threads showing automation enabled after removal or

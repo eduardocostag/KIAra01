@@ -1,0 +1,17 @@
+[Unit]
+Description=Kiara SDR tick (WhatsApp sync, understanding, replies and follow-ups via the Kiara API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/kiara/sdr/kiara-sdr-tick.sh
+LoadCredential=env:/opt/kiara/sdr/.env
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+TimeoutStartSec=300

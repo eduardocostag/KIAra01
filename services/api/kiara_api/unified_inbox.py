@@ -108,6 +108,9 @@ async def ingest_message(connection, organization_id: str, *, channel: str, iden
         handoff = bool(contact.get("handoff"))
         automation_enabled = bool(config.get("enabled") and config.get("auto_reply_enabled", True) and contact.get("enabled") and not handoff
                                   and not (existing and existing.get("consent_status") in {"opted_out", "revoked"}))
+        # Automatic SDR: new conversations start with the AI on (an operator can take over any time).
+        if config.get("sdr_mode") == "auto" and not handoff and not (existing and existing.get("consent_status") in {"opted_out", "revoked"}):
+            automation_enabled = True
     await connection.execute(
         "INSERT INTO pipeline_entries(organization_id,consumer_id) VALUES(%s,%s) ON CONFLICT(organization_id,consumer_id) DO NOTHING",
         (org, consumer_id),
@@ -165,7 +168,7 @@ class UnifiedInboxRepository:
                 raise ApiError(404, "thread_not_found", "Conversa não encontrada.")
         return {"read": True}
 
-    async def reply(self, organization_id: str, thread_id: str, payload: InboxReply):
+    async def reply(self, organization_id: str, thread_id: str, payload: InboxReply, *, by_kiara: bool = False):
         if not payload.text.strip():
             raise ApiError(422, "empty_message", "Escreva a mensagem.")
         org, thread_uuid = _uuid("organization", organization_id), _uuid("thread", thread_id)
@@ -203,7 +206,8 @@ class UnifiedInboxRepository:
                 "INSERT INTO commercial_outbox(organization_id,thread_id,phone,body,request_key) VALUES(%s,%s,%s,%s,%s) RETURNING id,status",
                 (org, thread_uuid, normalize_phone(thread["provider_thread_id"]) if thread["channel"] == "whatsapp" else thread["provider_thread_id"], payload.text, payload.idempotency_key),
             )).fetchone()
-            await self._automation(connection, org, thread, enabled=False)
+            if not by_kiara:  # an operator replying takes the conversation over from the AI
+                await self._automation(connection, org, thread, enabled=False)
             if thread["channel"] == "whatsapp" and not cloud and server_wait is None:
                 return {"id": str(row["id"]), "status": row["status"]}
             await connection.execute("UPDATE commercial_outbox SET status='sending',lease_until=now()+interval '2 minutes' WHERE organization_id=%s AND id=%s", (org, row["id"]))

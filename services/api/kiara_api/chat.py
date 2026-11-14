@@ -208,6 +208,46 @@ def _authorize(context: RequestContext) -> None:
         raise ApiError(403, "chat_forbidden", "Seu perfil não pode usar o Kiara Chat.")
 
 
+async def complete_conversation(conversation: list[dict[str, str]], *, fast: bool = False, provider_factory=None,
+                                max_tokens: int | None = None) -> tuple[str, str]:
+    """Run a conversation through the configured model chain (each step a different provider/account).
+
+    `fast` uses the voice chain (Claude Haiku without the thinking step first): quick answers for voice and the SDR.
+    Returns (text, model) or ("", "") when every provider failed; never raises provider details."""
+    base, model, key = _configuration()
+    if not base:
+        return "", ""
+    from app.providers.remote import OpenAICompatibleProvider
+    factory = provider_factory or OpenAICompatibleProvider
+    system = conversation[0]["content"] if conversation and conversation[0]["role"] == "system" else ""
+    gateway = "/ai/v1" in base  # OmniRoute: many providers, so a failing one falls back to the next
+    models = [model, *_model_chain("CHAT", GATEWAY_CHAT_FALLBACKS, gateway)]
+    if fast:
+        voice_model = os.getenv("KIARA_VOICE_MODEL", "").strip() or (DEFAULT_VOICE_MODEL if gateway else "")
+        models = [voice_model, *_model_chain("VOICE", GATEWAY_VOICE_FALLBACKS, gateway), model] if voice_model else models
+    models = list(dict.fromkeys(item for item in models if item))
+    deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if fast else CHAT_DEADLINE_SECONDS)
+    for candidate in models:
+        remaining = deadline - time.monotonic()
+        if remaining < 2:
+            break
+        # A hanging provider gets a bounded slice so the next ones still have time.
+        budget = min(remaining, 12 if fast else 90)
+        provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=budget, vision_enabled=False,
+                           max_output_tokens=max_tokens or (2048 if fast else 4096), follow_redirects=False)
+        try:
+            complete = getattr(provider, "_complete", None)
+            reply = await asyncio.wait_for(complete(conversation) if complete else provider.generate(
+                system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=budget + 1)
+            if isinstance(reply, str):
+                reply = _THINKING.sub("", reply)  # reasoning models may leak their scratchpad
+            if isinstance(reply, str) and reply.strip() and len(reply) <= 80000:
+                return reply, candidate
+        except Exception:  # noqa: BLE001 - provider failures must not disclose response bodies or keys
+            continue
+    return "", ""
+
+
 def create_chat_router(provider_factory=None) -> APIRouter:
     router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
@@ -246,43 +286,14 @@ def create_chat_router(provider_factory=None) -> APIRouter:
                        context: Annotated[RequestContext, Depends(authenticated_context)]):
         _authorize(context)
         response.headers["Cache-Control"] = "no-store, private"
-        base, model, key = _configuration()
-        if not base:
+        if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada. Use a conexão local ou configure o provedor no servidor.")
-        from app.providers.remote import OpenAICompatibleProvider
-        factory = provider_factory or OpenAICompatibleProvider
         system = SITE_CONTEXT + (f"\nContexto da tela fornecido pelo usuário: {body.context}" if body.context.strip() else "")
         system += "\nAgora são " + datetime.now(BRASILIA).strftime("%d/%m/%Y %H:%M") + " (horário de Brasília)."
         if body.voice:
             system += "\n" + VOICE_STYLE
         conversation = [{"role": "system", "content": system}, *(item.model_dump() for item in body.messages)]
-        gateway = "/ai/v1" in base  # OmniRoute: many providers, so a failing one falls back to the next
-        models = [model, *_model_chain("CHAT", GATEWAY_CHAT_FALLBACKS, gateway)]
-        if body.voice:
-            voice_model = os.getenv("KIARA_VOICE_MODEL", "").strip() or (DEFAULT_VOICE_MODEL if gateway else "")
-            models = [voice_model, *_model_chain("VOICE", GATEWAY_VOICE_FALLBACKS, gateway), model] if voice_model else models
-        models = list(dict.fromkeys(item for item in models if item))
-        deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if body.voice else CHAT_DEADLINE_SECONDS)
-        text = ""
-        for candidate in models:
-            remaining = deadline - time.monotonic()
-            if remaining < 2:
-                break
-            # A hanging provider gets a bounded slice so the next ones still have time.
-            budget = min(remaining, 12 if body.voice else 90)
-            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=budget,
-                               vision_enabled=False, max_output_tokens=2048 if body.voice else 4096, follow_redirects=False)
-            try:
-                complete = getattr(provider, "_complete", None)
-                reply = await asyncio.wait_for(complete(conversation) if complete else provider.generate(
-                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=budget + 1)
-                if isinstance(reply, str):
-                    reply = _THINKING.sub("", reply)  # reasoning models may leak their scratchpad
-                if isinstance(reply, str) and reply.strip() and len(reply) <= 80000:
-                    text, model = reply, candidate
-                    break
-            except Exception:  # noqa: BLE001 - provider failures must not disclose response bodies or keys
-                continue
+        text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
         if not text:
             raise ApiError(502, "chat_provider_unavailable", "O modelo não respondeu corretamente. Tente novamente ou use a conexão local.")
         if not _is_system_admin(context):

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { Bot, Loader2, Megaphone, ScanSearch, ShieldCheck, Trash2, UserPlus, Users } from "lucide-react"
+import { Bot, Loader2, Megaphone, ScanSearch, ShieldCheck, Sparkles, Trash2, UserPlus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +23,12 @@ function dateLabel(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })
 }
+
+const sdrModes: { id: NonNullable<Config["sdr_mode"]>; title: string; text: string }[] = [
+  { id: "off", title: "Desligada", text: "A Kiara só organiza e entende as conversas. Nada é enviado." },
+  { id: "approval", title: "Piloto", text: "A Kiara escreve cada resposta e follow-up; você aprova (ou edita) na Central de aprovações e ela envia." },
+  { id: "auto", title: "Automática", text: "A Kiara responde sozinha nas conversas com IA ligada e passa para você quando o lead está pronto." },
+]
 
 function Section({ icon: Icon, title, description, children }: { icon: typeof Bot; title: string; description: string; children: ReactNode }) {
   return <section className="rounded-2xl border bg-card p-5">
@@ -188,13 +194,16 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     if (!config) return
     if (!pause && config.enabled && (!config.pilot_consent_confirmed || !config.contacts.some((contact) => contact.enabled && !contact.handoff))) { setFormError("Para ativar, habilite ao menos um contato e confirme a autorização."); return }
     if (!pause && config.enabled && !config.ai_context.trim()) { setFormError("Para ativar, descreva o que a Kiara pode dizer sobre sua empresa."); return }
+    if (!pause && (config.sdr_mode ?? "off") !== "off" && !config.ai_context.trim()) { setFormError("Para ligar a Kiara SDR, descreva o que ela pode dizer sobre sua empresa (seção Responder)."); return }
     if (!pause && (!Number.isInteger(config.followup_hours) || config.followup_hours < 1 || config.followup_hours > 720 || !config.contact_start || !config.contact_end || config.contact_start >= config.contact_end)) { setFormError("Use um follow-up de 1 a 720 horas e um horário de início anterior ao fim."); return }
     setSaving(true); setFormError(""); setFormNotice("")
     try {
       const source = pause ? await request<Config>("config") : config
       const value = await request<Config>("config", { method: "PUT", body: JSON.stringify({ ...source, enabled: pause ? false : source.enabled }) })
       setConfig(value); setSavedEnabled(value.enabled)
-      setFormNotice(value.enabled ? "Kiara ativa no WhatsApp, dentro dos contatos, horários e limites definidos." : "Kiara pausada no WhatsApp. Nada será enviado automaticamente.")
+      setFormNotice(value.sdr_mode === "auto" ? "Kiara SDR automática: ela responde, faz follow-up e passa para você quando o lead estiver pronto."
+        : value.sdr_mode === "approval" ? "Kiara SDR em piloto: as mensagens dela aparecem na Central de aprovações para você aprovar."
+          : value.enabled ? "Kiara ativa no WhatsApp, dentro dos contatos, horários e limites definidos." : "Kiara pausada no WhatsApp. Nada será enviado automaticamente.")
     } catch (reason) { setFormError(reason instanceof Error ? reason.message : "Falha ao salvar.") }
     finally { setSaving(false) }
   }
@@ -208,7 +217,7 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="text-2xl font-medium tracking-tight">Kiara no WhatsApp</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Defina o que a Kiara faz no seu WhatsApp. A análise de conversas já funciona pela conexão por QR Code; respostas e prospecção automáticas rodam pelo executor do WhatsApp Web até o executor do OpenWA ser ligado ao site.</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Defina o que a Kiara faz no seu WhatsApp conectado por QR Code: entender as conversas, atualizar o funil, responder, fazer follow-up e passar para você na hora certa.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1"><span className={cn("size-1.5 rounded-full", online ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{events ? online ? "Executor conectado" : "Executor desconectado" : "Verificando…"}</span>
@@ -227,6 +236,20 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     {!config ? <p className="rounded-2xl border p-5 text-sm text-muted-foreground">{configError || "Carregando configuração…"}</p> : <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void save() }}>
       <fieldset disabled={saving} className="min-w-0 space-y-5 disabled:opacity-60">
         <legend className="sr-only">Configuração da Kiara no WhatsApp</legend>
+
+        <Section icon={Sparkles} title="Kiara SDR (24h no servidor)" description="Entende cada conversa e atualiza o lead e o funil, responde quem escreve, faz até 3 follow-ups e passa para o atendente quando o lead está pronto, pede uma pessoa ou pergunta algo que ela não sabe. Usa o que você escrever em Responder, os horários e o limite diário abaixo.">
+          <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Modo da Kiara SDR">
+            {sdrModes.map((mode) => {
+              const active = (config.sdr_mode ?? "off") === mode.id
+              return <button key={mode.id} type="button" role="radio" aria-checked={active} onClick={() => update({ sdr_mode: mode.id })}
+                className={cn("rounded-xl border p-3 text-left transition-colors", active ? "border-primary bg-primary/10" : "hover:bg-muted/50")}>
+                <p className="text-sm font-medium">{mode.title}{mode.id === "approval" ? <span className="ml-1.5 text-xs font-normal text-emerald-400">recomendado para começar</span> : null}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{mode.text}</p>
+              </button>
+            })}
+          </div>
+          <p className="flex items-start gap-2 text-xs text-muted-foreground"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400" aria-hidden="true" />Proteção do número: só fala com quem já conversou com você (sem prospecção fria), uma mensagem por vez, com pausas e &quot;digitando…&quot;, nunca a mesma mensagem em massa e só no horário definido.</p>
+        </Section>
 
         <Section icon={Bot} title="Responder" description="A Kiara responde quem escreve, usando só as informações que você aprovar. Sem informação suficiente, ela passa para um humano.">
           <Toggle checked={config.auto_reply_enabled ?? true} onChange={(value) => update({ auto_reply_enabled: value })} label="Responder mensagens com IA" />

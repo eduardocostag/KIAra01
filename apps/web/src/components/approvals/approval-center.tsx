@@ -23,6 +23,7 @@ export type ActionRequest = {
 
 const kinds: Record<string, { label: string; icon: LucideIcon; color: string }> = {
   whatsapp: { label: "WhatsApp", icon: MessageCircle, color: "#34d399" },
+  "whatsapp.reply": { label: "Kiara SDR · WhatsApp", icon: MessageCircle, color: "#34d399" },
   email: { label: "E-mail", icon: Mail, color: "#38bdf8" },
   calendar: { label: "Agenda", icon: CalendarPlus, color: "#fb923c" },
   notice: { label: "Aviso da Kiara", icon: Bell, color: "#a78bfa" },
@@ -38,6 +39,7 @@ const editableFields = ["text", "body", "caption"]
 const fieldLabels: Record<string, string> = {
   to: "Para", subject: "Assunto", title: "Título", when: "Quando", minutes: "Duração (min)", url: "Site", steps: "O que fazer",
   action: "Ação", folder: "Pasta", rule: "Regra", media: "Mídia", objective: "Objetivo", daily: "Por dia", days: "Dias", keywords: "Palavras-chave",
+  motivo: "Motivo", resumo: "Resumo do lead",
 }
 const objectiveLabels: Record<string, string> = { traffic: "Tráfego para o site", leads: "Geração de leads", messages: "Mensagens no WhatsApp", awareness: "Reconhecimento" }
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
@@ -87,6 +89,8 @@ function RequestCard({ item, onChange, swipeable = false }: { item: ActionReques
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
   const notice = item.kind === "notice"
+  // The Kiara sends these herself through the protected WhatsApp sender once approved: no manual "done".
+  const kiaraSends = item.kind === "whatsapp.reply"
   const text = notice ? String(item.payload.text ?? "") : draft
   const wa = item.kind === "whatsapp" ? whatsappLink(item.payload.to, draft) : null
   const details = Object.entries(item.payload).filter(([key, value]) => key !== "entrada" && key !== field && !(notice && key === "text") && String(value).trim())
@@ -159,16 +163,17 @@ function RequestCard({ item, onChange, swipeable = false }: { item: ActionReques
         : <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-muted/40 p-3 text-sm">{draft}</p>
         : null}
 
-    {item.status === "approved" ? <p className="mt-3 rounded-xl bg-sky-400/10 px-3 py-2 text-xs text-sky-200">Aprovado. A Kiara executa assim que esta conexão estiver ativa no servidor. Se preferir, faça agora pelo botão abaixo e marque como feito.</p> : null}
+    {item.status === "approved" ? <p className="mt-3 rounded-xl bg-sky-400/10 px-3 py-2 text-xs text-sky-200">{kiaraSends ? "Aprovado. A Kiara envia pelo seu WhatsApp no horário configurado, com as travas de segurança do número." : "Aprovado. A Kiara executa assim que esta conexão estiver ativa no servidor. Se preferir, faça agora pelo botão abaixo e marque como feito."}</p> : null}
+    {item.status === "failed" && item.note ? <p className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">{item.note}</p> : null}
     {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
 
     <footer className="mt-4 flex flex-wrap gap-2">
       {item.status === "pending" && notice ? <Button type="button" size="sm" disabled={Boolean(busy)} onClick={() => void decide("approve")}>{busy ? <LoaderCircle className="animate-spin" /> : <Check />}Ok, visto</Button> : null}
       {item.status === "pending" && !notice ? <>
-        <Button type="button" size="sm" disabled={Boolean(busy)} onClick={() => void decide("approve")}>{busy === "approve" ? <LoaderCircle className="animate-spin" /> : <Check />}Aprovar</Button>
+        <Button type="button" size="sm" disabled={Boolean(busy)} onClick={() => void decide("approve")}>{busy === "approve" ? <LoaderCircle className="animate-spin" /> : <Check />}{kiaraSends ? "Aprovar e enviar" : "Aprovar"}</Button>
         <Button type="button" size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void decide("reject")}>{busy === "reject" ? <LoaderCircle className="animate-spin" /> : <X />}Recusar</Button>
       </> : null}
-      {(item.status === "pending" || item.status === "approved") && !notice ? <>
+      {(item.status === "pending" || item.status === "approved") && !notice && !kiaraSends ? <>
         {wa ? <Button asChild size="sm" variant="outline"><a href={wa} target="_blank" rel="noreferrer"><ExternalLink />Abrir no WhatsApp</a></Button> : null}
         {text ? <Button type="button" size="sm" variant="ghost" onClick={() => void copy()}>{copied ? <Check /> : <Copy />}{copied ? "Copiado" : "Copiar texto"}</Button> : null}
         <Button type="button" size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void decide("done")}>{busy === "done" ? <LoaderCircle className="animate-spin" /> : <CheckCheck />}Já fiz, marcar como feito</Button>

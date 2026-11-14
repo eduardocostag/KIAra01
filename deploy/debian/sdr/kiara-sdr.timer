@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Kiara SDR every ~75-135 s (irregular on purpose: no robot rhythm on the WhatsApp account)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=75s
+RandomizedDelaySec=60s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -33,6 +33,7 @@ from .chat import create_chat_router
 from .server_gateway import create_server_gateway_router
 from .whatsapp_server import WhatsAppServerService, create_whatsapp_server_router
 from .whatsapp_cloud import WhatsAppCloudService, create_whatsapp_cloud_router
+from .sdr import SdrService, create_sdr_router
 from .chatwoot import create_chatwoot_router
 from .competition import create_competition_router
 from .competition_store import CompetitionRepository
@@ -427,6 +428,10 @@ def create_app(
     if config.database_url:
         app.include_router(create_unified_inbox_router(UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None)))
         app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
+        app.include_router(create_sdr_router(SdrService(
+            PostgresRepository(config.database_url),
+            UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None),
+            WhatsAppServerService(PostgresRepository(config.database_url)))))
         if config.integration_encryption_key:
             integration_repository = IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key)
             app.include_router(create_integration_router(integration_repository))
