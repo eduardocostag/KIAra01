@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 import time
 import urllib.error
@@ -27,10 +28,14 @@ from .http.errors import ApiError
 from .server_gateway import _opener, gateway_configuration
 
 SESSION_NAME = "kiara"
-SYNC_CHATS = 25
+# Gentle on the account: WhatsApp Web runs in a real browser page on the server, and heavy bursts of reads
+# (parallel history loads, right after linking) preceded both observed unlinks. Read like a person would.
+SYNC_CHATS = 10            # chats read per run; the rest come in the next runs
 SYNC_MESSAGES = 30
 SYNC_DEADLINE_SECONDS = 45
-SYNC_PARALLEL = 6  # concurrent WhatsApp reads; the database writes stay sequential
+SYNC_PARALLEL = 1          # one chat at a time
+SYNC_PAUSE_SECONDS = (0.4, 1.2)   # random pause between chats, never a fixed robot rhythm
+SYNC_WARMUP_SECONDS = 300  # let WhatsApp Web finish its own first load (and reload) after linking
 _PHONE_CHAT = re.compile(r"^([1-9][0-9]{7,14})@c\.us$")
 # WhatsApp now identifies most contacts by a linked id (@lid) instead of the phone; OpenWA resolves it.
 _LID_CHAT = re.compile(r"^[0-9]{5,20}@lid$")
@@ -150,6 +155,49 @@ async def last_message_at(connection, organization_id: str, phone: str) -> datet
     return row["last"] if row else None
 
 
+async def known_chats(connection, organization_id: str) -> dict[str, datetime]:
+    """WhatsApp chat id -> newest message already in the inbox, to skip chats that did not change."""
+    from .adapters.postgres import _uuid
+    rows = await (await connection.execute(
+        """SELECT metadata->>'wa_chat_id' AS chat, last_message_at FROM conversation_threads
+           WHERE organization_id=%s AND channel='whatsapp' AND metadata ? 'wa_chat_id' AND last_message_at IS NOT NULL""",
+        (_uuid("organization", organization_id),))).fetchall()
+    return {row["chat"]: row["last_message_at"] for row in rows if row["chat"]}
+
+
+async def remember_chat(connection, organization_id: str, phone: str, chat_id: str) -> None:
+    from .adapters.postgres import _uuid
+    await connection.execute(
+        """UPDATE conversation_threads SET metadata=COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('wa_chat_id', %s::text)
+           WHERE organization_id=%s AND channel='whatsapp' AND provider_thread_id=%s""",
+        (chat_id, _uuid("organization", organization_id), phone))
+
+
+def _changed(chat: dict, known: dict[str, datetime]) -> bool:
+    last = known.get(chat["id"])
+    stamp = chat.get("timestamp")
+    if last is None or type(stamp) not in (int, float):
+        return True
+    return _timestamp(stamp) > last
+
+
+# Sessions already set to "unavailable" (session id -> connectedAt), per API instance.
+_quiet_presence: dict[str, Any] = {}
+
+
+async def keep_presence_unavailable(client, session: dict[str, Any]) -> None:
+    """Do not look "online" all day: a linked device that never goes offline looks automated, and while
+    WhatsApp Web is online the phone stops getting notifications. Sent once per connection."""
+    marker = session.get("connectedAt") or True
+    if _quiet_presence.get(session["id"]) == marker:
+        return
+    try:
+        await client._request("PUT", f"/api/sessions/{session['id']}/presence", {"available": False})
+        _quiet_presence[session["id"]] = marker
+    except OpenWAError:
+        pass  # cosmetic; retried on the next sync
+
+
 class WhatsAppServerService:
     def __init__(self, postgres: PostgresRepository | None, client_factory=_client):
         self.postgres = postgres
@@ -172,6 +220,8 @@ class WhatsAppServerService:
             if session["status"] in {"created", "disconnected", "failed"}:
                 session = await client.start_session(session["id"])
             result = {**_public(session), "qr": ""}
+            if session["status"] == "ready":
+                await keep_presence_unavailable(client, session)
             if session["status"] == "qr_ready":
                 result["qr"] = (await client.qr_code(session["id"]))["qrCode"]
             return result
@@ -188,6 +238,10 @@ class WhatsAppServerService:
             session = await self._session(client)
             if not session or session["status"] != "ready":
                 return {**_public(session), "conversations": 0, "messages": 0, "skipped": 0}
+            await keep_presence_unavailable(client, session)
+            linked = session.get("connectedAt")
+            if isinstance(linked, str) and (datetime.now(UTC) - _timestamp(linked)).total_seconds() < SYNC_WARMUP_SECONDS:
+                return {**_public(session), "conversations": 0, "messages": 0, "skipped": 0, "warming_up": True}
             chats = await client.list_chats(session["id"], limit=200)
         except OpenWAError:
             raise ApiError(503, "whatsapp_server_unreachable", "O servidor do WhatsApp não respondeu.") from None
@@ -196,10 +250,15 @@ class WhatsAppServerService:
         people.sort(key=lambda chat: chat.get("timestamp") or 0, reverse=True)
         conversations = imported = 0
         skipped = len(chats) - len(people)
+        # Only chats with something new are read from WhatsApp: a quiet inbox costs one listing per sync.
+        async with self.postgres._transaction(organization_id) as connection:
+            known = await known_chats(connection, organization_id)
+        people = [chat for chat in people if _changed(chat, known)][:SYNC_CHATS]
         gate = asyncio.Semaphore(SYNC_PARALLEL)
 
         async def read(chat):
             async with gate:
+                await asyncio.sleep(random.uniform(*SYNC_PAUSE_SECONDS))
                 try:
                     phone = await client.phone_for(session["id"], chat["id"])
                     rows = await client.live_history(session["id"], chat["id"], limit=SYNC_MESSAGES) if phone else []
@@ -208,7 +267,7 @@ class WhatsAppServerService:
                 return chat, phone, rows
 
         try:
-            fetched = await asyncio.wait_for(asyncio.gather(*(read(chat) for chat in people[:SYNC_CHATS])),
+            fetched = await asyncio.wait_for(asyncio.gather(*(read(chat) for chat in people)),
                                              timeout=max(5.0, deadline - time.monotonic() - 15))
         except TimeoutError:
             raise ApiError(503, "whatsapp_server_slow", "O WhatsApp ainda está carregando. Tente de novo em instantes.") from None
@@ -231,6 +290,7 @@ class WhatsAppServerService:
                     result = await ingest_message(connection, organization_id, channel="whatsapp", identity=phone,
                                                   name=name, **message)
                     imported += int(result["inserted"])
+                await remember_chat(connection, organization_id, phone, chat["id"])
             conversations += 1
         return {**_public(session), "conversations": conversations, "messages": imported, "skipped": skipped}
 

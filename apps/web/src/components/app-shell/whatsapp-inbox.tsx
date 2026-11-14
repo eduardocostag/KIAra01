@@ -113,8 +113,11 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
     // Initial pull from the WhatsApp server session (an external system).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void syncNow(controller.signal)
-    const timer = setInterval(() => { if (document.visibilityState === "visible") void syncNow(controller.signal) }, 60_000)
-    return () => { controller.abort(); clearInterval(timer) }
+    // Irregular 75-135 s spacing, only while the tab is visible: no fixed-interval robot pattern on the account.
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = () => { timer = setTimeout(() => { if (document.visibilityState === "visible") void syncNow(controller.signal); schedule() }, 75_000 + Math.random() * 60_000) }
+    schedule()
+    return () => { controller.abort(); clearTimeout(timer) }
   }, [syncNow])
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }) }, [activeId, active?.messages.length])
   useEffect(() => {

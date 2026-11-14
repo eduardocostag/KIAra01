@@ -31,11 +31,18 @@ http://:8088 {
 		}
 	}
 
-	# WhatsApp REST API through OpenWA.
+	# WhatsApp REST API through OpenWA, READ-ONLY: protects the number against bans (no sends, bulk sends,
+	# deletions or account changes can pass, even with the token). Only reads plus the three calls needed to
+	# link the session and keep it "offline" are allowed. Enable sending deliberately, never by default.
 	handle /wa/api/* {
 		route {
 			@denied not header Authorization "Bearer {$KIARA_GATEWAY_TOKEN}"
 			respond @denied "unauthorized" 401
+			@write {
+				not method GET HEAD
+				not path_regexp ^/wa/api/sessions(/[A-Za-z0-9-]+/(start|presence))?$
+			}
+			respond @write "whatsapp gateway is read-only" 403
 			uri strip_prefix /wa
 			reverse_proxy 127.0.0.1:2785 {
 				header_up Host {upstream_hostport}

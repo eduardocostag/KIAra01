@@ -14,9 +14,16 @@ from app.integrations.openwa import OpenWAError
 
 class FakeOpenWA:
     def __init__(self, status="ready", fail=False):
-        self.session = {"id": "s-1", "name": "kiara", "status": status, "phone": "5511999990000"}
+        self.session = {"id": "s-1", "name": "kiara", "status": status, "phone": "5511999990000", "connectedAt": "2026-01-01T00:00:00Z"}
         self.fail = fail
         self.started = False
+        self.presence = []
+        self.history_reads = []
+
+    async def _request(self, method, path, payload=None, idempotency_key=None):
+        assert method == "PUT" and path.endswith("/presence")
+        self.presence.append(payload)
+        return {"success": True}
 
     async def find_session(self, name):
         if self.fail:
@@ -50,6 +57,7 @@ class FakeOpenWA:
                 "99887766554433@lid": "5551988887777"}.get(chat_id, "")
 
     async def live_history(self, identifier, chat_id, limit=40):
+        self.history_reads.append(chat_id)
         return [
             {"id": f"{chat_id}-2", "fromMe": True, "body": "Claro, envio o orçamento.", "timestamp": 1_700_000_100, "chatId": chat_id},
             {"id": f"{chat_id}-1", "fromMe": False, "body": "Oi, quanto custa?", "timestamp": 1_700_000_000, "chatId": chat_id},
@@ -78,6 +86,19 @@ def build(monkeypatch, client, *, role="owner"):
         return last_seen.get(phone)
 
     monkeypatch.setattr(whatsapp_server, "last_message_at", fake_last)
+    known = {}
+    remembered = []
+
+    async def fake_known(connection, organization_id):
+        return known
+
+    async def fake_remember(connection, organization_id, phone, chat_id):
+        remembered.append((phone, chat_id))
+
+    monkeypatch.setattr(whatsapp_server, "known_chats", fake_known)
+    monkeypatch.setattr(whatsapp_server, "remember_chat", fake_remember)
+    monkeypatch.setattr(whatsapp_server, "_quiet_presence", {})
+    monkeypatch.setattr(whatsapp_server, "SYNC_PAUSE_SECONDS", (0, 0))
     ingested_last = last_seen  # tests can mark a contact as already synced
     app = FastAPI()
     app.include_router(whatsapp_server.create_whatsapp_server_router(
@@ -90,6 +111,8 @@ def build(monkeypatch, client, *, role="owner"):
     app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "org", "m", role, "req", email="admin@kiara.local")
     api = TestClient(app)
     api.last_seen = ingested_last
+    api.known = known
+    api.remembered = remembered
     return api, ingested
 
 
@@ -115,6 +138,30 @@ def test_second_sync_only_writes_new_messages(monkeypatch):
     api.post("/v1/whatsapp-server/sync")
     texts = [item["text"] for item in ingested if item["identity"] == "5551988887777"]
     assert texts == ["Claro, envio o orçamento.", "[imagem]"]  # the older inbound message is skipped
+
+
+def test_unchanged_chats_are_not_read_again_and_presence_stays_offline(monkeypatch):
+    from datetime import UTC, datetime
+    client = FakeOpenWA()
+    api, ingested = build(monkeypatch, client)
+    api.post("/v1/whatsapp-server/sync")
+    assert client.presence == [{"available": False}]
+    assert ("5551988887777", "99887766554433@lid") in api.remembered
+    # Second run: every chat is known up to its last activity -> no history reads, presence not re-sent.
+    api.known.update({chat_id: datetime.fromtimestamp(1_000, UTC) for chat_id in client.history_reads})
+    client.history_reads.clear()
+    body = api.post("/v1/whatsapp-server/sync").json()
+    assert client.history_reads == [] and body["conversations"] == 0
+    assert client.presence == [{"available": False}]
+
+
+def test_no_reads_while_whatsapp_web_finishes_its_first_load(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    client = FakeOpenWA()
+    client.session["connectedAt"] = (datetime.now(UTC) - timedelta(seconds=60)).isoformat()
+    api, ingested = build(monkeypatch, client)
+    body = api.post("/v1/whatsapp-server/sync").json()
+    assert body["warming_up"] is True and client.history_reads == [] and ingested == []
 
 
 def test_sync_without_connected_session_imports_nothing(monkeypatch):
