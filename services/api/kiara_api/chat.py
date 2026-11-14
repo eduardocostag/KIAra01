@@ -45,8 +45,10 @@ VOICE_STYLE = (
     "A transcrição da fala pode ter erros: entenda a intenção pelo contexto da conversa. "
     "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar."
 )
-# Voice needs a fast model (about 1-2 s); the chat model is the fallback.
-DEFAULT_VOICE_MODEL = "gemini/gemini-flash-lite-latest"
+# OmniRoute (Debian gateway) model chains. Voice needs speed: Claude Haiku without the thinking step answers in ~2 s.
+DEFAULT_VOICE_MODEL = "no-think/claude/claude-haiku-5-5"
+GATEWAY_VOICE_FALLBACKS = ("gemini/gemini-flash-lite-latest",)
+GATEWAY_CHAT_FALLBACKS = ("auto/best-chat",)
 
 
 class ChatMessage(BaseModel):
@@ -177,18 +179,20 @@ def create_chat_router(provider_factory=None) -> APIRouter:
         if body.voice:
             system += "\n" + VOICE_STYLE
         conversation = [{"role": "system", "content": system}, *(item.model_dump() for item in body.messages)]
-        models = [model]
+        gateway = "/ai/v1" in base  # OmniRoute: many providers, so a failing one falls back to the next
+        models = [model, *(GATEWAY_CHAT_FALLBACKS if gateway else ())]
         if body.voice:
-            voice_model = os.getenv("KIARA_VOICE_MODEL", "").strip() or (DEFAULT_VOICE_MODEL if "/ai/v1" in base else "")
-            models = list(dict.fromkeys([voice_model, model] if voice_model else [model]))
+            voice_model = os.getenv("KIARA_VOICE_MODEL", "").strip() or (DEFAULT_VOICE_MODEL if gateway else "")
+            models = [voice_model, *(GATEWAY_VOICE_FALLBACKS if gateway else ()), *models] if voice_model else models
+        models = list(dict.fromkeys(item for item in models if item))
         text = ""
         for candidate in models:
-            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=45 if body.voice else 90,
+            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=20 if body.voice else 90,
                                vision_enabled=False, max_output_tokens=2048 if body.voice else 4096, follow_redirects=False)
             try:
                 complete = getattr(provider, "_complete", None)
                 reply = await asyncio.wait_for(complete(conversation) if complete else provider.generate(
-                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=50 if body.voice else 95)
+                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=22 if body.voice else 95)
                 if isinstance(reply, str):
                     reply = _THINKING.sub("", reply)  # reasoning models may leak their scratchpad
                 if isinstance(reply, str) and reply.strip() and len(reply) <= 80000:
