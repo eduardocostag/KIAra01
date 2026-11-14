@@ -100,19 +100,20 @@ export function WhatsAppConnectionPanel({ onConnected }: { onConnected?: () => v
   const [error, setError] = useState("")
   const pollRef = useRef<AbortController | null>(null)
 
-  const check = useCallback(async (signal?: AbortSignal) => {
-    setChecking(true); setError("")
+  const check = useCallback(async (signal?: AbortSignal, quiet = false) => {
+    if (!quiet) { setChecking(true); setError("") }
     try { setStatus(await serverRequest<ServerStatus>("status", signal)) }
-    catch (reason) { if (!signal?.aborted) { setStatus(null); setError(reason instanceof Error ? reason.message : "Não foi possível verificar a conexão.") } }
-    finally { if (!signal?.aborted) setChecking(false) }
+    catch (reason) { if (!signal?.aborted && !quiet) { setStatus(null); setError(reason instanceof Error ? reason.message : "Não foi possível verificar a conexão.") } }
+    finally { if (!signal?.aborted && !quiet) setChecking(false) }
   }, [])
 
   useEffect(() => {
     const controller = new AbortController()
-    // Initial status probe of the WhatsApp session.
+    // Initial status probe of the WhatsApp session, then a quiet re-check: the phone can unlink the device at any time.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void check(controller.signal)
-    return () => { controller.abort(); pollRef.current?.abort() }
+    const timer = setInterval(() => { if (!pollRef.current || pollRef.current.signal.aborted) void check(controller.signal, true) }, 15_000)
+    return () => { controller.abort(); clearInterval(timer); pollRef.current?.abort() }
   }, [check])
 
   async function connect() {
@@ -127,7 +128,8 @@ export function WhatsAppConnectionPanel({ onConnected }: { onConnected?: () => v
         const result = await serverRequest<ConnectResult>("connect", controller.signal)
         if (controller.signal.aborted) return
         setPairing(result)
-        if (result.connected) { await check(); onConnected?.(); return }
+        // The live status is the truth from here on; a past "connected" from pairing must not stick.
+        if (result.connected) { setPairing(null); await check(); onConnected?.(); return }
         if (result.state === "failed" || result.state === "action_required") throw new Error(stateLabels[result.state])
         await new Promise((resolve) => setTimeout(resolve, 3000))
       }
