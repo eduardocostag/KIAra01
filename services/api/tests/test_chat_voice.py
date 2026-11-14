@@ -58,6 +58,11 @@ def test_voice_uses_fast_model_short_style_and_falls_back(monkeypatch):
     assert response.json()["model"] == chat.DEFAULT_VOICE_MODEL
     assert chat.VOICE_STYLE in calls[0]["messages"][0]["content"] and calls[0]["max_tokens"] == 2048
 
+    # Quota gone on the primary account: the next provider of the same level answers.
+    api, calls = build(monkeypatch, failing_models=(chat.DEFAULT_VOICE_MODEL,))
+    response = api.post("/v1/chat/messages", json={"messages": HISTORY, "voice": True})
+    assert response.status_code == 200 and response.json()["model"] == chat.GATEWAY_VOICE_FALLBACKS[0]
+
     api, calls = build(monkeypatch, failing_models=(chat.DEFAULT_VOICE_MODEL, *chat.GATEWAY_VOICE_FALLBACKS))
     response = api.post("/v1/chat/messages", json={"messages": HISTORY, "voice": True})
     assert response.status_code == 200 and response.json()["model"] == "auto/best-chat"
@@ -68,8 +73,21 @@ def test_written_chat_falls_back_to_omniroute_auto(monkeypatch):
     api, calls = build(monkeypatch, failing_models=("claude/claude-sonnet-5-5",))
     monkeypatch.setenv("KIARA_CHAT_MODEL", "claude/claude-sonnet-5-5")
     response = api.post("/v1/chat/messages", json={"messages": HISTORY})
-    assert response.status_code == 200 and response.json()["model"] == "auto/best-chat"
-    assert [call["model"] for call in calls] == ["claude/claude-sonnet-5-5", "auto/best-chat"]
+    assert response.status_code == 200 and response.json()["model"] == chat.GATEWAY_CHAT_FALLBACKS[0]
+    assert [call["model"] for call in calls] == ["claude/claude-sonnet-5-5", chat.GATEWAY_CHAT_FALLBACKS[0]]
+
+
+def test_fallback_chain_is_configurable_and_bounded_by_deadline(monkeypatch):
+    api, calls = build(monkeypatch, failing_models=("auto/best-chat", "a/one"))
+    monkeypatch.setenv("KIARA_CHAT_FALLBACKS", "a/one, b/two")
+    response = api.post("/v1/chat/messages", json={"messages": HISTORY})
+    assert response.json()["model"] == "b/two"
+    assert [call["model"] for call in calls] == ["auto/best-chat", "a/one", "b/two"]
+
+    api, calls = build(monkeypatch, failing_models=(chat.DEFAULT_VOICE_MODEL,))
+    monkeypatch.setattr(chat, "VOICE_DEADLINE_SECONDS", 0)
+    response = api.post("/v1/chat/messages", json={"messages": HISTORY, "voice": True})
+    assert response.status_code == 502 and calls == []
 
 
 def test_speech_returns_francisca_audio_without_leaking_errors(monkeypatch):

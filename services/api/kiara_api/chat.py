@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -45,10 +46,34 @@ VOICE_STYLE = (
     "A transcrição da fala pode ter erros: entenda a intenção pelo contexto da conversa. "
     "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar."
 )
-# OmniRoute (Debian gateway) model chains. Voice needs speed: Claude Haiku without the thinking step answers in ~2 s.
-DEFAULT_VOICE_MODEL = "no-think/claude/claude-haiku-5-5"
-GATEWAY_VOICE_FALLBACKS = ("gemini/gemini-flash-lite-latest",)
-GATEWAY_CHAT_FALLBACKS = ("auto/best-chat",)
+# OmniRoute (Debian gateway) model chains. Each step is a different account or provider, so when one runs out
+# of quota Kiara moves to a model of the same level instead of degrading. Measured 2026-11-14 via the gateway.
+DEFAULT_VOICE_MODEL = "no-think/claude/claude-haiku-5-5"  # Anthropic account, ~2 s, no thinking step
+GATEWAY_VOICE_FALLBACKS = (
+    "ddgw/claude-haiku-4-5",            # DuckDuckGo AI gateway: free, no account, ~2 s
+    "ddgw/gpt-5.6-luna",                # DuckDuckGo, ~3 s
+    "cx/gpt-6-sol",                     # ChatGPT account, ~5 s
+    "agy/gemini-3.8-flash-low",         # Antigravity (Google), ~4 s
+    "kc/openrouter/free",               # Kilo Code free router, ~3 s
+    "gemini/gemini-flash-lite-latest",  # Gemini API key, ~4 s
+)
+GATEWAY_CHAT_FALLBACKS = (
+    "cx/gpt-6-sol",                     # ChatGPT account: complete plans in ~25 s
+    "agy/gemini-3.8-flash-high",        # Antigravity (Google), ~25 s
+    "ddgw/gpt-5.6-luna",                # DuckDuckGo, free
+    "ddgw/claude-haiku-4-5",            # DuckDuckGo, free
+    "kc/openrouter/free",
+    "auto/best-chat",                   # OmniRoute's own routing as the last resort
+)
+# A whole turn never waits longer than this, however many providers fail (Vercel allows 300 s).
+VOICE_DEADLINE_SECONDS = 35
+CHAT_DEADLINE_SECONDS = 240
+
+
+def _model_chain(name: str, defaults: tuple[str, ...], gateway: bool) -> list[str]:
+    """Fallback list from KIARA_<NAME>_FALLBACKS (comma separated) or the measured defaults."""
+    configured = [item.strip() for item in os.getenv(f"KIARA_{name}_FALLBACKS", "").split(",") if item.strip()]
+    return configured or (list(defaults) if gateway else [])
 
 
 class ChatMessage(BaseModel):
@@ -180,19 +205,25 @@ def create_chat_router(provider_factory=None) -> APIRouter:
             system += "\n" + VOICE_STYLE
         conversation = [{"role": "system", "content": system}, *(item.model_dump() for item in body.messages)]
         gateway = "/ai/v1" in base  # OmniRoute: many providers, so a failing one falls back to the next
-        models = [model, *(GATEWAY_CHAT_FALLBACKS if gateway else ())]
+        models = [model, *_model_chain("CHAT", GATEWAY_CHAT_FALLBACKS, gateway)]
         if body.voice:
             voice_model = os.getenv("KIARA_VOICE_MODEL", "").strip() or (DEFAULT_VOICE_MODEL if gateway else "")
-            models = [voice_model, *(GATEWAY_VOICE_FALLBACKS if gateway else ()), *models] if voice_model else models
+            models = [voice_model, *_model_chain("VOICE", GATEWAY_VOICE_FALLBACKS, gateway), model] if voice_model else models
         models = list(dict.fromkeys(item for item in models if item))
+        deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if body.voice else CHAT_DEADLINE_SECONDS)
         text = ""
         for candidate in models:
-            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=20 if body.voice else 90,
+            remaining = deadline - time.monotonic()
+            if remaining < 2:
+                break
+            # A hanging provider gets a bounded slice so the next ones still have time.
+            budget = min(remaining, 12 if body.voice else 90)
+            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=budget,
                                vision_enabled=False, max_output_tokens=2048 if body.voice else 4096, follow_redirects=False)
             try:
                 complete = getattr(provider, "_complete", None)
                 reply = await asyncio.wait_for(complete(conversation) if complete else provider.generate(
-                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=22 if body.voice else 95)
+                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=budget + 1)
                 if isinstance(reply, str):
                     reply = _THINKING.sub("", reply)  # reasoning models may leak their scratchpad
                 if isinstance(reply, str) and reply.strip() and len(reply) <= 80000:
