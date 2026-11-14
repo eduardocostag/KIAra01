@@ -1,6 +1,6 @@
 import { kiaraApi } from "@/lib/api/server-client"
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) {

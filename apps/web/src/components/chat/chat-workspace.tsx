@@ -6,7 +6,7 @@ import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { blobBase64, chatRequest, fetchVideo, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
+import { blobBase64, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatImage, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { parseBlocks, plainText, type Inline } from "@/lib/chat-markdown"
 import { cn } from "@/lib/utils"
 import { pollVideoJob } from "@/lib/video-polling"
@@ -36,7 +36,7 @@ function KiaraText({ text }: { text: string }) {
   })}</div>
 }
 
-type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
+type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage }
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
 
 const modes = [
@@ -61,7 +61,9 @@ function boundedHistory(messages: Message[]): ChatMessage[] {
   let remaining = 35_000
   return messages.slice(-24).reverse().flatMap((message) => {
     if (remaining <= 0) return []
-    const content = message.content.slice(0, Math.min(10_000, remaining))
+    // The picture's description goes with it, so "agora mais azul" can redraw the same scene.
+    const text = message.image?.prompt ? `${message.content}\n\n(imagem enviada: ${message.image.prompt})` : message.content
+    const content = text.slice(0, Math.min(10_000, remaining))
     remaining -= content.length
     return [{ role: message.role, content }]
   }).reverse()
@@ -76,7 +78,11 @@ function readHistory(key: string): Conversation[] {
 
 function writeHistory(key: string, conversations: Conversation[]) {
   // Generated HTML can be large; history keeps the text and plans only.
-  const slim = conversations.slice(0, HISTORY_LIMIT).map((conversation) => ({ ...conversation, messages: conversation.messages.map(({ artifact, ...message }) => artifact ? { ...message, content: `${message.content}\n\n[Arquivo gerado: ${artifact.name}]` } : message) }))
+  // Pictures keep only their small copy: full images would fill the browser's storage.
+  const slim = conversations.slice(0, HISTORY_LIMIT).map((conversation) => ({ ...conversation, messages: conversation.messages.map(({ artifact, image, ...message }) => ({
+    ...(artifact ? { ...message, content: `${message.content}\n\n[Arquivo gerado: ${artifact.name}]` } : message),
+    ...(image?.thumb ? { image: { src: image.thumb, thumb: image.thumb, prompt: image.prompt } } : {}),
+  })) }))
   try { localStorage.setItem(key, JSON.stringify(slim)) } catch { /* Storage full or blocked: history stays in memory. */ }
 }
 
@@ -100,6 +106,19 @@ function Artifact({ artifact }: { artifact: ChatArtifact }) {
     </div>
     {preview && <iframe className="h-[480px] w-full border-t bg-white" title={`Prévia de ${artifact.name}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={isolatedHtml(artifact.content)} />}
   </section>
+}
+
+/** A picture Kiara drew; after a reload only the small copy remains, so download is offered while the full one is here. */
+function Picture({ image }: { image: ChatImage }) {
+  const full = image.src !== image.thumb
+  return <figure className="mt-3 w-full max-w-md overflow-hidden rounded-2xl border bg-muted/30">
+    {/* eslint-disable-next-line @next/next/no-img-element -- data URL generated in this conversation */}
+    <img src={image.src} alt={image.prompt || "Imagem criada pela Kiara"} className="block h-auto max-h-[70vh] w-full object-contain" />
+    <figcaption className="flex items-center gap-2 p-2 pl-3">
+      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{full ? "Imagem criada pela Kiara" : "Prévia salva neste navegador"}</span>
+      {full ? <Button type="button" size="sm" variant="outline" asChild><a href={image.src} download="kiara-imagem.jpg"><Download aria-hidden="true" />Baixar</a></Button> : null}
+    </figcaption>
+  </figure>
 }
 
 /** A presentation video being produced on this computer: progress while rendering, player when done. */
@@ -287,7 +306,8 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
       const action = mode === "chat" ? "chat" : mode === "website" || mode === "dashboard" ? "build" : mode === "automation" ? "plan" : mode
       const body = mode === "chat" ? { messages: boundedHistory(history) } : action === "build" ? { prompt: content, kind: mode } : mode === "video" ? { action: "start", prompt: content } : { prompt: content }
       const reply = parseChatReply(await chatRequest(transport, action, body, controller.signal))
-      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video })
+      const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
+      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video, image })
     } catch (reason) {
       if (controller.signal.aborted) setNotice("Geração interrompida. A solicitação pode já ter sido recebida pelo serviço.")
       else { setError(reason instanceof Error ? reason.message : "Não foi possível concluir a resposta."); setDraft(content) }
@@ -465,6 +485,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
               <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-card text-primary"><Bot className="size-4" aria-hidden="true" /></span>
               <div className="min-w-0 flex-1">
                 <KiaraText text={message.content} />
+                {message.image && <Picture image={message.image} />}
                 {message.artifact && <Artifact artifact={message.artifact} />}
                 {message.video && <VideoJob key={message.video.id} initial={message.video} transport={transport} />}
                 {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}

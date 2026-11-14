@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .chat_image import IMAGE_STYLE, MARKER, generate_image, image_available
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
@@ -110,6 +111,11 @@ class ChatRequest(BaseModel):
         if self.messages[-1].role != "user" or not self.messages[-1].content.strip():
             raise ValueError("A última mensagem deve ser um pedido do usuário")
         return self
+
+
+class ImageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field(min_length=3, max_length=3000)
 
 
 class SpeechRequest(BaseModel):
@@ -269,8 +275,15 @@ async def complete_conversation(conversation: list[dict[str, str]], *, fast: boo
     return "", ""
 
 
-def create_chat_router(provider_factory=None) -> APIRouter:
+def create_chat_router(provider_factory=None, image_generator=None) -> APIRouter:
     router = APIRouter(prefix="/v1/chat", tags=["chat"])
+    make_image = image_generator or generate_image
+
+    async def image_payload(prompt: str) -> dict | None:
+        picture, _model = await make_image(prompt.strip()[:3000])
+        if not picture:
+            return None
+        return {"mime": "image/jpeg", "data_base64": base64.b64encode(picture).decode("ascii"), "prompt": prompt.strip()[:500]}
 
     @router.get("/status")
     async def status(response: Response, context: Annotated[RequestContext, Depends(authenticated_context)]):
@@ -286,9 +299,11 @@ def create_chat_router(provider_factory=None) -> APIRouter:
         voice = available and speech_available()
         capabilities.append({"id": "speech", "available": voice,
                              "detail": "Voz da Kiara (Francisca)." if voice else "Disponível pela ponte local ou voz do navegador."})
+        images = available and image_available()
+        capabilities.append({"id": "image", "available": images,
+                             "detail": "Imagens pelo servidor da Kiara." if images else "Gerador de imagem não configurado."})
         capabilities += [{"id": kind, "available": False, "detail": detail} for kind, detail in (
             ("transcribe", "Exige transcrição no executor local."),
-            ("image", "Gerador de imagem real ainda não configurado."),
             ("video", "Gerador de vídeo real ainda não configurado."),
             ("website", "Geração de artefatos disponível pela conexão local."),
             ("dashboard", "Geração de artefatos disponível pela conexão local."),
@@ -313,13 +328,38 @@ def create_chat_router(provider_factory=None) -> APIRouter:
         system += "\n" + current_moment()
         if body.voice:
             system += "\n" + VOICE_STYLE
+        elif image_available():
+            system += "\n" + IMAGE_STYLE
         conversation = [{"role": "system", "content": system}, *(item.model_dump() for item in body.messages)]
         text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
         if not text:
             raise ApiError(502, "chat_provider_unavailable", "O modelo não respondeu corretamente. Tente novamente ou use a conexão local.")
+        result: dict = {}
+        request = MARKER.search(text)
+        text = MARKER.sub("", text).strip()
+        if request and not body.voice:
+            image = await image_payload(request.group(1))
+            if image:
+                result["image"] = image
+                text = text or "Aqui está a imagem."
+            else:
+                text = (text + "\n\n" if text else "") + "Não consegui criar a imagem agora. Tente de novo em instantes."
+        text = text or "Pode repetir o pedido com um pouco mais de detalhe?"
         if not _is_system_admin(context):
-            return {"text": text.strip(), "provider": "kiara", "model": ""}
-        return {"text": text.strip(), "provider": "openai-compatible", "model": model}
+            return {"text": text, "provider": "kiara", "model": "", **result}
+        return {"text": text, "provider": "openai-compatible", "model": model, **result}
+
+    @router.post("/image")
+    async def image(body: ImageRequest, response: Response,
+                    context: Annotated[RequestContext, Depends(authenticated_context)]):
+        _authorize(context)
+        response.headers["Cache-Control"] = "no-store, private"
+        if not (_configuration()[0] and image_available()):
+            raise ApiError(503, "image_not_configured", "A criação de imagens não está disponível neste servidor.")
+        payload = await image_payload(body.prompt)
+        if not payload:
+            raise ApiError(502, "image_unavailable", "Não consegui criar a imagem agora. Tente de novo em instantes.")
+        return {"text": "Pronto! Aqui está a imagem.", "provider": "kiara", "model": "", "image": payload}
 
     @router.post("/speech")
     async def speech(body: SpeechRequest, response: Response,

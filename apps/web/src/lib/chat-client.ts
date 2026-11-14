@@ -6,7 +6,9 @@ export type ChatMessage = { role: "user" | "assistant"; content: string }
 export type ChatArtifact = { name: string; mime: "text/html"; content: string }
 export type ChatPlan = { id: string; steps: string[]; requires_approval: true }
 export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null }
-export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
+/** `src` is a data URL; `thumb` is the small copy kept in this browser's history. */
+export type ChatImage = { src: string; prompt: string; thumb?: string }
+export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage }
 export const CHAT_AUDIO_MAX_BYTES = 5 * 1024 * 1024
 const audioTypes = new Set(["audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac"])
 
@@ -49,7 +51,34 @@ export function parseChatReply(value: unknown): ChatReply {
     reply.plan = { id: plan.id, steps, requires_approval: true }
   }
   if (data.video != null) reply.video = parseVideoJob(data.video)
+  if (data.image != null) reply.image = parseChatImage(data.image)
   return reply
+}
+
+export function parseChatImage(value: unknown): ChatImage {
+  const data = object(value)
+  if (!["image/jpeg", "image/png", "image/webp"].includes(String(data.mime)) || typeof data.data_base64 !== "string"
+    || !data.data_base64 || data.data_base64.length > 6_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data.data_base64)) throw new Error("A imagem gerada é inválida.")
+  return { src: `data:${data.mime};base64,${data.data_base64}`, prompt: typeof data.prompt === "string" ? data.prompt.slice(0, 500) : "" }
+}
+
+/** A small JPEG copy (about 30 KB) so the picture survives in the browser's limited history storage. */
+export function imageThumbnail(src: string, side = 384): Promise<string> {
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.onload = () => {
+      const scale = Math.min(1, side / Math.max(image.naturalWidth, image.naturalHeight))
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+      const context = canvas.getContext("2d")
+      if (!context) return resolve("")
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      try { resolve(canvas.toDataURL("image/jpeg", 0.72)) } catch { resolve("") }
+    }
+    image.onerror = () => resolve("")
+    image.src = src
+  })
 }
 
 export function parseVideoJob(value: unknown): ChatVideoJob {
@@ -112,7 +141,8 @@ async function jsonResponse(response: Response): Promise<unknown> {
 }
 
 export async function chatRequest(transport: ChatTransport, action: string, body: Record<string, unknown> = {}, signal?: AbortSignal): Promise<unknown> {
-  const timeout = AbortSignal.timeout(action === "status" ? 15_000 : 180_000)
+  // A chat turn may try several providers (up to 240 s) and then draw a picture.
+  const timeout = AbortSignal.timeout(action === "status" ? 15_000 : 300_000)
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
   try {
     if (transport === "cloud") {

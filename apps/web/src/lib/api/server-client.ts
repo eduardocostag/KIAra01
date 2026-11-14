@@ -70,7 +70,7 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
   }
 
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-  const timeoutMs = path === "/v1/chat/messages" ? 105_000 : path === "/v1/chat/speech" ? 40_000 : path === "/v1/whatsapp-server/sync" ? 55_000 : path === "/v1/whatsapp-official/connect" ? 55_000 : path.startsWith("/v1/inbox/threads/") && path.endsWith("/messages") ? 45_000 : path.startsWith("/v1/leads/") && path.endsWith("/company") ? 60_000 : path.endsWith("/confirm") || path.endsWith("/process")
+  const timeoutMs = path === "/v1/chat/messages" ? 285_000 : path === "/v1/chat/image" ? 150_000 : path === "/v1/chat/speech" ? 40_000 : path === "/v1/whatsapp-server/sync" ? 55_000 : path === "/v1/whatsapp-official/connect" ? 55_000 : path.startsWith("/v1/inbox/threads/") && path.endsWith("/messages") ? 45_000 : path.startsWith("/v1/leads/") && path.endsWith("/company") ? 60_000 : path.endsWith("/confirm") || path.endsWith("/process")
     ? 290_000
     : path.startsWith("/v1/competition/kiara/") || path.startsWith("/v1/competition/instagram/")
       ? 55_000
