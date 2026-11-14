@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/kiara/sdr/kiara-sdr-tick.sh
+ExecStart=/usr/local/lib/kiara/kiara-sdr-tick.sh
 LoadCredential=env:/opt/kiara/sdr/.env
 DynamicUser=yes
 NoNewPrivileges=yes

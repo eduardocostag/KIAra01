@@ -10,5 +10,5 @@ anti-ban rules (only contacts who already wrote, human spacing and typing, no bl
     KIARA_API_URL=https://kiara-api-rouge.vercel.app
     KIARA_WORKER_TOKEN=<same value as KIARA_WORKER_TOKEN on the Vercel API>
 
-Install: copy `kiara-sdr-tick.sh` (0755) to `/opt/kiara/sdr/`, the unit and timer to `/etc/systemd/system/`,
+Install: copy `kiara-sdr-tick.sh` (0755) to `/usr/local/lib/kiara/` (/opt/kiara is root-only; the service runs as a dynamic user), the unit and timer to `/etc/systemd/system/`,
 then `systemctl daemon-reload && systemctl enable --now kiara-sdr.timer`. Logs: `journalctl -u kiara-sdr`.
