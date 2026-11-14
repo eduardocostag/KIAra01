@@ -53,11 +53,20 @@ def create_db_admin_router(postgres: PostgresRepository | None) -> APIRouter:
                           (SELECT count(*) FROM consumers) AS consumers""")).fetchone()
             applied = [row["filename"] for row in await (await connection.execute(
                 "SELECT filename FROM kiara_schema_migrations ORDER BY filename")).fetchall()]
+            # Real schema evidence, independent of the tracker table (which a restricted role may not see).
+            evidence = await (await connection.execute(
+                """SELECT current_user AS role, (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass_rls,
+                          to_regclass('public.action_requests') IS NOT NULL AS has_0030_action_requests,
+                          to_regclass('public.conversation_threads') IS NOT NULL AS has_0028_threads,
+                          (SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.kiara_schema_migrations')) AS tracker_rls,
+                          (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                            WHERE conname='integration_credentials_provider_check' LIMIT 1) AS provider_check""")).fetchone()
         shipped = sorted(path.name for path in _migration_dir().glob("*.sql"))
         # A fingerprint (not the address) is enough to tell two databases apart without revealing anything.
         fingerprint = hashlib.sha256((os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or "").split("@")[-1].encode()).hexdigest()[:12]
         return {"database": info["database"], "fingerprint": fingerprint, "threads": info["threads"], "consumers": info["consumers"],
-                "pending": [name for name in shipped if name not in applied]}
+                "pending": [name for name in shipped if name not in applied],
+                "schema": {**evidence, "accepts_whatsapp_cloud": "whatsapp_cloud" in str(evidence.get("provider_check") or "")}}
 
     @router.post("/v1/internal/db/migrate/{filename}")
     async def migrate(filename: str, request: Request) -> dict[str, Any]:
