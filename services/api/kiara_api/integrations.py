@@ -30,7 +30,7 @@ async def system_admin_context(context: Annotated[RequestContext, Depends(authen
     return context
 
 
-Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind", "postiz", "chatwoot"]
+Provider = Literal["google", "instagram", "instagram_session", "hermes", "mailerfind", "postiz", "chatwoot", "whatsapp_cloud"]
 ALLOWED_FIELDS = {
     "google": {"developer_token", "client_id", "client_secret", "refresh_token", "customer_id", "login_customer_id", "ga4_property_id"},
     "instagram": {"app_id", "app_secret", "access_token", "instagram_account_id", "page_id", "verify_token"},
@@ -39,6 +39,9 @@ ALLOWED_FIELDS = {
     "mailerfind": {"endpoint_url", "access_token", "refresh_token", "client_id", "client_secret", "expires_at", "scope", "token_type"},
     "postiz": {"endpoint_url", "api_key"},
     "chatwoot": {"endpoint_url", "api_access_token", "account_id", "webhook_secret"},
+    # Official WhatsApp (Meta Cloud API), written only by the Embedded Signup flow in whatsapp_cloud.py.
+    "whatsapp_cloud": {"access_token", "waba_id", "phone_number_id", "verify_token", "pin", "connected_at", "registered",
+                       "display_phone_number", "verified_name", "quality_rating"},
 }
 
 
@@ -155,6 +158,7 @@ def _validate_credentials(provider: Provider, credentials: dict[str, str]) -> No
                     {"endpoint_url", "api_key", "instance_id"} if provider == "hermes" else
                     {"endpoint_url", "access_token", "client_id"} if provider == "mailerfind" else
                     {"endpoint_url", "api_access_token", "account_id"} if provider == "chatwoot" else
+                    {"access_token", "waba_id", "phone_number_id", "verify_token"} if provider == "whatsapp_cloud" else
                     {"endpoint_url", "api_key"})
         missing = required - set(credentials)
         if missing:

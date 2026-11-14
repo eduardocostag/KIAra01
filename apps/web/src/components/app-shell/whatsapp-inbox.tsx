@@ -9,6 +9,8 @@ import { ConversationConstellation } from "@/components/app-shell/conversation-c
 import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel, syncWhatsAppConversations } from "@/components/app-shell/whatsapp-gateway-workspace"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { WhatsAppOfficialPanel } from "@/components/app-shell/whatsapp-official"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { channelLabels, deliveryLabels, sendOutcome, temperatureLabels, type InboxConversationDTO } from "@/lib/api/inbox-contract"
 import { dayLabel, differentDay, listTime, mediaOf, type MediaKind } from "@/lib/inbox-format"
@@ -57,11 +59,19 @@ function WhatsAppFooter({ onConnection }: { onConnection: () => void }) {
 function ConnectionDialog({ open, onOpenChange, onConnected }: { open: boolean; onOpenChange: (open: boolean) => void; onConnected?: () => void }) {
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-      <DialogHeader><DialogTitle>Conectar WhatsApp</DialogTitle><DialogDescription>Escaneie o QR Code com o celular, como no WhatsApp Web. Sem extensão.</DialogDescription></DialogHeader>
-      {open ? <div className="space-y-5">
-        <WhatsAppConnectionPanel onConnected={onConnected} />
-        <details className="border-t pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Outra forma: extensão do Chrome (opcional)</summary><div className="mt-3"><WhatsAppWebConnectionPanel /></div></details>
-      </div> : null}
+      <DialogHeader><DialogTitle>Conectar WhatsApp</DialogTitle><DialogDescription>Escolha como a Kiara acessa o seu WhatsApp.</DialogDescription></DialogHeader>
+      {open ? <Tabs defaultValue="official" className="gap-4">
+        <TabsList className="w-full">
+          <TabsTrigger value="official">API oficial (recomendado)</TabsTrigger>
+          <TabsTrigger value="qr">QR Code</TabsTrigger>
+        </TabsList>
+        <TabsContent value="official"><WhatsAppOfficialPanel /></TabsContent>
+        <TabsContent value="qr" className="space-y-5">
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">Conexão não oficial, como o WhatsApp Web. A Kiara só lê as conversas por aqui. Para enviar mensagens e automatizar com segurança, use a API oficial.</p>
+          <WhatsAppConnectionPanel onConnected={onConnected} />
+          <details className="border-t pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Outra forma: extensão do Chrome (opcional)</summary><div className="mt-3"><WhatsAppWebConnectionPanel /></div></details>
+        </TabsContent>
+      </Tabs> : null}
     </DialogContent>
   </Dialog>
 }

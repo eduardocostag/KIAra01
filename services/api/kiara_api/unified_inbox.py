@@ -169,6 +169,7 @@ class UnifiedInboxRepository:
         if not payload.text.strip():
             raise ApiError(422, "empty_message", "Escreva a mensagem.")
         org, thread_uuid = _uuid("organization", organization_id), _uuid("thread", thread_id)
+        cloud = None
         async with self.postgres._transaction(organization_id) as connection:
             await connection.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f"{organization_id}:outbox:{payload.idempotency_key}",))
             thread = await (await connection.execute(
@@ -181,6 +182,10 @@ class UnifiedInboxRepository:
                 raise ApiError(409, "contact_blocked", "Este contato não pode receber mensagens.")
             if thread["channel"] not in {"whatsapp", "instagram", "chatwoot"} or (thread["channel"] != "whatsapp" and self.integrations is None):
                 raise ApiError(409, "channel_delivery_not_connected", "Configure a entrega deste canal antes de enviar pela caixa unificada.")
+            if thread["channel"] == "whatsapp" and self.integrations is not None:
+                # With the official WhatsApp (Meta Cloud API) connected, replies go straight through Meta:
+                # no unofficial executor, no ban risk for answering a customer inside the 24 h service window.
+                cloud = await self.integrations.credentials_for(organization_id, "whatsapp_cloud")
             previous = await (await connection.execute(
                 "SELECT id,status,body,thread_id FROM commercial_outbox WHERE organization_id=%s AND request_key=%s",
                 (org, payload.idempotency_key),
@@ -194,7 +199,7 @@ class UnifiedInboxRepository:
                 (org, thread_uuid, normalize_phone(thread["provider_thread_id"]) if thread["channel"] == "whatsapp" else thread["provider_thread_id"], payload.text, payload.idempotency_key),
             )).fetchone()
             await self._automation(connection, org, thread, enabled=False)
-            if thread["channel"] == "whatsapp":
+            if thread["channel"] == "whatsapp" and not cloud:
                 return {"id": str(row["id"]), "status": row["status"]}
             await connection.execute("UPDATE commercial_outbox SET status='sending',lease_until=now()+interval '2 minutes' WHERE organization_id=%s AND id=%s", (org, row["id"]))
         # Reservation commits before any external POST, so uncertain outcomes cannot
@@ -202,9 +207,12 @@ class UnifiedInboxRepository:
         receipt = None
         status = "unknown"
         try:
-            credentials = await self.integrations.credentials_for(organization_id, thread["channel"])
+            credentials = cloud if thread["channel"] == "whatsapp" else await self.integrations.credentials_for(organization_id, thread["channel"])
             if not credentials:
                 status = "failed"
+            elif thread["channel"] == "whatsapp":
+                from .whatsapp_cloud import send_text
+                receipt = await asyncio.to_thread(send_text, credentials, normalize_phone(thread["provider_thread_id"]), payload.text)
             elif thread["channel"] == "chatwoot":
                 from .chatwoot import _runtime_client
                 result = await _runtime_client(credentials).send_message(int(thread["provider_thread_id"]), payload.text)
