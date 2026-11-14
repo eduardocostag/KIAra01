@@ -140,7 +140,7 @@ export function WhatsAppOfficialPanel() {
         : <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setConfirmDisconnect(true)} disabled={Boolean(busy)}>{busy === "disconnecting" ? <LoaderCircle className="animate-spin" /> : <Unplug />}Desconectar</Button>}
     </div> : <div className="space-y-4">
       <ul className="space-y-2 text-sm text-muted-foreground">
-        <li className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400" aria-hidden="true" />Conexão oficial da Meta: sem risco de bloqueio por uso de ferramenta não autorizada.</li>
+        <li className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400" aria-hidden="true" />Conexão direta com a plataforma oficial da Meta, na sua própria conta.</li>
         <li className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400" aria-hidden="true" />Você faz tudo na janela da própria Meta: conta comercial, número e verificação.</li>
         <li className="flex gap-2"><CreditCard className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />Os custos das mensagens ficam com você, cobrados pela Meta no seu cartão, pela tabela oficial dela.</li>
       </ul>

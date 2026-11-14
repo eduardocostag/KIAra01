@@ -1,4 +1,8 @@
 import { kiaraApi } from "@/lib/api/server-client"
+
+// A WhatsApp reply is sent like a person types it (spacing + "typing…"), which can take ~25 s.
+export const maxDuration = 60
+
 export async function POST(request: Request, { params }: { params: Promise<{ threadId: string }> }) {
   const { threadId } = await params
   let body: unknown

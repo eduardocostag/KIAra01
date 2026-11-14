@@ -43,6 +43,10 @@ _PHONE = re.compile(r"^[1-9][0-9]{7,14}$")
 _STATE_LABELS = {"ready", "qr_ready", "initializing", "authenticating", "created", "disconnected", "failed"}
 
 
+class OpenWARejected(OpenWAError):
+    """OpenWA answered with an HTTP error: the message was definitely not sent (e.g. the anti-ban pacing said no)."""
+
+
 class GatewayOpenWAClient(OpenWAClient):
     """The OpenWA REST client, routed through the gateway (Bearer token; the gateway injects the OpenWA key)."""
 
@@ -52,15 +56,17 @@ class GatewayOpenWAClient(OpenWAClient):
         self._timeout = timeout_seconds
 
     def _request_sync(self, method: str, path: str, payload=None, idempotency_key=None):
+        headers = {"Authorization": f"Bearer {self._token}", "Accept": "application/json", "Content-Type": "application/json"}
         if idempotency_key is not None:
-            raise OpenWAError("Envio não é permitido por este cliente.")
+            headers["Idempotency-Key"] = idempotency_key
         request = urllib.request.Request(
             self.base_url + path, method=method,
-            data=json.dumps(payload).encode() if payload is not None else None,
-            headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json", "Content-Type": "application/json"})
+            data=json.dumps(payload).encode() if payload is not None else None, headers=headers)
         try:
             with _opener.open(request, timeout=self._timeout) as response:
                 raw = response.read(2_000_001)
+        except urllib.error.HTTPError as error:
+            raise OpenWARejected(f"OpenWA recusou ({error.code}).") from None
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
             raise OpenWAError("OpenWA indisponível; nenhuma repetição automática.") from None
         if len(raw) > 2_000_000:
@@ -293,6 +299,73 @@ class WhatsAppServerService:
                 await remember_chat(connection, organization_id, phone, chat["id"])
             conversations += 1
         return {**_public(session), "conversations": conversations, "messages": imported, "skipped": skipped}
+
+
+# ---- Safe sending through the linked number (manual replies from the inbox) --------------------------------
+# WhatsApp bans accounts for bulk, unsolicited, robotic messaging. The Kiara only sends like a person answering
+# a conversation: to contacts who already talked to the number, one at a time, with typing and human spacing.
+REPLY_DAILY_LIMIT = 300            # safety ceiling per number per 24 h (OpenWA's own warm-up pacing applies on top)
+BURST_MAX_CONTACTS = 3             # the same text to more than this many other contacts within an hour = a blast
+SEND_GAP_SECONDS = (8.0, 15.0)     # random minimum spacing between two sends of the same number
+
+
+def server_sending_available() -> bool:
+    return bool(gateway_configuration()[0])
+
+
+async def guard_reply(connection, organization_id: str, thread_uuid, text: str) -> float:
+    """Anti-ban rules checked before anything is queued. Returns how long to wait before sending."""
+    from .adapters.postgres import _uuid
+    org = _uuid("organization", organization_id)
+    inbound = await (await connection.execute(
+        "SELECT 1 FROM messages WHERE organization_id=%s AND thread_id=%s AND direction='inbound' LIMIT 1", (org, thread_uuid))).fetchone()
+    if not inbound:
+        raise ApiError(409, "whatsapp_cold_message_blocked",
+                       "Para proteger seu número, a Kiara só envia para quem já conversou com você no WhatsApp.")
+    sent = await (await connection.execute(
+        """SELECT count(*) AS total, max(o.updated_at) AS last FROM commercial_outbox o JOIN conversation_threads t
+           ON t.organization_id=o.organization_id AND t.id=o.thread_id
+           WHERE o.organization_id=%s AND t.channel='whatsapp' AND o.status IN ('sent','sending')
+             AND o.updated_at > now() - interval '24 hours'""", (org,))).fetchone()
+    if sent and sent["total"] >= REPLY_DAILY_LIMIT:
+        raise ApiError(429, "whatsapp_daily_limit", "Limite diário de segurança do seu número atingido. Continue amanhã.")
+    blast = await (await connection.execute(
+        """SELECT count(DISTINCT thread_id) AS contacts FROM commercial_outbox
+           WHERE organization_id=%s AND body=%s AND thread_id<>%s AND created_at > now() - interval '60 minutes'""",
+        (org, text, thread_uuid))).fetchone()
+    if blast and blast["contacts"] >= BURST_MAX_CONTACTS:
+        raise ApiError(409, "whatsapp_bulk_blocked",
+                       "A mesma mensagem já foi para vários contatos na última hora. Personalize o texto para proteger seu número.")
+    last = sent["last"] if sent else None
+    gap = random.uniform(*SEND_GAP_SECONDS)
+    elapsed = (datetime.now(UTC) - last).total_seconds() if last else gap
+    return max(0.0, min(gap - elapsed, SEND_GAP_SECONDS[1]))
+
+
+async def send_reply(thread: dict[str, Any], text: str, outbox_id: str, wait: float) -> str | None:
+    """Send one reply through the linked number like a person: spacing, "typing…", then the text.
+    Returns OpenWA's message id, or None when the session is not connected (the reply stays queued)."""
+    client = _client()
+    session = await client.find_session(SESSION_NAME)
+    if not session or session["status"] != "ready":
+        return None
+    from .unified_inbox import normalize_phone
+    chat_id = str((thread.get("metadata") or {}).get("wa_chat_id") or f"{normalize_phone(thread['provider_thread_id'])}@c.us")
+    if not (_PHONE_CHAT.match(chat_id) or _LID_CHAT.match(chat_id)):
+        raise OpenWARejected("Conversa sem destino individual.")
+    await asyncio.sleep(wait)
+    try:
+        await client._request("POST", f"/api/sessions/{session['id']}/chats/typing", {"chatId": chat_id, "state": "typing"})
+    except OpenWAError:
+        pass  # cosmetic
+    await asyncio.sleep(min(1.5 + len(text) / 35, 6.0) + random.uniform(0.2, 1.2))
+    data = await client._request("POST", f"/api/sessions/{session['id']}/messages/send-text",
+                                 {"chatId": chat_id, "text": text[:4096], "linkPreview": False},
+                                 idempotency_key=f"kiara-{outbox_id}")
+    message_id = data.get("messageId") if isinstance(data, dict) else None
+    if not isinstance(message_id, str) or not message_id:
+        raise OpenWAError("Envio sem comprovante.")
+    return message_id
 
 
 def create_whatsapp_server_router(service: WhatsAppServerService) -> APIRouter:

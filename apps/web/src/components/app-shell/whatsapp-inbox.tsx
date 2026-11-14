@@ -60,16 +60,19 @@ function ConnectionDialog({ open, onOpenChange, onConnected }: { open: boolean; 
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
       <DialogHeader><DialogTitle>Conectar WhatsApp</DialogTitle><DialogDescription>Escolha como a Kiara acessa o seu WhatsApp.</DialogDescription></DialogHeader>
-      {open ? <Tabs defaultValue="official" className="gap-4">
+      {open ? <Tabs defaultValue="qr" className="gap-4">
         <TabsList className="w-full">
-          <TabsTrigger value="official">API oficial (recomendado)</TabsTrigger>
-          <TabsTrigger value="qr">QR Code</TabsTrigger>
+          <TabsTrigger value="qr">Kiara (QR Code)</TabsTrigger>
+          <TabsTrigger value="official">API da Meta (opcional)</TabsTrigger>
         </TabsList>
-        <TabsContent value="official"><WhatsAppOfficialPanel /></TabsContent>
         <TabsContent value="qr" className="space-y-5">
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">Conexão não oficial, como o WhatsApp Web. A Kiara só lê as conversas por aqui. Para enviar mensagens e automatizar com segurança, use a API oficial.</p>
           <WhatsAppConnectionPanel onConnected={onConnected} />
+          <p className="text-xs text-muted-foreground">Proteção do seu número: a Kiara só envia para quem já conversou com você, uma mensagem por vez, com pausas e &quot;digitando…&quot; como uma pessoa, sem disparos em massa.</p>
           <details className="border-t pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Outra forma: extensão do Chrome (opcional)</summary><div className="mt-3"><WhatsAppWebConnectionPanel /></div></details>
+        </TabsContent>
+        <TabsContent value="official" className="space-y-4">
+          <p className="text-xs text-muted-foreground">Opcional: se preferir, conecte sua própria conta da API oficial da Meta. Os custos das mensagens ficam direto com você.</p>
+          <WhatsAppOfficialPanel />
         </TabsContent>
       </Tabs> : null}
     </DialogContent>
@@ -145,7 +148,7 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
     // The same idempotency key is reused while the same text is retried, so a retry cannot duplicate a send.
     if (kind === "messages" && (pending.current?.id !== active.id || pending.current?.text !== text)) pending.current = { id: active.id, text, key: crypto.randomUUID() }
     try {
-      const response = await fetch(`/api/inbox/${encodeURIComponent(active.id)}/${kind}`, { method: kind === "messages" ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "messages" ? { text, idempotency_key: pending.current!.key } : { enabled: !active.automationEnabled }), signal: AbortSignal.timeout(20000) })
+      const response = await fetch(`/api/inbox/${encodeURIComponent(active.id)}/${kind}`, { method: kind === "messages" ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "messages" ? { text, idempotency_key: pending.current!.key } : { enabled: !active.automationEnabled }), signal: AbortSignal.timeout(kind === "messages" ? 50_000 : 20_000) })
       const body = await response.json().catch(() => null)
       if (!response.ok) throw new Error(body?.error?.message || "Não foi possível concluir a ação.")
       if (kind === "messages") {

@@ -185,11 +185,84 @@ def test_status_failure_does_not_leak(monkeypatch):
     assert response.status_code == 503 and "down" not in response.text
 
 
-def test_gateway_client_refuses_sends():
-    client = whatsapp_server.GatewayOpenWAClient("https://gw.example", "t")
+class GuardConnection:
+    """Answers the three anti-ban queries of guard_reply."""
+
+    def __init__(self, inbound=True, sent_today=0, last=None, blast_contacts=0):
+        self.inbound, self.sent_today, self.last, self.blast = inbound, sent_today, last, blast_contacts
+
+    async def execute(self, sql, params=None):
+        class Cursor:
+            def __init__(self, row):
+                self.row = row
+
+            async def fetchone(self):
+                return self.row
+        if "direction='inbound'" in sql:
+            return Cursor({"?column?": 1} if self.inbound else None)
+        if "count(*) AS total" in sql:
+            return Cursor({"total": self.sent_today, "last": self.last})
+        return Cursor({"contacts": self.blast})
+
+
+def guard(connection, text="Oi Maria, tudo bem?"):
+    return asyncio.run(whatsapp_server.guard_reply(connection, "6f1c2c1e-1111-4222-8333-944444444444", "thread-uuid", text))
+
+
+def expect_error(code, connection):
     try:
-        asyncio.run(client.send_text("s-1", "5511999990000", "oi", idempotency_key="k"))
-    except OpenWAError:
-        pass
+        guard(connection)
+    except ApiError as error:
+        assert error.code == code
     else:
-        raise AssertionError("send must be refused")
+        raise AssertionError(f"{code} expected")
+
+
+def test_no_cold_messages_no_blasts_and_a_daily_ceiling():
+    expect_error("whatsapp_cold_message_blocked", GuardConnection(inbound=False))
+    expect_error("whatsapp_bulk_blocked", GuardConnection(blast_contacts=3))
+    expect_error("whatsapp_daily_limit", GuardConnection(sent_today=whatsapp_server.REPLY_DAILY_LIMIT))
+
+
+def test_sends_are_spaced_like_a_person():
+    from datetime import UTC, datetime, timedelta
+    assert guard(GuardConnection(last=None)) == 0
+    wait = guard(GuardConnection(last=datetime.now(UTC) - timedelta(seconds=2)))
+    assert whatsapp_server.SEND_GAP_SECONDS[0] - 3 <= wait <= whatsapp_server.SEND_GAP_SECONDS[1]
+    assert guard(GuardConnection(last=datetime.now(UTC) - timedelta(minutes=5))) == 0
+
+
+def test_send_reply_types_then_sends_with_idempotency(monkeypatch):
+    calls = []
+
+    class Client:
+        async def find_session(self, name):
+            return {"id": "s-1", "status": "ready"}
+
+        async def _request(self, method, path, payload=None, *, idempotency_key=None):
+            calls.append((method, path, payload, idempotency_key))
+            return {"messageId": "true_99887766554433@lid_ABC"} if path.endswith("send-text") else {"success": True}
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(whatsapp_server, "_client", lambda: Client())
+    monkeypatch.setattr(whatsapp_server.asyncio, "sleep", no_sleep)
+    thread = {"provider_thread_id": "5551988887777", "metadata": {"wa_chat_id": "99887766554433@lid"}}
+    receipt = asyncio.run(whatsapp_server.send_reply(thread, "Olá!", "outbox-1", 0))
+    assert receipt == "true_99887766554433@lid_ABC"
+    assert [path.rsplit("/", 2)[-2:] for _, path, _, _ in calls] == [["chats", "typing"], ["messages", "send-text"]]
+    assert calls[0][2] == {"chatId": "99887766554433@lid", "state": "typing"}
+    assert calls[1][2] == {"chatId": "99887766554433@lid", "text": "Olá!", "linkPreview": False} and calls[1][3] == "kiara-outbox-1"
+    # Without a stored WhatsApp chat id the phone is used; an offline session never sends.
+    calls.clear()
+    asyncio.run(whatsapp_server.send_reply({"provider_thread_id": "5551988887777", "metadata": {}}, "Oi", "outbox-2", 0))
+    assert calls[-1][2]["chatId"] == "5551988887777@c.us"
+
+    class Offline(Client):
+        async def find_session(self, name):
+            return {"id": "s-1", "status": "qr_ready"}
+
+    monkeypatch.setattr(whatsapp_server, "_client", lambda: Offline())
+    calls.clear()
+    assert asyncio.run(whatsapp_server.send_reply(thread, "Oi", "outbox-3", 0)) is None and calls == []

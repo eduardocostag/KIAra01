@@ -170,6 +170,7 @@ class UnifiedInboxRepository:
             raise ApiError(422, "empty_message", "Escreva a mensagem.")
         org, thread_uuid = _uuid("organization", organization_id), _uuid("thread", thread_id)
         cloud = None
+        server_wait = None  # set when the reply goes through the linked number on the Kiara server
         async with self.postgres._transaction(organization_id) as connection:
             await connection.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f"{organization_id}:outbox:{payload.idempotency_key}",))
             thread = await (await connection.execute(
@@ -186,6 +187,10 @@ class UnifiedInboxRepository:
                 # With the official WhatsApp (Meta Cloud API) connected, replies go straight through Meta:
                 # no unofficial executor, no ban risk for answering a customer inside the 24 h service window.
                 cloud = await self.integrations.credentials_for(organization_id, "whatsapp_cloud")
+            if thread["channel"] == "whatsapp" and not cloud:
+                from .whatsapp_server import guard_reply, server_sending_available
+                if server_sending_available():
+                    server_wait = await guard_reply(connection, organization_id, thread_uuid, payload.text)
             previous = await (await connection.execute(
                 "SELECT id,status,body,thread_id FROM commercial_outbox WHERE organization_id=%s AND request_key=%s",
                 (org, payload.idempotency_key),
@@ -199,7 +204,7 @@ class UnifiedInboxRepository:
                 (org, thread_uuid, normalize_phone(thread["provider_thread_id"]) if thread["channel"] == "whatsapp" else thread["provider_thread_id"], payload.text, payload.idempotency_key),
             )).fetchone()
             await self._automation(connection, org, thread, enabled=False)
-            if thread["channel"] == "whatsapp" and not cloud:
+            if thread["channel"] == "whatsapp" and not cloud and server_wait is None:
                 return {"id": str(row["id"]), "status": row["status"]}
             await connection.execute("UPDATE commercial_outbox SET status='sending',lease_until=now()+interval '2 minutes' WHERE organization_id=%s AND id=%s", (org, row["id"]))
         # Reservation commits before any external POST, so uncertain outcomes cannot
@@ -207,18 +212,27 @@ class UnifiedInboxRepository:
         receipt = None
         status = "unknown"
         try:
-            credentials = cloud if thread["channel"] == "whatsapp" else await self.integrations.credentials_for(organization_id, thread["channel"])
-            if not credentials:
-                status = "failed"
-            elif thread["channel"] == "whatsapp":
-                from .whatsapp_cloud import send_text
-                receipt = await asyncio.to_thread(send_text, credentials, normalize_phone(thread["provider_thread_id"]), payload.text)
-            elif thread["channel"] == "chatwoot":
-                from .chatwoot import _runtime_client
-                result = await _runtime_client(credentials).send_message(int(thread["provider_thread_id"]), payload.text)
-                receipt = str(result["id"])
+            if server_wait is not None:
+                from .whatsapp_server import OpenWARejected, send_reply
+                try:
+                    receipt = await send_reply(thread, payload.text, str(row["id"]), server_wait)
+                except OpenWARejected:
+                    status = "failed"  # definitely not sent (e.g. the number's daily warm-up limit)
+                if receipt is None and status != "failed":
+                    status = "queued"  # session offline: stays queued, nothing is lost or duplicated
             else:
-                receipt = await asyncio.to_thread(self._instagram_send, credentials, thread, payload.text)
+                credentials = cloud if thread["channel"] == "whatsapp" else await self.integrations.credentials_for(organization_id, thread["channel"])
+                if not credentials:
+                    status = "failed"
+                elif thread["channel"] == "whatsapp":
+                    from .whatsapp_cloud import send_text
+                    receipt = await asyncio.to_thread(send_text, credentials, normalize_phone(thread["provider_thread_id"]), payload.text)
+                elif thread["channel"] == "chatwoot":
+                    from .chatwoot import _runtime_client
+                    result = await _runtime_client(credentials).send_message(int(thread["provider_thread_id"]), payload.text)
+                    receipt = str(result["id"])
+                else:
+                    receipt = await asyncio.to_thread(self._instagram_send, credentials, thread, payload.text)
             if receipt:
                 status = "sent"
         except (ValueError, TypeError, RuntimeError, OSError, KeyError, http.client.HTTPException):
