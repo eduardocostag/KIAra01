@@ -31,6 +31,7 @@ from .application.conversations import ConversationCommands
 from .channel_webhooks import create_channel_webhook_router
 from .chat import create_chat_router
 from .server_gateway import create_server_gateway_router
+from .whatsapp_server import WhatsAppServerService, create_whatsapp_server_router
 from .chatwoot import create_chatwoot_router
 from .competition import create_competition_router
 from .competition_store import CompetitionRepository
@@ -414,6 +415,7 @@ def create_app(
     app.include_router(create_platform_router(database_url=config.database_url))
     app.include_router(create_chat_router())
     app.include_router(create_server_gateway_router())
+    app.include_router(create_whatsapp_server_router(WhatsAppServerService(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_instagram_content_router())
     app.include_router(create_whatsapp_web_router(WhatsAppWebRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_social_router(SocialRepository(PostgresRepository(config.database_url) if config.database_url else None)))

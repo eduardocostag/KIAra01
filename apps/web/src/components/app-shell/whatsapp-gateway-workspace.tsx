@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { CheckCircle2, LoaderCircle, RefreshCw, Smartphone, Sparkles } from "lucide-react"
+import { CheckCircle2, LoaderCircle, RefreshCw, Smartphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { connectWhatsAppWeb, whatsappWebRequest, type WhatsAppEvents } from "@/lib/whatsapp-web-client"
@@ -9,9 +9,32 @@ import { connectWhatsAppWeb, whatsappWebRequest, type WhatsAppEvents } from "@/l
 const BRIDGE_URL = "http://127.0.0.1:3009"
 const PAIRING_TIMEOUT_MS = 3 * 60_000
 
-type BridgeStatus = { connected: boolean; state: string; phone: string; model: string }
-type ConnectResult = { connected: boolean; state: string; qr: string }
-type Analysis = { summary: string; messages_analyzed: number; phone: string }
+type ServerStatus = { connected: boolean; state: string; phone: string }
+type ConnectResult = ServerStatus & { qr: string }
+export type WhatsAppSyncResult = ServerStatus & { conversations: number; messages: number; skipped: number }
+
+/** WhatsApp on the always-on Debian server (OpenWA behind the Kiara gateway), through the Kiara API. */
+async function serverRequest<T>(action: "status" | "connect" | "sync", signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(action === "sync" ? 65_000 : 35_000)
+  let response: Response
+  try {
+    response = await fetch(`/api/whatsapp-server/${action}`, { method: "POST", cache: "no-store", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
+  } catch {
+    throw new Error("Não foi possível falar com o servidor da Kiara. Verifique a internet.")
+  }
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(typeof payload?.error?.message === "string" ? payload.error.message : "Não foi possível acessar o WhatsApp da Kiara.")
+  if (typeof payload?.connected !== "boolean" || typeof payload?.state !== "string") throw new Error("O servidor retornou um estado inválido. Tente novamente.")
+  if (action === "connect" && (typeof payload.qr !== "string" || (payload.qr && !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(payload.qr)))) {
+    throw new Error("O servidor retornou um QR inválido. Tente novamente.")
+  }
+  return payload as T
+}
+
+/** Copies the recent WhatsApp conversations of the server session into the inbox (read-only, nothing is sent). */
+export function syncWhatsAppConversations(signal?: AbortSignal) {
+  return serverRequest<WhatsAppSyncResult>("sync", signal)
+}
 
 async function getSiteAccessToken(signal?: AbortSignal) {
   const response = await fetch("/api/whatsapp-web/session", { method: "POST", cache: "no-store", signal })
@@ -64,24 +87,22 @@ export function scanWhatsAppConversations() {
 
 const stateLabels: Record<string, string> = {
   ready: "WhatsApp conectado", qr_ready: "Escaneie o QR Code", initializing: "Preparando a conexão…",
-  authenticating: "Confirmando no celular…", created: "Desconectado", disconnected: "Desconectado",
+  authenticating: "Confirmando no celular…", created: "Desconectado", disconnected: "Desconectado", unknown: "Verificando…",
   failed: "A conexão falhou", action_required: "O WhatsApp pediu uma ação no celular", not_created: "Desconectado",
 }
 
-/** Connects WhatsApp by QR Code, like WhatsApp Web, without any browser extension. */
-export function WhatsAppConnectionPanel() {
-  const [status, setStatus] = useState<BridgeStatus | null>(null)
+/** Connects WhatsApp by QR Code on the Kiara server (on 24h), like WhatsApp Web, without any extension. */
+export function WhatsAppConnectionPanel({ onConnected }: { onConnected?: () => void } = {}) {
+  const [status, setStatus] = useState<ServerStatus | null>(null)
   const [checking, setChecking] = useState(true)
   const [pairing, setPairing] = useState<ConnectResult | null>(null)
   const [connecting, setConnecting] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [error, setError] = useState("")
   const pollRef = useRef<AbortController | null>(null)
 
   const check = useCallback(async (signal?: AbortSignal) => {
     setChecking(true); setError("")
-    try { setStatus(await bridgeRequest<BridgeStatus>("status", signal)) }
+    try { setStatus(await serverRequest<ServerStatus>("status", signal)) }
     catch (reason) { if (!signal?.aborted) { setStatus(null); setError(reason instanceof Error ? reason.message : "Não foi possível verificar a conexão.") } }
     finally { if (!signal?.aborted) setChecking(false) }
   }, [])
@@ -103,10 +124,10 @@ export function WhatsAppConnectionPanel() {
     try {
       // Poll the session: it starts once, then shows each fresh QR until the phone confirms.
       while (!controller.signal.aborted && Date.now() < deadline) {
-        const result = await bridgeRequest<ConnectResult>("connect", controller.signal)
+        const result = await serverRequest<ConnectResult>("connect", controller.signal)
         if (controller.signal.aborted) return
         setPairing(result)
-        if (result.connected) { await check(); return }
+        if (result.connected) { await check(); onConnected?.(); return }
         if (result.state === "failed" || result.state === "action_required") throw new Error(stateLabels[result.state])
         await new Promise((resolve) => setTimeout(resolve, 3000))
       }
@@ -114,13 +135,6 @@ export function WhatsAppConnectionPanel() {
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Não foi possível conectar.")
     } finally { if (!controller.signal.aborted) setConnecting(false) }
-  }
-
-  async function analyze() {
-    setAnalyzing(true); setError(""); setAnalysis(null)
-    try { setAnalysis(await bridgeRequest<Analysis>("analyze")) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível analisar a conversa.") }
-    finally { setAnalyzing(false) }
   }
 
   const connected = Boolean(status?.connected || pairing?.connected)
@@ -132,14 +146,14 @@ export function WhatsAppConnectionPanel() {
       <span className={cn("size-2.5 shrink-0 rounded-full", connected ? "bg-emerald-400" : checking || connecting ? "bg-amber-400" : "bg-muted-foreground")} aria-hidden="true" />
       <div className="min-w-0 flex-1" role="status">
         <p className="font-medium">{headline}</p>
-        <p className="text-sm text-muted-foreground">{error || (connected ? "A Kiara já reconhece o seu WhatsApp." : "Conecte uma vez pelo celular; a sessão fica salva.")}</p>
+        <p className="text-sm text-muted-foreground">{error || (connected ? `Sessão ativa no servidor da Kiara${status?.phone ? ` (${status.phone})` : ""}. As conversas aparecem na caixa de entrada.` : "Conecte uma vez pelo celular; a sessão fica salva no servidor, mesmo com o computador desligado.")}</p>
       </div>
       <Button type="button" variant="outline" size="icon" aria-label="Atualizar conexão" onClick={() => void check()} disabled={checking || connecting}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button>
     </div>
 
     {connected ? <p className="flex items-center gap-2 text-sm text-emerald-400"><CheckCircle2 className="size-4" aria-hidden="true" />Tudo certo. Você pode fechar esta janela.</p>
       : pairing?.qr ? <div className="flex flex-col items-center gap-4 rounded-xl border bg-white p-4 sm:flex-row sm:items-start">
-        {/* eslint-disable-next-line @next/next/no-img-element -- data URL from the local session, not an optimizable asset */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- data URL from the server session, not an optimizable asset */}
         <img src={pairing.qr} alt="QR Code para conectar o WhatsApp" className="size-52 shrink-0" />
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-neutral-800">
           <li>Abra o WhatsApp no celular.</li>
@@ -149,19 +163,11 @@ export function WhatsAppConnectionPanel() {
       </div>
       : <Button type="button" className="w-full" size="lg" onClick={() => void connect()} disabled={connecting || checking}>{connecting ? <LoaderCircle className="animate-spin" /> : <Smartphone />}{connecting ? "Gerando QR Code…" : "Conectar WhatsApp"}</Button>}
 
-    {status?.phone && connected ? <div className="space-y-3">
-      <Button type="button" variant="outline" onClick={() => void analyze()} disabled={analyzing}>{analyzing ? <LoaderCircle className="animate-spin" /> : <Sparkles />}{analyzing ? "Resumindo…" : `Resumir conversa de ${status.phone}`}</Button>
-      {analysis ? <article className="rounded-xl border bg-muted/30 p-4" aria-label="Resumo da conversa">
-        <p className="text-xs text-muted-foreground">{analysis.messages_analyzed} mensagens · {analysis.phone} · não salvo no site</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{analysis.summary}</p>
-      </article> : null}
-    </div> : null}
-
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer">Detalhes técnicos</summary>
       <div className="mt-2 space-y-2">
-        <p>A sessão é mantida pelo OpenWA (porta 3006) e acessada pela ponte local da Kiara (porta 3009). Para iniciar neste computador, use <code>scripts/launch_whatsapp_local_bridge.ps1</code>.</p>
-        <p>Exige conta owner/admin. O navegador pode pedir acesso à rede local.</p>
+        <p>A sessão é mantida pelo OpenWA no servidor da Kiara (ligado 24 h) e acessada pela API por um gateway protegido.</p>
+        <p>Conectar exige conta owner/admin. A sincronização só lê conversas individuais recentes; nada é enviado.</p>
       </div>
     </details>
   </div>

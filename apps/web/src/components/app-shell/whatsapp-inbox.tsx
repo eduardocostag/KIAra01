@@ -1,12 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, ArrowUp, Bot, Cable, Hand, Info, LoaderCircle, MessageCircle, RefreshCw, Search, Sparkles, Workflow } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { ConversationConstellation } from "@/components/app-shell/conversation-constellation"
-import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel } from "@/components/app-shell/whatsapp-gateway-workspace"
+import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel, syncWhatsAppConversations } from "@/components/app-shell/whatsapp-gateway-workspace"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -30,12 +30,12 @@ function WhatsAppFooter({ onConnection }: { onConnection: () => void }) {
   </>
 }
 
-function ConnectionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function ConnectionDialog({ open, onOpenChange, onConnected }: { open: boolean; onOpenChange: (open: boolean) => void; onConnected?: () => void }) {
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
       <DialogHeader><DialogTitle>Conectar WhatsApp</DialogTitle><DialogDescription>Escaneie o QR Code com o celular, como no WhatsApp Web. Sem extensão.</DialogDescription></DialogHeader>
       {open ? <div className="space-y-5">
-        <WhatsAppConnectionPanel />
+        <WhatsAppConnectionPanel onConnected={onConnected} />
         <details className="border-t pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Outra forma: extensão do Chrome (opcional)</summary><div className="mt-3"><WhatsAppWebConnectionPanel /></div></details>
       </div> : null}
     </DialogContent>
@@ -65,6 +65,31 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
   const draft = active ? drafts[active.id] ?? "" : ""
 
   useEffect(() => { const timer = setInterval(() => { if (document.visibilityState === "visible") router.refresh() }, 12000); return () => clearInterval(timer) }, [router])
+
+  // Pulls the recent conversations of the WhatsApp session on the Kiara server into this inbox (read-only).
+  const [sync, setSync] = useState<{ running: boolean; message: string }>({ running: false, message: "" })
+  const syncing = useRef(false)
+  const syncNow = useCallback(async (signal?: AbortSignal) => {
+    if (syncing.current) return
+    syncing.current = true
+    setSync((current) => ({ ...current, running: true }))
+    try {
+      const result = await syncWhatsAppConversations(signal)
+      if (signal?.aborted) return
+      setSync({ running: false, message: result.connected ? "" : "O WhatsApp não está conectado no servidor da Kiara. Clique em Conectar WhatsApp." })
+      if (result.messages > 0) router.refresh()
+    } catch (reason) {
+      if (!signal?.aborted) setSync({ running: false, message: reason instanceof Error ? reason.message : "Não foi possível buscar as conversas." })
+    } finally { syncing.current = false }
+  }, [router])
+  useEffect(() => {
+    const controller = new AbortController()
+    // Initial pull from the WhatsApp server session (an external system).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void syncNow(controller.signal)
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void syncNow(controller.signal) }, 60_000)
+    return () => { controller.abort(); clearInterval(timer) }
+  }, [syncNow])
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }) }, [activeId, active?.messages.length])
   useEffect(() => {
     if (!activeId || !activeUnread || document.visibilityState !== "visible") return
@@ -176,11 +201,11 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
       </Sheet>
     </> : <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <span className="mb-4 grid size-12 place-items-center rounded-full border bg-card text-emerald-400"><MessageCircle className="size-5" aria-hidden="true" /></span>
-      <h1 className="text-2xl font-medium tracking-tight">Nenhuma conversa ainda</h1>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">Conecte pelo WhatsApp Web logado no Chrome ou pelo OpenWA. A Kiara passa a identificar, entender, prospectar e responder seus contatos autorizados.</p>
-      <div className="mt-6 flex flex-wrap justify-center gap-2"><Button type="button" onClick={() => setConnectionOpen(true)}><Cable />Conectar WhatsApp</Button><Button asChild variant="outline"><Link href="/app/whatsapp/automacao">Configurar automação</Link></Button></div>
+      <h1 className="text-2xl font-medium tracking-tight">{sync.running ? "Buscando suas conversas…" : "Nenhuma conversa ainda"}</h1>
+      <p className="mt-2 max-w-sm text-sm text-muted-foreground" role="status">{sync.running ? "A Kiara está trazendo as conversas recentes do seu WhatsApp." : sync.message || "Conecte o WhatsApp pelo QR Code. A Kiara traz as conversas recentes e passa a identificar, entender e organizar seus contatos."}</p>
+      <div className="mt-6 flex flex-wrap justify-center gap-2"><Button type="button" onClick={() => setConnectionOpen(true)}><Cable />Conectar WhatsApp</Button><Button type="button" variant="outline" onClick={() => void syncNow()} disabled={sync.running}>{sync.running ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}Buscar conversas</Button></div>
     </div>}
-    <ConnectionDialog open={connectionOpen} onOpenChange={setConnectionOpen} />
+    <ConnectionDialog open={connectionOpen} onOpenChange={setConnectionOpen} onConnected={() => void syncNow()} />
     <Dialog open={skyOpen} onOpenChange={setSkyOpen}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader><DialogTitle>Constelação de conversas</DialogTitle><DialogDescription>Cada estrela é uma conversa. Clique para abrir.</DialogDescription></DialogHeader>
