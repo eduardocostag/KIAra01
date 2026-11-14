@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowUp, Bot, Cable, Hand, Info, LoaderCircle, MessageCircle, RefreshCw, Search, Sparkles, Workflow } from "lucide-react"
+import { ArrowLeft, ArrowUp, Bot, Cable, FileText, Hand, Image as ImageIcon, Info, LoaderCircle, MapPin, MessageCircle, MessageSquareDashed, Mic, RefreshCw, Search, Sparkles, Sticker, Video, Workflow, type LucideIcon } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { ConversationConstellation } from "@/components/app-shell/conversation-constellation"
 import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel, syncWhatsAppConversations } from "@/components/app-shell/whatsapp-gateway-workspace"
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { channelLabels, deliveryLabels, sendOutcome, temperatureLabels, type InboxConversationDTO } from "@/lib/api/inbox-contract"
+import { dayLabel, differentDay, listTime, mediaOf, type MediaKind } from "@/lib/inbox-format"
 import { cn } from "@/lib/utils"
 
 // Soft tint over the conversation that follows the contact's commercial temperature.
@@ -21,6 +22,29 @@ const footerLink = "flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text
 function initials(name: string) {
   const parts = name.replace(/^@/, "").split(/\s+/).filter(Boolean)
   return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase()
+}
+
+const mediaIcons: Record<MediaKind, LucideIcon> = { sticker: Sticker, image: ImageIcon, video: Video, audio: Mic, document: FileText, location: MapPin, other: MessageSquareDashed }
+
+/** Last message preview in the list: media gets an icon and a name instead of "[figurinha]". */
+function Excerpt({ text, mine }: { text: string; mine: boolean }) {
+  const media = mediaOf(text)
+  const Icon = media ? mediaIcons[media.kind] : null
+  return <span className="flex min-w-0 items-center gap-1 truncate text-xs text-sidebar-foreground/55">
+    {mine ? <span className="shrink-0 text-sidebar-foreground/45">Você:</span> : null}
+    {Icon ? <Icon className="size-3.5 shrink-0" aria-hidden="true" /> : null}
+    <span className="truncate">{media?.label ?? text}</span>
+  </span>
+}
+
+/** Media without a caption (synced history keeps the type, not the file): a tidy card, stickers stand alone. */
+function MediaBubble({ kind, label }: { kind: MediaKind; label: string }) {
+  const Icon = mediaIcons[kind]
+  if (kind === "sticker") return <span className="grid size-24 place-items-center rounded-3xl bg-gradient-to-br from-primary/25 via-fuchsia-500/10 to-transparent text-primary" role="img" aria-label="Figurinha"><Icon className="size-10" aria-hidden="true" /></span>
+  return <span className="flex items-center gap-2.5 py-0.5">
+    <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-background/50 text-primary"><Icon className="size-4.5" aria-hidden="true" /></span>
+    <span className="text-sm text-muted-foreground">{label}</span>
+  </span>
 }
 
 function WhatsAppFooter({ onConnection }: { onConnection: () => void }) {
@@ -45,7 +69,7 @@ function ConnectionDialog({ open, onOpenChange, onConnected }: { open: boolean; 
 /** Conversation-first WhatsApp workspace: list on the left, thread in the center, composer at the bottom. */
 export function WhatsAppInbox({ conversations, canSend = false, initialId = "", loadError = "" }: { conversations: readonly InboxConversationDTO[]; canSend?: boolean; initialId?: string; loadError?: string }) {
   const router = useRouter()
-  const [selected, setSelected] = useState(initialId || conversations[0]?.id || "")
+  const [selected, setSelected] = useState(initialId || [...conversations].sort((a, b) => (Date.parse(b.lastAt) || 0) - (Date.parse(a.lastAt) || 0))[0]?.id || "")
   const [query, setQuery] = useState("")
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -58,7 +82,9 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
   const pending = useRef<{ id: string; text: string; key: string } | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const needle = query.trim().toLowerCase()
-  const visible = conversations.filter((item) => !needle || `${item.name} ${item.handle} ${item.excerpt}`.toLowerCase().includes(needle))
+  // Newest conversation first, by the time of its last message (not the time it was synced).
+  const ordered = [...conversations].sort((a, b) => (Date.parse(b.lastAt) || 0) - (Date.parse(a.lastAt) || 0))
+  const visible = ordered.filter((item) => !needle || `${item.name} ${item.handle} ${item.excerpt}`.toLowerCase().includes(needle))
   const active = conversations.find((item) => item.id === selected) ?? visible[0]
   const activeId = active?.id
   const activeUnread = active?.unread ?? 0
@@ -138,8 +164,8 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
         className={cn("flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-sidebar-foreground/5", item.id === active?.id && "bg-sidebar-foreground/10")}>
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-sidebar-foreground/10 text-[11px] font-semibold">{initials(item.name)}</span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2"><span className="truncate text-sm font-medium">{item.name}</span><span className="ml-auto shrink-0 text-[11px] text-sidebar-foreground/50">{item.time}</span></span>
-          <span className="flex items-center gap-2"><span className="truncate text-xs text-sidebar-foreground/55">{item.excerpt}</span>{item.unread > 0 ? <span className="ml-auto grid min-w-5 shrink-0 place-items-center rounded-full bg-emerald-500 px-1.5 text-[10px] font-semibold text-white">{item.unread}</span> : null}</span>
+          <span className="flex items-center gap-2"><span className="truncate text-sm font-medium">{item.name}</span><span className={cn("ml-auto shrink-0 text-[11px]", item.unread > 0 ? "font-medium text-emerald-400" : "text-sidebar-foreground/50")}>{listTime(item.lastAt) || item.time}</span></span>
+          <span className="flex items-center gap-2"><Excerpt text={item.excerpt} mine={item.messages.at(-1)?.from === "operator"} />{item.unread > 0 ? <span className="ml-auto grid min-w-5 shrink-0 place-items-center rounded-full bg-emerald-500 px-1.5 text-[10px] font-semibold text-white">{item.unread}</span> : null}</span>
         </span>
       </button>
     </li>)}</ul> : <p className="px-2 text-xs text-sidebar-foreground/50">{conversations.length ? "Nenhuma conversa com essa busca." : "As conversas do WhatsApp aparecem aqui."}</p>}
@@ -160,13 +186,30 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
     {loadError ? <p role="alert" className="m-4 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{loadError}</p> : null}
     {active ? <>
       <div className="min-h-0 flex-1 overflow-y-auto transition-[background] duration-700" role="log" aria-label={`Mensagens com ${active.name}`} aria-live="polite" style={{ background: `radial-gradient(120% 60% at 50% 0%, ${moodColor[active.temperature] ?? "transparent"}, transparent 70%)` }}>
-        <div className="mx-auto w-full max-w-3xl space-y-3 px-4 py-6">
-          {active.messages.length ? active.messages.map((message, index) => <div key={message.id} className={cn("flex", message.from === "operator" ? "justify-end" : "justify-start", index >= active.messages.length - 3 && "fx-rise")}>
-            <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2", message.from === "operator" ? "rounded-br-md bg-primary/15" : "rounded-bl-md bg-muted")}>
-              <p className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.text}</p>
-              <p className="mt-1 text-right text-[11px] text-muted-foreground">{message.time}{message.from === "operator" && message.status ? ` · ${deliveryLabels[message.status] ?? message.status}` : ""}</p>
+        <div className="mx-auto w-full max-w-3xl px-4 py-6">
+          {active.messages.length ? active.messages.map((message, index) => {
+            const previous = active.messages[index - 1]
+            const next = active.messages[index + 1]
+            const newDay = !previous || differentDay(previous.at, message.at)
+            // Consecutive messages from the same side on the same day form one group, like WhatsApp.
+            const grouped = !newDay && previous?.from === message.from
+            const lastOfGroup = !next || next.from !== message.from || differentDay(message.at, next.at)
+            const mine = message.from === "operator"
+            const media = mediaOf(message.text)
+            // "Sent to the channel" is the normal case; only say something when there is something to know.
+            const delivery = mine && message.status && message.status !== "sent" ? deliveryLabels[message.status] ?? message.status : ""
+            return <div key={message.id}>
+              {newDay ? <div className="sticky top-2 z-10 flex justify-center py-3"><span className="rounded-full border bg-background/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur">{dayLabel(message.at)}</span></div> : null}
+              <div className={cn("flex", mine ? "justify-end" : "justify-start", grouped ? "mt-0.5" : "mt-3", index >= active.messages.length - 3 && "fx-rise")}>
+                {media?.kind === "sticker"
+                  ? <div className={cn("flex flex-col gap-1", mine ? "items-end" : "items-start")}><MediaBubble kind="sticker" label={media.label} /><span className="text-[11px] text-muted-foreground">{message.time}{delivery ? ` · ${delivery}` : ""}</span></div>
+                  : <div className={cn("relative max-w-[80%] rounded-2xl px-3 pb-1.5 pt-2 shadow-sm", mine ? "bg-primary/20" : "bg-muted", lastOfGroup && (mine ? "rounded-br-md" : "rounded-bl-md"))}>
+                    {media ? <MediaBubble kind={media.kind} label={media.label} /> : <p className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.text}</p>}
+                    <p className={cn("mt-0.5 text-right text-[11px] leading-4", delivery && message.status !== "confirmed" ? "text-amber-400" : "text-muted-foreground")}>{message.time}{delivery ? ` · ${delivery}` : ""}</p>
+                  </div>}
+              </div>
             </div>
-          </div>) : <p className="py-16 text-center text-sm text-muted-foreground">Aguardando as mensagens desta conversa.</p>}
+          }) : <p className="py-16 text-center text-sm text-muted-foreground">Aguardando as mensagens desta conversa.</p>}
           <div ref={endRef} />
         </div>
       </div>

@@ -37,12 +37,15 @@ export const previewEntries: PipelineEntry[] = [
   entry("7", "Dental Point Cidade Baixa", "lost"),
 ]
 
+// Preview timestamps: "Ontem"/weekday labels map to past days, clock times to today.
+const fixtureAt = (time: string, index: number) => hoursAgo(time === "Ontem" ? 26 - index * 0.1 : /^\d/.test(time) ? 1 - index * 0.05 : 98 - index * 0.1)
 const conversation = (id: string, name: string, phone: string, temperature: string, automationEnabled: boolean, unread: number, messages: [("lead" | "operator"), string, string][]): InboxConversationDTO => ({
   id, consumerId: `lead-${id}`, channel: "whatsapp", name, handle: phone, excerpt: messages.at(-1)?.[1] ?? "Sem mensagens", time: messages.at(-1)?.[2] ?? "—",
+  lastAt: messages.length ? fixtureAt(messages.at(-1)![2], messages.length - 1) : hoursAgo(200),
   unread, status: "open", score: temperature === "hot" ? 84 : 52, temperature, intent: "Qualificação comercial", confidence: "78% de confiança", owner: "Equipe",
   qualifiedAt: null, facts: ["Pediu valores do plano mensal", "Atende em Porto Alegre"], gaps: [], nextAction: "Enviar proposta com o plano mensal.",
   suggestedDraft: "", savedDraft: null, automationEnabled, handoff: !automationEnabled,
-  messages: messages.map(([from, text, time], index) => ({ id: `${id}-${index}`, from, text, time, status: from === "operator" ? "confirmed" : undefined })),
+  messages: messages.map(([from, text, time], index) => ({ id: `${id}-${index}`, from, text, time, at: fixtureAt(time, index), status: from === "operator" ? "sent" : undefined })),
 })
 
 /** Preview-only WhatsApp conversations. */
@@ -51,7 +54,9 @@ export const previewConversations: InboxConversationDTO[] = [
     ["lead", "Olá! Vi o anúncio de vocês. Quanto custa o site com agendamento?", "09:12"],
     ["operator", "Olá! O plano com agendamento online custa R$ 189/mês e inclui domínio e suporte. Posso enviar a proposta?", "09:13"],
     ["lead", "Pode sim. Vocês atendem em Porto Alegre?", "09:20"],
+    ["lead", "[imagem]", "09:20"],
     ["lead", "E qual o prazo para ficar pronto?", "09:21"],
+    ["operator", "[figurinha]", "09:22"],
   ]),
   conversation("c2", "Odonto Centro POA", "+55 51 99999-0002", "warm", false, 0, [
     ["lead", "Bom dia, gostaria de falar com um atendente.", "Ontem"],

@@ -84,13 +84,13 @@ class PostgresRepository:
     async def list_threads(self, organization_id: str) -> list[dict[str, Any]]:
         async with self._transaction(organization_id) as connection:
             rows = await (await connection.execute(
-                """SELECT t.id, t.channel, t.status, t.updated_at, t.automation_enabled,t.handoff,
+                """SELECT t.id, t.channel, t.status, t.updated_at, t.last_message_at, t.automation_enabled,t.handoff,
                           c.id consumer_id,c.attributes,c.display_name, c.instagram_username,
                           (SELECT count(*) FROM messages m WHERE m.organization_id=t.organization_id
                            AND m.thread_id=t.id AND m.direction='inbound' AND (t.last_read_at IS NULL OR m.sent_at>t.last_read_at)) unread_count
                    FROM conversation_threads t JOIN consumers c
                      ON c.organization_id=t.organization_id AND c.id=t.consumer_id
-                   WHERE t.organization_id=%s ORDER BY t.updated_at DESC LIMIT 100""",
+                   WHERE t.organization_id=%s ORDER BY COALESCE(t.last_message_at, t.updated_at) DESC, t.id DESC LIMIT 100""",
                 (_uuid("organization", organization_id),),
             )).fetchall()
         return [self._thread_summary(row) for row in rows]
@@ -99,7 +99,7 @@ class PostgresRepository:
         organization_uuid, thread_uuid = _uuid("organization", organization_id), _uuid("thread", thread_id)
         async with self._transaction(organization_id) as connection:
             row = await (await connection.execute(
-                """SELECT t.id, t.channel, t.status, t.updated_at,t.automation_enabled,t.handoff,
+                """SELECT t.id, t.channel, t.status, t.updated_at,t.last_message_at,t.automation_enabled,t.handoff,
                           c.id consumer_id,c.attributes,c.display_name, c.instagram_username,
                           (SELECT count(*) FROM messages m WHERE m.organization_id=t.organization_id
                            AND m.thread_id=t.id AND m.direction='inbound' AND (t.last_read_at IS NULL OR m.sent_at>t.last_read_at)) unread_count
@@ -337,6 +337,8 @@ class PostgresRepository:
             "phone": attributes.get("phone") or (attributes.get("whatsapp") or {}).get("phone")
         }, "status": row["status"], "unread_count": row["unread_count"],
             "updated_at": _iso(row["updated_at"]), "version": 1,
+            # When the conversation really happened (the inbox orders and shows this, not the sync time).
+            "last_message_at": _iso(row.get("last_message_at") or row["updated_at"]),
             "automation_enabled": row.get("automation_enabled", False), "handoff": row.get("handoff", False),
             "qualification": qualification}
 
