@@ -18,7 +18,7 @@ type Recognition = {
   onresult: ((event: { resultIndex: number; results: ArrayLike<RecognitionResult> }) => void) | null
   onerror: ((event: { error: string }) => void) | null
   onend: (() => void) | null
-  start(): void; abort(): void
+  start(): void; stop(): void; abort(): void
 }
 type RecognitionConstructor = new () => Recognition
 
@@ -48,8 +48,6 @@ export type VoiceBackends = {
 /** Hands-free conversation: listen → think → speak → listen, with an orb that reacts to the live audio. */
 export function VoiceConversation({ backends, onClose }: { backends: VoiceBackends; onClose: () => void }) {
   const [phase, setPhase] = useState<VoicePhase>("listening")
-  const [heard, setHeard] = useState("")
-  const [reply, setReply] = useState("")
   const [error, setError] = useState("")
   const orbRef = useRef<HTMLDivElement>(null)
   const phaseRef = useRef<VoicePhase>("listening")
@@ -134,7 +132,7 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
 
   function listen() {
     if (!activeRef.current) return
-    setError(""); setHeard(""); go("listening")
+    setError(""); go("listening")
     const Constructor = recognitionConstructor()
     if (Constructor) return listenWithBrowser(Constructor)
     if (backendsRef.current.transcribe) return listenWithRecorder()
@@ -145,16 +143,24 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     const recognition = new Constructor()
     recognition.lang = "pt-BR"
     recognition.interimResults = true
-    recognition.continuous = false
+    // Continuous: a short breath in the middle of a sentence must not send half a question.
+    recognition.continuous = true
     let finalText = ""
+    let interimText = ""
+    let silence: ReturnType<typeof setTimeout> | undefined
     recognition.onresult = (event) => {
+      let finals = ""
       let interim = ""
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      for (let index = 0; index < event.results.length; index += 1) {
         const result = event.results[index]
-        if (result.isFinal) finalText += result[0].transcript
+        if (result.isFinal) finals += `${result[0].transcript} `
         else interim += result[0].transcript
       }
-      setHeard((finalText + interim).trim())
+      finalText = finals
+      interimText = interim
+      // The turn ends after ~1.5 s without new words.
+      clearTimeout(silence)
+      silence = setTimeout(() => recognition.stop(), 1500)
     }
     let useRecorder = false
     recognition.onerror = (event) => {
@@ -164,11 +170,13 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       else fail("O reconhecimento de voz do navegador está indisponível agora. Verifique a internet ou ative a transcrição na conexão local.")
     }
     recognition.onend = () => {
+      clearTimeout(silence)
       recognitionRef.current = null
       if (!activeRef.current || phaseRef.current !== "listening") return
-      if (finalText.trim()) void respond(finalText.trim())
+      const said = `${finalText} ${interimText}`.replace(/\s+/g, " ").trim()
+      if (said) void respond(said)
       else if (useRecorder) listenWithRecorder()
-      // Silence or a short pause: keep listening, with a small delay to avoid a hot restart loop.
+      // Silence: keep listening, with a small delay to avoid a hot restart loop.
       else setTimeout(() => { if (activeRef.current && phaseRef.current === "listening") listen() }, 250)
     }
     recognitionRef.current = recognition
@@ -193,7 +201,7 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       try {
         const text = (await backendsRef.current.transcribe!(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }))).trim()
         if (!activeRef.current) return
-        if (text) { setHeard(text); await respond(text) } else listen()
+        if (text) await respond(text); else listen()
       } catch (reason) { fail(reason instanceof Error ? reason.message : "Não foi possível entender o áudio.") }
     }
     recorderRef.current = recorder
@@ -218,11 +226,10 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
   }
 
   async function respond(text: string) {
-    go("thinking"); setReply("")
+    go("thinking")
     try {
       const answer = await backendsRef.current.ask(text)
       if (!activeRef.current) return
-      setReply(answer)
       await speak(answer)
       if (activeRef.current && phaseRef.current === "speaking") listen()
     } catch (reason) {
@@ -285,9 +292,18 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     })
   }
 
-  function speakWithBrowser(text: string) {
+  /** Sentence by sentence: Chrome silently cuts long utterances, which left Kiara's sentences unfinished. */
+  async function speakWithBrowser(text: string) {
+    if (!("speechSynthesis" in window) || !text) return
+    window.speechSynthesis.cancel()
+    for (const part of speechChunks(text)) {
+      if (!activeRef.current || phaseRef.current !== "speaking") return
+      await speakUtterance(part)
+    }
+  }
+
+  function speakUtterance(text: string) {
     return new Promise<void>((resolve) => {
-      if (!("speechSynthesis" in window) || !text) { resolve(); return }
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.lang = "pt-BR"
       const voice = femininePortugueseVoice()
@@ -298,7 +314,6 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       utterance.onend = finish
       utterance.onerror = finish
       stopSpeakingRef.current = () => { window.speechSynthesis.cancel(); finish() }
-      window.speechSynthesis.cancel()
       window.speechSynthesis.speak(utterance)
     })
   }
@@ -321,11 +336,9 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     <div className="flex justify-end p-4"><Button type="button" variant="ghost" size="icon" aria-label="Encerrar conversa por voz" onClick={onClose}><X /></Button></div>
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 text-center">
       <VoiceOrb ref={orbRef} phase={phase} label={phase === "speaking" ? "Interromper a Kiara" : phase === "listening" ? "Pausar o microfone" : "Voltar a ouvir"} onPress={pressOrb} />
-      <div className="min-h-28 max-w-xl space-y-3" aria-live="polite">
+      <div className="min-h-16 max-w-xl space-y-3" aria-live="polite">
         <p className="text-sm font-medium text-muted-foreground">{phaseLabels[phase]}</p>
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p>
-          : phase === "listening" || phase === "thinking" ? <p className="text-lg leading-7">{heard || (phase === "listening" ? "Pode falar." : "")}</p>
-            : reply ? <p className="line-clamp-4 text-lg leading-7 text-foreground/90">{reply}</p> : null}
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       </div>
     </div>
     <div className="flex items-center justify-center gap-4 pb-[max(2rem,env(safe-area-inset-bottom))]">

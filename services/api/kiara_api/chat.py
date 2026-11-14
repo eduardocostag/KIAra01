@@ -10,6 +10,8 @@ import base64
 import importlib.util
 import json
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -21,10 +23,13 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SITE_CONTEXT = (
-    "Você é a Kiara, assistente de inteligência comercial da plataforma Kiara Intelligence, em português do Brasil. "
-    "Seja calorosa, direta e útil como uma consultora experiente de vendas e marketing para pequenas e médias empresas: "
-    "dê respostas concretas, exemplos práticos, números quando fizer sentido e um próximo passo claro. "
-    "Raciocine antes de responder e adapte o nível de detalhe à pergunta. "
+    "Você é a Kiara, a inteligência artificial da plataforma Kiara Intelligence, e conversa em português do Brasil. "
+    "Você é uma IA completa: responde sobre qualquer assunto (negócios, vendas, marketing, tecnologia, finanças, "
+    "escrita, estudos, dia a dia) com respostas corretas, concretas e úteis. "
+    "Sua especialidade é crescimento comercial de pequenas e médias empresas: prospecção, funil, WhatsApp, automações e atendimento. "
+    "Seja calorosa e natural, use exemplos práticos e números quando fizer sentido, e mantenha o fio da conversa: "
+    "lembre o que já foi dito e responda exatamente ao que foi perguntado. "
+    "Se a pergunta for ambígua ou parecer cortada, interprete a intenção mais provável ou peça um esclarecimento curto. "
     "Mapa do site: /app seletor de módulos; /app/hunter busca de leads; /app/pipeline contatos e funil; "
     "/app/whatsapp conversas; /app/automation automações; /app/aprovacoes central de aprovações; /app/chat este chat. "
     "Honestidade: você não vê a tela nem os dados do CRM do usuário e não executa ações por conta própria; "
@@ -33,11 +38,14 @@ SITE_CONTEXT = (
 )
 
 VOICE_STYLE = (
-    "Modo conversa por voz: sua resposta será falada em voz alta. Fale como numa conversa natural ao telefone, "
-    "em no máximo 3 frases curtas (até uns 60 palavras), sem listas, títulos, emojis, markdown ou links. "
-    "Vá direto ao ponto e, se fizer sentido, termine com uma pergunta curta para continuar a conversa."
+    "Modo conversa por voz: o usuário falou com você pelo microfone e sua resposta será lida em voz alta. "
+    "Responda como uma pessoa inteligente numa ligação: frases completas e bem construídas, em texto corrido, "
+    "sem listas, títulos, emojis, markdown, links ou símbolos. Normalmente use de 2 a 5 frases; "
+    "se o assunto pedir mais profundidade, explique melhor, mas sem enrolar. "
+    "A transcrição da fala pode ter erros: entenda a intenção pelo contexto da conversa. "
+    "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar."
 )
-# Voice needs a fast model; the chat model is the fallback.
+# Voice needs a fast model (about 1-2 s); the chat model is the fallback.
 DEFAULT_VOICE_MODEL = "gemini/gemini-flash-lite-latest"
 
 
@@ -68,6 +76,8 @@ class SpeechRequest(BaseModel):
 
 
 MAX_SPEECH_AUDIO = 6_000_000
+BRASILIA = timezone(timedelta(hours=-3))  # Brazil has no daylight saving time since 2019
+_THINKING = re.compile(r"<think>.*?(</think>|$)", re.DOTALL | re.IGNORECASE)
 
 
 def speech_available() -> bool:
@@ -163,6 +173,7 @@ def create_chat_router(provider_factory=None) -> APIRouter:
         from app.providers.remote import OpenAICompatibleProvider
         factory = provider_factory or OpenAICompatibleProvider
         system = SITE_CONTEXT + (f"\nContexto da tela fornecido pelo usuário: {body.context}" if body.context.strip() else "")
+        system += "\nAgora são " + datetime.now(BRASILIA).strftime("%d/%m/%Y %H:%M") + " (horário de Brasília)."
         if body.voice:
             system += "\n" + VOICE_STYLE
         conversation = [{"role": "system", "content": system}, *(item.model_dump() for item in body.messages)]
@@ -172,12 +183,14 @@ def create_chat_router(provider_factory=None) -> APIRouter:
             models = list(dict.fromkeys([voice_model, model] if voice_model else [model]))
         text = ""
         for candidate in models:
-            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=40 if body.voice else 90,
-                               vision_enabled=False, max_output_tokens=400 if body.voice else 4096, follow_redirects=False)
+            provider = factory(model=candidate, api_key=key, base_url=base, timeout_seconds=45 if body.voice else 90,
+                               vision_enabled=False, max_output_tokens=2048 if body.voice else 4096, follow_redirects=False)
             try:
                 complete = getattr(provider, "_complete", None)
                 reply = await asyncio.wait_for(complete(conversation) if complete else provider.generate(
-                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=45 if body.voice else 95)
+                    system + "\nConversa:\n" + json.dumps(conversation[1:], ensure_ascii=False)), timeout=50 if body.voice else 95)
+                if isinstance(reply, str):
+                    reply = _THINKING.sub("", reply)  # reasoning models may leak their scratchpad
                 if isinstance(reply, str) and reply.strip() and len(reply) <= 80000:
                     text, model = reply, candidate
                     break

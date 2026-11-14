@@ -56,7 +56,7 @@ def test_voice_uses_fast_model_short_style_and_falls_back(monkeypatch):
     api, calls = build(monkeypatch)
     response = api.post("/v1/chat/messages", json={"messages": HISTORY, "voice": True})
     assert response.json()["model"] == chat.DEFAULT_VOICE_MODEL
-    assert chat.VOICE_STYLE in calls[0]["messages"][0]["content"] and calls[0]["max_tokens"] == 400
+    assert chat.VOICE_STYLE in calls[0]["messages"][0]["content"] and calls[0]["max_tokens"] == 2048
 
     api, calls = build(monkeypatch, failing_models=(chat.DEFAULT_VOICE_MODEL,))
     response = api.post("/v1/chat/messages", json={"messages": HISTORY, "voice": True})
