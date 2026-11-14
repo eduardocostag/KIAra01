@@ -97,16 +97,26 @@ def test_speech_returns_francisca_audio_without_leaking_errors(monkeypatch):
         assert text == "Olá, tudo bem?"
         return b"ID3audio"
 
-    monkeypatch.setattr(chat, "speech_available", lambda: True)
+    async def fake_backup(text):
+        return b"ID3dora"
+
+    monkeypatch.setattr(chat, "francisca_available", lambda: True)
     monkeypatch.setattr(chat, "synthesize_speech", fake_synthesize)
+    monkeypatch.setattr(chat, "synthesize_backup_speech", fake_backup)
     response = api.post("/v1/chat/speech", json={"text": "Olá, tudo bem?"})
     assert response.status_code == 200 and response.json()["mime"] == "audio/mpeg"
+    assert response.json()["voice"] == "francisca"
     assert response.headers["cache-control"] == "no-store, private"
 
     async def broken(_text):
         raise RuntimeError("wss://secret.example failed")
 
+    # Microsoft's voice down: the Kokoro voice on the Debian server answers.
     monkeypatch.setattr(chat, "synthesize_speech", broken)
+    backup = api.post("/v1/chat/speech", json={"text": "Olá"})
+    assert backup.status_code == 200 and backup.json()["voice"] == "dora"
+
+    monkeypatch.setattr(chat, "synthesize_backup_speech", broken)
     failed = api.post("/v1/chat/speech", json={"text": "Olá"})
     assert failed.status_code == 503 and "secret" not in failed.text
     assert api.post("/v1/chat/speech", json={"text": "x" * 4001}).status_code == 422
@@ -116,7 +126,7 @@ def test_speech_returns_francisca_audio_without_leaking_errors(monkeypatch):
 
 def test_real_francisca_voice_is_synthesized():
     import pytest
-    if not chat.speech_available():
+    if not chat.francisca_available():
         pytest.skip("edge-tts not installed")
     try:
         audio = asyncio.run(chat.synthesize_speech("Oi, eu sou a Kiara."))

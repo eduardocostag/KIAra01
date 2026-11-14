@@ -1,0 +1,14 @@
+# Installed at /opt/kiara/kokoro. Kiara's offline voice: Kokoro TTS (open weights, CPU), female pt-BR voice "pf_dora".
+# Fallback for the Francisca voice (Microsoft Edge TTS): no quota, no account, no internet needed.
+# Reachable only on 127.0.0.1; the Kiara gateway exposes it as /tts/v1/* behind the gateway token.
+services:
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
+    container_name: kiara-kokoro
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8880:8880"
+    mem_limit: 2g
+    cpus: 2
+    security_opt:
+      - no-new-privileges:true

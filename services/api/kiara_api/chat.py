@@ -107,8 +107,21 @@ BRASILIA = timezone(timedelta(hours=-3))  # Brazil has no daylight saving time s
 _THINKING = re.compile(r"<think>.*?(</think>|$)", re.DOTALL | re.IGNORECASE)
 
 
-def speech_available() -> bool:
+# Offline backup voice on the Debian server: Kokoro TTS, female pt-BR "pf_dora" (no quota, no account).
+BACKUP_VOICE = "pf_dora"
+
+
+def francisca_available() -> bool:
     return importlib.util.find_spec("edge_tts") is not None
+
+
+def backup_voice_available() -> bool:
+    from .server_gateway import gateway_configuration
+    return bool(gateway_configuration()[0])
+
+
+def speech_available() -> bool:
+    return francisca_available() or backup_voice_available()
 
 
 async def synthesize_speech(text: str) -> bytes:
@@ -119,13 +132,40 @@ async def synthesize_speech(text: str) -> bytes:
     from app.voice.kiara_style import RATE, VOICE, spoken
 
     data = bytearray()
-    async with asyncio.timeout(30):
+    async with asyncio.timeout(15):
         async for chunk in edge_tts.Communicate(spoken(normalize_text_for_speech(text)), VOICE, rate=RATE).stream():
             if chunk["type"] == "audio":
                 data.extend(chunk["data"])
                 if len(data) > MAX_SPEECH_AUDIO:
                     raise ValueError("audio_too_large")
     return bytes(data)
+
+
+def _backup_speech_request(text: str) -> bytes:
+    import urllib.request
+
+    from app.voice.adapters import normalize_text_for_speech
+
+    from .server_gateway import _opener, gateway_configuration
+    base, token = gateway_configuration()
+    if not base:
+        raise RuntimeError("gateway_not_configured")
+    payload = json.dumps({"model": "kokoro", "input": normalize_text_for_speech(text), "voice": BACKUP_VOICE,
+                          "response_format": "mp3", "lang_code": "p", "speed": 1.05}).encode("utf-8")
+    request = urllib.request.Request(f"{base}/tts/v1/audio/speech", data=payload, method="POST", headers={
+        "Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "audio/mpeg"})
+    with _opener.open(request, timeout=40) as response:
+        if response.status != 200 or not response.headers.get("Content-Type", "").startswith("audio/"):
+            raise RuntimeError("backup_voice_failed")
+        audio = response.read(MAX_SPEECH_AUDIO + 1)
+    if len(audio) > MAX_SPEECH_AUDIO:
+        raise ValueError("audio_too_large")
+    return audio
+
+
+async def synthesize_backup_speech(text: str) -> bytes:
+    """Kokoro (pf_dora) on the Debian server through the gateway, used when the Francisca voice fails."""
+    return await asyncio.wait_for(asyncio.to_thread(_backup_speech_request, text), timeout=45)
 
 
 def _configuration() -> tuple[str, str, str]:
@@ -242,12 +282,21 @@ def create_chat_router(provider_factory=None) -> APIRouter:
         response.headers["Cache-Control"] = "no-store, private"
         if not speech_available():
             raise ApiError(503, "speech_not_configured", "A voz da Kiara não está disponível neste servidor.")
-        try:
-            audio = await synthesize_speech(body.text)
-        except Exception:  # noqa: BLE001 - voice provider failures must not leak details
-            raise ApiError(503, "speech_unavailable", "A voz da Kiara não respondeu. Tente novamente.") from None
+        # Francisca first; the offline Kokoro voice on the Debian server when Microsoft's service fails.
+        audio, voice = b"", ""
+        for name, available, synthesize in (("francisca", francisca_available, synthesize_speech),
+                                            ("dora", backup_voice_available, synthesize_backup_speech)):
+            if not available():
+                continue
+            try:
+                audio = await synthesize(body.text)
+            except Exception:  # noqa: BLE001 - voice provider failures must not leak details
+                continue
+            if audio:
+                voice = name
+                break
         if not audio:
-            raise ApiError(502, "speech_empty", "O sintetizador não retornou áudio.")
-        return {"audio_base64": base64.b64encode(audio).decode("ascii"), "mime": "audio/mpeg"}
+            raise ApiError(503, "speech_unavailable", "A voz da Kiara não respondeu. Tente novamente.")
+        return {"audio_base64": base64.b64encode(audio).decode("ascii"), "mime": "audio/mpeg", "voice": voice}
 
     return router

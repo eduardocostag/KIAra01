@@ -2,7 +2,8 @@
 #
 # - Every route except /healthz requires `Authorization: Bearer $KIARA_GATEWAY_TOKEN`.
 # - The real OmniRoute and OpenWA keys are injected here and never leave the server.
-# - Only the inference API (/v1) and the WhatsApp API (/api) pass; dashboards, Ollama and Redis do not.
+# - Only the inference API (/v1), the WhatsApp API (/api) and Kokoro speech synthesis pass;
+#   dashboards, Ollama and Redis do not.
 {
 	admin off
 	auto_https off
@@ -40,6 +41,24 @@ http://:8088 {
 				header_up Host {upstream_hostport}
 				header_up -Authorization
 				header_up X-API-Key "{$OPENWA_API_KEY}"
+			}
+		}
+	}
+
+	# Kiara's offline voice (Kokoro, pf_dora). Only speech synthesis passes; at most 8 KB of text per request.
+	handle /tts/v1/audio/speech {
+		route {
+			@denied not header Authorization "Bearer {$KIARA_GATEWAY_TOKEN}"
+			respond @denied "unauthorized" 401
+			@notpost not method POST
+			respond @notpost "method not allowed" 405
+			request_body {
+				max_size 8KB
+			}
+			uri strip_prefix /tts
+			reverse_proxy 127.0.0.1:8880 {
+				header_up Host {upstream_hostport}
+				header_up -Authorization
 			}
 		}
 	}
