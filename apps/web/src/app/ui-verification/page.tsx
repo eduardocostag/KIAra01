@@ -25,7 +25,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   if (process.env.NODE_ENV !== "development") notFound()
   const { workspace, view } = await searchParams
   // Conversation modules own their full-height shell, like in the real routes.
-  if (workspace === "chat") return <ChatWorkspace />
+  if (workspace === "chat") return <ChatWorkspace isAdmin />
   if (workspace === "automation-flow") return <AutomationWorkspace />
   if (workspace === "fx") return <FxPreview view={view} />
   if (workspace === "approvals") return <AppShell><ApprovalCenter preview={previewApprovals} /></AppShell>

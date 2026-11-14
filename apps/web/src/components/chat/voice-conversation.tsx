@@ -5,6 +5,7 @@ import { Mic, MicOff, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { VoiceOrb, type VoicePhase } from "./voice-orb"
 import { pickFeminineVoice, speechChunks } from "@/lib/voice-text"
+import { plainText } from "@/lib/chat-markdown"
 
 /** Best female pt-BR voice the browser offers (never the default male one when a female exists). */
 export function femininePortugueseVoice(): SpeechSynthesisVoice | undefined {
@@ -29,7 +30,7 @@ function recognitionConstructor(): RecognitionConstructor | null {
 
 /** Markdown and links read aloud sound robotic; keep only the spoken content. */
 function speakable(text: string) {
-  return text.replace(/```[\s\S]*?```/g, " (código omitido) ").replace(/https?:\/\/\S+/g, " link ").replace(/[*_#>`|]/g, "").replace(/\s+/g, " ").trim().slice(0, 4000)
+  return plainText(text.replace(/```[\s\S]*?```/g, " (código omitido) ")).replace(/https?:\/\/\S+/g, " link ").replace(/[*_#>`|]/g, "").replace(/\s+/g, " ").trim().slice(0, 4000)
 }
 
 const phaseLabels: Record<VoicePhase, string> = {

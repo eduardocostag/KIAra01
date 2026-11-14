@@ -124,6 +124,18 @@ def test_speech_returns_francisca_audio_without_leaking_errors(monkeypatch):
     assert next(item for item in status["capabilities"] if item["id"] == "speech")["available"] is True
 
 
+def test_non_admin_never_sees_models_or_providers(monkeypatch):
+    api, _calls = build(monkeypatch)
+    monkeypatch.setattr(chat, "_authorize", lambda context: None)  # future: chat opened to all users
+    api.app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "org", "m", "owner", "req", email="cliente@empresa.com")
+    reply = api.post("/v1/chat/messages", json={"messages": HISTORY}).json()
+    status = api.get("/v1/chat/status").json()
+    assert reply["model"] == "" and reply["provider"] == "kiara"
+    assert status["model"] == "" and status["provider"] == "kiara"
+    for word in ("auto/best-chat", "gemini", "claude", "KIARA_CHAT", "openai", "OmniRoute"):
+        assert word not in str({**reply, "text": ""}) + str(status)  # the fake reply text names its model
+
+
 def test_real_francisca_voice_is_synthesized():
     import pytest
     if not chat.francisca_available():

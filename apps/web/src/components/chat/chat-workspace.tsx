@@ -7,9 +7,34 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { blobBase64, chatRequest, fetchVideo, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
+import { parseBlocks, plainText, type Inline } from "@/lib/chat-markdown"
 import { cn } from "@/lib/utils"
 import { pollVideoJob } from "@/lib/video-polling"
 import { femininePortugueseVoice, VoiceConversation, type VoiceBackends } from "./voice-conversation"
+
+function InlineText({ parts }: { parts: Inline[] }) {
+  return <>{parts.map((part, index) => part.code
+    ? <code key={index} className="rounded bg-muted px-1 py-0.5 text-[0.9em]">{part.text}</code>
+    : part.bold || part.italic ? <span key={index} className={cn(part.bold && "font-semibold", part.italic && "italic")}>{part.text}</span>
+      : <span key={index}>{part.text}</span>)}</>
+}
+
+/** Kiara's reply as clean, formatted text: no raw "##", "**" or table pipes. */
+function KiaraText({ text }: { text: string }) {
+  return <div className="space-y-3 break-words text-[15px] leading-7">{parseBlocks(text).map((block, index) => {
+    if (block.kind === "heading") return <p key={index} className="pt-1 font-semibold"><InlineText parts={block.inlines} /></p>
+    if (block.kind === "paragraph") return <p key={index} className="whitespace-pre-wrap"><InlineText parts={block.inlines} /></p>
+    if (block.kind === "quote") return <p key={index} className="border-l-2 pl-3 text-muted-foreground"><InlineText parts={block.inlines} /></p>
+    if (block.kind === "code") return <pre key={index} className="overflow-x-auto rounded-xl bg-muted p-3 text-sm leading-6"><code>{block.text}</code></pre>
+    if (block.kind === "table") return <div key={index} className="overflow-x-auto rounded-xl border"><table className="w-full text-sm">
+      {block.header.length ? <thead className="bg-muted/50"><tr>{block.header.map((cell, column) => <th key={column} className="px-3 py-2 text-left font-medium"><InlineText parts={cell} /></th>)}</tr></thead> : null}
+      <tbody>{block.rows.map((row, line) => <tr key={line} className="border-t">{row.map((cell, column) => <td key={column} className="px-3 py-2 align-top"><InlineText parts={cell} /></td>)}</tr>)}</tbody>
+    </table></div>
+    if (block.kind !== "bullets" && block.kind !== "numbers") return null
+    const List = block.kind === "numbers" ? "ol" : "ul"
+    return <List key={index} className={cn("space-y-1.5 pl-5", block.kind === "numbers" ? "list-decimal" : "list-disc")}>{block.items.map((item, line) => <li key={line}><InlineText parts={item} /></li>)}</List>
+  })}</div>
+}
 
 type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob }
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
@@ -122,7 +147,8 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
 
 const noop = () => () => {}
 
-export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
+/** `isAdmin` shows the technical layer (model, connection, resources); everyone else only sees Kiara. */
+export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?: string; isAdmin?: boolean }) {
   const storageKey = `kiara-chat-history:${userId}`
   const browserVoice = useSyncExternalStore(noop, () => "speechSynthesis" in window, () => false)
   const [transport, setTransport] = useState<ChatTransport>("cloud")
@@ -374,7 +400,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
   const voiceReady = Boolean(status?.connected && capability("chat")?.available)
 
   async function copy(message: Message) {
-    try { await navigator.clipboard.writeText(message.content); setCopied(message.id); setTimeout(() => setCopied(""), 1500) } catch { setError("Não foi possível copiar.") }
+    try { await navigator.clipboard.writeText(message.role === "assistant" ? plainText(message.content) : message.content); setCopied(message.id); setTimeout(() => setCopied(""), 1500) } catch { setError("Não foi possível copiar.") }
   }
 
   const statusLabel = checking ? "Verificando…" : status?.connected ? (status.model || (transport === "local" ? "Neste computador" : "IA hospedada")) : "IA desconectada"
@@ -403,7 +429,8 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
         </div>
       </div>
     </div>
-    {!checking && !available ? <p className="mt-2 px-3 text-center text-xs text-muted-foreground">{status?.connected ? capability(mode)?.detail || `${activeMode.label} ainda não está disponível nesta conexão.` : "A IA não está conectada. Abra os ajustes para verificar a conexão."}</p> : null}
+    {!checking && !available ? <p className="mt-2 px-3 text-center text-xs text-muted-foreground">{!isAdmin ? status?.connected ? `${activeMode.label} ainda não está disponível.` : "A Kiara está indisponível no momento. Tente novamente em instantes."
+      : status?.connected ? capability(mode)?.detail || `${activeMode.label} ainda não está disponível nesta conexão.` : "A IA não está conectada. Abra os ajustes para verificar a conexão."}</p> : null}
     {error ? <p role="alert" className="mt-2 px-3 text-center text-sm text-destructive">{error}</p> : notice ? <p role="status" className="mt-2 px-3 text-center text-xs text-muted-foreground">{notice}</p> : null}
   </div>
 
@@ -420,11 +447,13 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
         </li>)}</ul>
       </div> : <p className="px-2 text-xs text-sidebar-foreground/50">Suas conversas aparecem aqui. Elas ficam salvas apenas neste navegador.</p>}
     </nav>}
-    footer={<button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Settings2 className="size-4" aria-hidden="true" />Ajustes e recursos</button>}
+    footer={isAdmin ? <button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Settings2 className="size-4" aria-hidden="true" />Ajustes e recursos</button> : undefined}
     topBar={<>
       <span className="truncate font-medium">KIARA Chat</span>
-      <span className="ml-auto inline-flex items-center gap-1.5 truncate text-xs text-muted-foreground" role="status"><span className={cn("size-1.5 shrink-0 rounded-full", checking ? "bg-amber-400" : status?.connected ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{statusLabel}</span>
-      <Button type="button" variant="ghost" size="icon" aria-label="Ajustes e recursos" onClick={() => setSettingsOpen(true)}><Settings2 /></Button>
+      {isAdmin ? <>
+        <span className="ml-auto inline-flex items-center gap-1.5 truncate text-xs text-muted-foreground" role="status"><span className={cn("size-1.5 shrink-0 rounded-full", checking ? "bg-amber-400" : status?.connected ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{statusLabel}</span>
+        <Button type="button" variant="ghost" size="icon" aria-label="Ajustes e recursos" onClick={() => setSettingsOpen(true)}><Settings2 /></Button>
+      </> : null}
     </>}
   >
     {messages.length ? <>
@@ -435,13 +464,13 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
             : <article key={message.id} className={cn("flex gap-3", index >= messages.length - 2 && "fx-rise")} aria-label="Resposta da Kiara">
               <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-card text-primary"><Bot className="size-4" aria-hidden="true" /></span>
               <div className="min-w-0 flex-1">
-                <div className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</div>
+                <KiaraText text={message.content} />
                 {message.artifact && <Artifact artifact={message.artifact} />}
                 {message.video && <VideoJob key={message.video.id} initial={message.video} transport={transport} />}
                 {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}
                 <div className="mt-1 flex gap-0.5 text-muted-foreground">
                   <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void copy(message)} aria-label="Copiar resposta">{copied === message.id ? <Check /> : <Copy />}</Button>
-                  <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void speak(message.content)} disabled={speaking || busy} aria-label="Ouvir resposta"><Volume2 /></Button>
+                  <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void speak(plainText(message.content))} disabled={speaking || busy} aria-label="Ouvir resposta"><Volume2 /></Button>
                 </div>
               </div>
             </article>)}
@@ -465,7 +494,7 @@ export function ChatWorkspace({ userId = "preview" }: { userId?: string }) {
 
     {voiceOpen ? <VoiceConversation backends={voiceBackends} onClose={() => setVoiceOpen(false)} /> : null}
 
-    <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+    <Dialog open={isAdmin && settingsOpen} onOpenChange={setSettingsOpen}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader><DialogTitle>Ajustes e recursos</DialogTitle><DialogDescription>Conexão da inteligência e recursos disponíveis.</DialogDescription></DialogHeader>
         <div className="space-y-5">
