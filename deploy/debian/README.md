@@ -89,6 +89,7 @@ Sem o Debian ligado, qualquer serviço gratuito de cron (por exemplo, cron-job.o
 | Reiniciar | `sudo systemctl restart kiara-chat kiara-omniroute` |
 | Atualizar após um push | `cd /opt/kiara/KIAra01 && sudo -u kiara git pull && sudo bash deploy/debian/install.sh` |
 | Ver o endereço público | `tailscale funnel status` |
+| Conferir se tudo volta sozinho depois de ligar | `sudo bash deploy/debian/boot-check.sh` (com `--fix` liga o que faltar subir no boot, sem parar nada) |
 
 - **Painel do OmniRoute:** instale o Tailscale também no Windows, entre na mesma conta e acesse `http://NOME-DO-DEBIAN:20128`. Esse painel fica fora da internet pública; só aparece para os aparelhos da sua conta Tailscale.
 - **Volta sozinho depois de queda de energia:** na BIOS do PC, ative a opção *Restore on AC power loss* (ou *After power loss: Power On*). Um nobreak ajuda a segurar quedas curtas.

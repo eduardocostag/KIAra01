@@ -22,8 +22,8 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import chat_search, chat_video
-from .chat_files import Attachment, AttachmentError, total_size, user_content
+from . import chat_links, chat_search, chat_video
+from .chat_files import Attachment, AttachmentError, append_text, history_content, total_size, user_content
 from .chat_image import IMAGE_STYLE, MARKER, generate_image, image_available
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
@@ -115,6 +115,9 @@ class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=6000)
+    # What was attached to an earlier message: the documents' text the browser kept, and its photos while the page is open.
+    file_context: str = Field(default="", max_length=20000)
+    attachments: list[Attachment] = Field(default_factory=list, max_length=4)
 
 
 class ChatRequest(BaseModel):
@@ -128,8 +131,10 @@ class ChatRequest(BaseModel):
     def bounded_history(self):
         if sum(len(item.content) for item in self.messages) > 40000:
             raise ValueError("Histórico maior que 40.000 caracteres")
-        if total_size(self.attachments) > 4_200_000:
+        if total_size(self.attachments) + sum(total_size(item.attachments) for item in self.messages) > 4_200_000:
             raise ValueError("Os anexos passam de 3 MB no total")
+        if sum(len(item.file_context) for item in self.messages) > 40000:
+            raise ValueError("Os anexos guardados da conversa passam de 40.000 caracteres")
         if self.messages[-1].role != "user" or not self.messages[-1].content.strip():
             raise ValueError("A última mensagem deve ser um pedido do usuário")
         return self
@@ -413,15 +418,30 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 system += "\n" + IMAGE_STYLE
             if chat_video.video_available():
                 system += "\n" + chat_video.VIDEO_STYLE
-        if body.attachments:
-            system += ("\nA pessoa pode anexar fotos e PDFs: analise com atenção o que estiver anexado. "
-                       "Se uma imagem não estiver legível, diga isso.")
-        messages = [item.model_dump() for item in body.messages]
+        if body.attachments or any(item.file_context or item.attachments for item in body.messages):
+            system += ("\nA pessoa pode anexar fotos, PDFs, documentos Word, planilhas e arquivos de texto: analise com atenção "
+                       "o que estiver anexado, inclusive em mensagens anteriores da conversa. Em planilhas, faça as contas com "
+                       "cuidado e diga em qual aba e coluna estão os dados. Se algo não estiver legível, diga isso.")
         try:
-            messages[-1]["content"] = user_content(messages[-1]["content"], body.attachments)
+            messages = [{"role": item.role, "content": history_content(item.content, item.file_context, item.attachments)
+                         if item.role == "user" else item.content} for item in body.messages[:-1]]
+            content, file_context = user_content(body.messages[-1].content, body.attachments)
         except AttachmentError as error:
             raise ApiError(422, "attachment_invalid", str(error)) from None
-        return [{"role": "system", "content": system}, *messages]
+        messages.append({"role": "user", "content": content})
+        return [{"role": "system", "content": system}, *messages], file_context
+
+    async def with_links(conversation: list[dict], body: ChatRequest) -> tuple[list[dict], str]:
+        """Pages of the links pasted in the last message, read now and added to it."""
+        pages = await chat_links.read_links(chat_links.find_urls(body.messages[-1].content))
+        if not pages:
+            return conversation, ""
+        last = {**conversation[-1], "content": append_text(conversation[-1]["content"], chat_links.links_note(pages))}
+        return [*conversation[:-1], last], chat_links.links_context(pages)
+
+    def kept_context(*parts: str) -> dict:
+        context = "\n\n".join(part for part in parts if part)[:20000]
+        return {"file_context": context} if context else {}
 
     async def finish(text: str, body: ChatRequest) -> tuple[str, dict]:
         """Turn the model's markers into real images and video jobs."""
@@ -495,7 +515,8 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada. Use a conexão local ou configure o provedor no servidor.")
-        conversation = build_conversation(body)
+        conversation, file_context = build_conversation(body)
+        conversation, link_context = await with_links(conversation, body)
         text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
         sources: list = []
         search = chat_search.MARKER.search(text or "")
@@ -510,6 +531,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         text, result = await finish(text, body)
         if sources:
             result["sources"] = sources
+        result.update(kept_context(file_context, link_context))
         if not _is_system_admin(context):
             return {"text": text, "provider": "kiara", "model": "", **result}
         return {"text": text, "provider": "openai-compatible", "model": model, **result}
@@ -520,15 +542,21 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         _authorize(context)
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada.")
-        conversation = build_conversation(body)
+        conversation, file_context = build_conversation(body)
         admin = _is_system_admin(context)
+        urls = chat_links.find_urls(body.messages[-1].content)
 
         def event(kind: str, **data) -> str:
             return "data: " + json.dumps({"type": kind, **data}, ensure_ascii=False) + "\n\n"
 
         async def events() -> AsyncIterator[str]:
-            current, model, sources = conversation, "", []
+            nonlocal conversation
+            link_context = ""
             try:
+                if urls:
+                    yield event("status", text="Abrindo o link…" if len(urls) == 1 else "Abrindo os links…")
+                    conversation, link_context = await with_links(conversation, body)
+                current, model, sources = conversation, "", []
                 for attempt in (1, 2):
                     text, shown = "", ""
                     async for kind, value in stream_conversation(current, streamer=streamer):
@@ -559,6 +587,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 final, result = await finish(text, body)
                 if sources:
                     result["sources"] = sources
+                result.update(kept_context(file_context, link_context))
                 yield event("done", text=final, model=model if admin else "", **result)
             except NoProviderError:
                 yield event("error", message="O modelo não respondeu agora. Tente de novo em instantes.")

@@ -2,15 +2,18 @@ export type ChatTransport = "cloud" | "local"
 export type ChatMode = "chat" | "image" | "video" | "website" | "dashboard" | "automation"
 export type ChatCapability = { id: string; available: boolean; detail: string }
 export type ChatStatus = { connected: boolean; provider: string; model: string; capabilities: ChatCapability[] }
-export type ChatMessage = { role: "user" | "assistant"; content: string }
+/** `file_context` and `attachments` carry what was attached to an earlier message, so later turns can still use it. */
+export type ChatMessage = { role: "user" | "assistant"; content: string; file_context?: string; attachments?: { name: string; mime: ChatAttachment["mime"]; data_base64: string }[] }
 export type ChatArtifact = { name: string; mime: "text/html"; content: string }
 export type ChatPlan = { id: string; steps: string[]; requires_approval: true }
 export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null }
 /** `src` is a data URL; `thumb` is the small copy kept in this browser's history. */
 export type ChatImage = { src: string; prompt: string; thumb?: string }
 export type ChatSource = { title: string; url: string; site: string }
-export type ChatAttachment = { name: string; mime: "image/jpeg" | "image/png" | "image/webp" | "application/pdf"; data_base64: string; kind: "image" | "pdf"; preview?: string }
-export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage; sources?: ChatSource[] }
+const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+export type ChatAttachment = { name: string; mime: "image/jpeg" | "image/png" | "image/webp" | "application/pdf" | typeof DOCX | typeof XLSX | "text/csv" | "text/plain"; data_base64: string; kind: "image" | "pdf" | "document" | "sheet"; preview?: string }
+export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage; sources?: ChatSource[]; file_context?: string }
 export const CHAT_AUDIO_MAX_BYTES = 5 * 1024 * 1024
 const audioTypes = new Set(["audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac"])
 
@@ -55,6 +58,7 @@ export function parseChatReply(value: unknown): ChatReply {
   if (data.video != null) reply.video = parseVideoJob(data.video)
   if (data.image != null) reply.image = parseChatImage(data.image)
   if (Array.isArray(data.sources)) reply.sources = parseSources(data.sources)
+  if (typeof data.file_context === "string" && data.file_context.trim()) reply.file_context = data.file_context.slice(0, 20_000)
   return reply
 }
 
@@ -108,17 +112,26 @@ export async function streamChat(body: Record<string, unknown>, onEvent: (event:
   throw new Error("A resposta foi interrompida. Tente de novo.")
 }
 
-const ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"])
 export const CHAT_ATTACHMENT_LIMIT = 3 * 1024 * 1024
+export const CHAT_ATTACHMENT_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.pdf,.docx,.xlsx,.csv,.txt,.md," + DOCX + "," + XLSX + ",text/csv,text/plain"
+// Browsers report spreadsheets and CSVs inconsistently (Windows often says "application/vnd.ms-excel" for .csv), so the extension decides.
+const DOCUMENTS: Record<string, { mime: ChatAttachment["mime"]; kind: ChatAttachment["kind"]; label: string }> = {
+  pdf: { mime: "application/pdf", kind: "pdf", label: "O PDF" }, docx: { mime: DOCX, kind: "document", label: "O documento" },
+  xlsx: { mime: XLSX, kind: "sheet", label: "A planilha" }, csv: { mime: "text/csv", kind: "sheet", label: "A planilha" },
+  txt: { mime: "text/plain", kind: "document", label: "O arquivo" }, md: { mime: "text/plain", kind: "document", label: "O arquivo" },
+}
 
-/** Photos are resized in the browser (at most 1600 px, JPEG) so several fit in one message; PDFs go as they are. */
+/** Photos are resized in the browser (at most 1600 px, JPEG) so several fit in one message; documents go as they are. */
 export async function prepareAttachment(file: File): Promise<ChatAttachment> {
   const mime = file.type.toLowerCase()
-  if (!ATTACHMENT_TYPES.has(mime) && !mime.startsWith("image/")) throw new Error("Anexe uma foto (JPG, PNG, WebP) ou um PDF.")
-  if (mime === "application/pdf") {
-    if (file.size > CHAT_ATTACHMENT_LIMIT) throw new Error("O PDF pode ter no máximo 3 MB.")
-    return { name: file.name.slice(0, 200), mime: "application/pdf", kind: "pdf", data_base64: await blobBase64(file) }
+  const extension = file.name.toLowerCase().split(".").pop() ?? ""
+  if (extension === "doc" || extension === "xls") throw new Error(`Esse formato antigo (.${extension}) não é aceito. Salve como .${extension}x e anexe de novo.`)
+  const known = DOCUMENTS[extension] ?? (mime === "application/pdf" ? DOCUMENTS.pdf : undefined)
+  if (known) {
+    if (file.size > CHAT_ATTACHMENT_LIMIT) throw new Error(`${known.label} pode ter no máximo 3 MB.`)
+    return { name: file.name.slice(0, 200), mime: known.mime, kind: known.kind, data_base64: await blobBase64(file) }
   }
+  if (!mime.startsWith("image/")) throw new Error("Anexe uma foto, um PDF, um documento Word (.docx), uma planilha (.xlsx ou .csv) ou um arquivo de texto.")
   const url = URL.createObjectURL(file)
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
