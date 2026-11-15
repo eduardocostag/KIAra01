@@ -2136,7 +2136,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     return {"results": results, "validation": validation, "warnings": warnings, "error": error}
 
 
-def create_hunter_router(repository: HunterRepository) -> APIRouter:
+def create_hunter_router(repository: HunterRepository, usage=None) -> APIRouter:
     router = APIRouter(prefix="/v1/hunter", tags=["hunter"])
 
     async def run_leased_search(context: RequestContext, search_id: str) -> dict[str, Any]:
@@ -2261,6 +2261,10 @@ def create_hunter_router(repository: HunterRepository) -> APIRouter:
                              idempotency_key: str = Header(min_length=8, max_length=200),
                              context: RequestContext = Depends(authenticated_context)) -> dict[str, Any]:  # noqa: B008 — FastAPI dependency marker
         del request, idempotency_key
+        if usage is not None:  # the plan counts the leads asked for, once, when the search starts
+            current = await repository.get(context, search_id)
+            if current.get("status") == "pending_confirmation":
+                await usage.consume(context, "leads", int(current.get("result_limit") or 30))
         return await repository.claim_confirmation(context, search_id)
 
     @router.post("/searches/{search_id}/process")

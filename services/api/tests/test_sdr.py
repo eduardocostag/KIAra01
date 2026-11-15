@@ -47,8 +47,10 @@ class FakeDB:
             _org, node, kind, title, payload, status, _decided = params
             self.requests.append({"id": uuid4(), "node": node, "kind": kind, "title": title, "payload": payload.obj, "status": status})
             return Cursor([])
-        if "status='approved' ORDER BY" in sql:
-            return Cursor([{"id": r["id"], "node_id": r["node"], "payload": r["payload"]} for r in self.requests if r["status"] == "approved"][:params[1]])
+        if "status='approved' AND (%s OR" in sql:
+            inside, limit = params[1], params[2]
+            return Cursor([{"id": r["id"], "node_id": r["node"], "payload": r["payload"]} for r in self.requests
+                           if r["status"] == "approved" and (inside or r["node"].startswith("sdr:reply:"))][:limit])
         if sql.startswith("UPDATE action_requests SET status"):
             for r in self.requests:
                 if r["id"] == params[3]:

@@ -35,6 +35,17 @@ class SalesProfileUpdate(BaseModel):
     contact_start: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     contact_end: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     templates: dict[str, str]
+    # Growth suite (optional so older clients keep working).
+    average_deal_cents: int = Field(default=0, ge=0, le=100_000_000_000)
+    segment: str = Field(default="", max_length=40)
+    owner_whatsapp: str = Field(default="", pattern=r"^(\+?[0-9]{10,15})?$")
+    daily_summary: bool = False
+    daily_summary_hour: int = Field(default=8, ge=5, le=12)
+    answer_anytime: bool = False
+
+
+GROWTH_FIELDS = ("average_deal_cents", "segment", "owner_whatsapp", "daily_summary", "daily_summary_hour", "answer_anytime")
+GROWTH_DEFAULTS = {"average_deal_cents": 0, "segment": "", "owner_whatsapp": "", "daily_summary": False, "daily_summary_hour": 8, "answer_anytime": False}
 
 
 class OutreachCreate(BaseModel):
@@ -54,11 +65,12 @@ class SalesRepository:
         organization_uuid = _uuid("organization", organization_id)
         async with self._postgres._transaction(organization_id) as connection:
             row = await (await connection.execute(
-                "SELECT business_name,sender_name,offer,tone,follow_up_hours,contact_start,contact_end,templates,updated_at FROM sales_profiles WHERE organization_id=%s",
+                "SELECT business_name,sender_name,offer,tone,follow_up_hours,contact_start,contact_end,templates,updated_at,"
+                + ",".join(GROWTH_FIELDS) + " FROM sales_profiles WHERE organization_id=%s",
                 (organization_uuid,),
             )).fetchone()
         if row is None:
-            return {"business_name": "", "sender_name": "", "offer": "", "tone": "consultivo, acolhedor e objetivo", "follow_up_hours": 48, "contact_start": "09:00", "contact_end": "18:00", "templates": DEFAULT_TEMPLATES, "updated_at": None}
+            return {"business_name": "", "sender_name": "", "offer": "", "tone": "consultivo, acolhedor e objetivo", "follow_up_hours": 48, "contact_start": "09:00", "contact_end": "18:00", "templates": DEFAULT_TEMPLATES, "updated_at": None, **GROWTH_DEFAULTS}
         result = dict(row)
         result["contact_start"], result["contact_end"] = str(result["contact_start"])[:5], str(result["contact_end"])[:5]
         result["templates"] = {**DEFAULT_TEMPLATES, **(result.get("templates") or {})}
@@ -69,15 +81,24 @@ class SalesRepository:
         templates = profile["templates"]
         if len(templates) > 30 or any(not isinstance(key, str) or not isinstance(value, str) or len(key) > 80 or len(value) > 20000 for key, value in templates.items()):
             raise ApiError(422, "invalid_templates", "Revise os modelos de mensagem.")
+        missing = [key for key in GROWTH_FIELDS if key not in profile]
+        if missing:  # an older screen saved the profile: keep what it does not know about
+            current = await self.get_profile(organization_id)
+            profile = {**profile, **{key: current.get(key, GROWTH_DEFAULTS[key]) for key in missing}}
         organization_uuid = _uuid("organization", organization_id)
         async with self._postgres._transaction(organization_id) as connection:
             await connection.execute(
-                """INSERT INTO sales_profiles (organization_id,business_name,sender_name,offer,tone,follow_up_hours,contact_start,contact_end,templates)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """INSERT INTO sales_profiles (organization_id,business_name,sender_name,offer,tone,follow_up_hours,contact_start,contact_end,templates,
+                   average_deal_cents,segment,owner_whatsapp,daily_summary,daily_summary_hour,answer_anytime)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (organization_id) DO UPDATE SET business_name=excluded.business_name,sender_name=excluded.sender_name,
                    offer=excluded.offer,tone=excluded.tone,follow_up_hours=excluded.follow_up_hours,contact_start=excluded.contact_start,
-                   contact_end=excluded.contact_end,templates=excluded.templates,updated_at=now()""",
-                (organization_uuid, profile["business_name"].strip(), profile["sender_name"].strip(), profile["offer"].strip(), profile["tone"].strip(), profile["follow_up_hours"], profile["contact_start"], profile["contact_end"], Jsonb(templates)),
+                   contact_end=excluded.contact_end,templates=excluded.templates,average_deal_cents=excluded.average_deal_cents,
+                   segment=excluded.segment,owner_whatsapp=excluded.owner_whatsapp,daily_summary=excluded.daily_summary,
+                   daily_summary_hour=excluded.daily_summary_hour,answer_anytime=excluded.answer_anytime,updated_at=now()""",
+                (organization_uuid, profile["business_name"].strip(), profile["sender_name"].strip(), profile["offer"].strip(), profile["tone"].strip(), profile["follow_up_hours"], profile["contact_start"], profile["contact_end"], Jsonb(templates),
+                 profile.get("average_deal_cents", 0), profile.get("segment", "").strip(), profile.get("owner_whatsapp", "").strip(),
+                 profile.get("daily_summary", False), profile.get("daily_summary_hour", 8), profile.get("answer_anytime", False)),
             )
         return await self.get_profile(organization_id)
 
@@ -113,7 +134,11 @@ def create_sales_router(repository: SalesRepository) -> APIRouter:
     async def save_profile(update: SalesProfileUpdate, context: Annotated[RequestContext, Depends(authenticated_context)]) -> dict[str, Any]:
         if context.role not in {"owner", "admin", "operator"}:
             raise ApiError(403, "insufficient_role", "Acesso restrito a operadores.")
-        return await repository.save_profile(context.organization_id, update.model_dump())
+        data = update.model_dump()
+        for key in GROWTH_FIELDS:
+            if key not in update.model_fields_set:
+                data.pop(key)
+        return await repository.save_profile(context.organization_id, data)
 
     @router.post("/activities", status_code=201)
     async def record_activity(activity: OutreachCreate, context: Annotated[RequestContext, Depends(authenticated_context)]) -> dict[str, Any]:

@@ -48,5 +48,5 @@ def test_profile_templates_are_adapted_as_jsonb_before_database_write():
     result = asyncio.run(repository.save_profile("org-test", saved))
 
     assert result == saved
-    assert isinstance(postgres.connection.params[-1], Jsonb)
-    assert postgres.connection.params[-1].obj == saved["templates"]
+    assert isinstance(postgres.connection.params[8], Jsonb)  # templates, before the growth-suite columns
+    assert postgres.connection.params[8].obj == saved["templates"]

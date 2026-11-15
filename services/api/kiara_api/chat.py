@@ -404,12 +404,27 @@ def _with_note(conversation: list[dict], note: str) -> list[dict]:
     return [{"role": "system", "content": conversation[0]["content"] + "\n\n" + note}, *conversation[1:]]
 
 
-def create_chat_router(provider_factory=None, image_generator=None, streamer=None) -> APIRouter:
+def create_chat_router(provider_factory=None, image_generator=None, streamer=None, usage=None, knowledge=None) -> APIRouter:
+    """`usage` counts images, videos and web searches against the client's plan; `knowledge` loads what the
+    client taught Kiara about their business (both optional: without a database the chat works as before)."""
     router = APIRouter(prefix="/v1/chat", tags=["chat"])
     make_image = image_generator or generate_image
 
-    def build_conversation(body: ChatRequest) -> list[dict]:
-        system = site_context() + (f"\nContexto da tela fornecido pelo usuário: {body.context}" if body.context.strip() else "")
+    async def charge(context: RequestContext, metric: str) -> None:
+        if usage is not None:
+            await usage.consume(context, metric)
+
+    async def business(context: RequestContext) -> str:
+        if knowledge is None:
+            return ""
+        try:
+            from .knowledge import prompt_block
+            return prompt_block(await knowledge(context.organization_id, 8000))
+        except Exception:  # noqa: BLE001 - the chat never fails because of the knowledge base
+            return ""
+
+    def build_conversation(body: ChatRequest, extra: str = "") -> list[dict]:
+        system = site_context() + extra + (f"\nContexto da tela fornecido pelo usuário: {body.context}" if body.context.strip() else "")
         system += "\n" + current_moment()
         if body.voice:
             system += "\n" + VOICE_STYLE
@@ -449,9 +464,15 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         context = "\n\n".join(part for part in parts if part)[:20000]
         return {"file_context": context} if context else {}
 
-    async def finish(text: str, body: ChatRequest) -> tuple[str, dict]:
+    async def finish(text: str, body: ChatRequest, context: RequestContext) -> tuple[str, dict]:
         """Turn the model's markers into real images and video jobs."""
         result: dict = {}
+        for marker, metric in ((MARKER, "images"), (chat_video.MARKER, "videos")):
+            if marker.search(text) and not body.voice:
+                try:
+                    await charge(context, metric)
+                except ApiError as error:  # plan limit: say it instead of creating
+                    return (marker.sub("", text).strip() + "\n\n" + error.message).strip(), {}
         text = chat_search.MARKER.sub("", text)
         request = MARKER.search(text)
         text = MARKER.sub("", text).strip()
@@ -521,12 +542,13 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada. Use a conexão local ou configure o provedor no servidor.")
-        conversation, file_context = build_conversation(body)
+        conversation, file_context = build_conversation(body, await business(context))
         conversation, link_context = await with_links(conversation, body)
         text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
         sources: list = []
         search = chat_search.MARKER.search(text or "")
         if search:
+            await charge(context, "web_searches")
             results = await chat_search.web_search(search.group(1))
             sources = chat_search.public_sources(results)
             note = chat_search.results_note(search.group(1), results, current_moment())
@@ -534,7 +556,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                                                       provider_factory=provider_factory)
         if not text:
             raise ApiError(502, "chat_provider_unavailable", "O modelo não respondeu corretamente. Tente novamente ou use a conexão local.")
-        text, result = await finish(text, body)
+        text, result = await finish(text, body, context)
         if sources:
             result["sources"] = sources
         result.update(kept_context(file_context, link_context))
@@ -548,7 +570,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         _authorize(context)
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada.")
-        conversation, file_context = build_conversation(body)
+        conversation, file_context = build_conversation(body, await business(context))
         admin = _is_system_admin(context)
         urls = chat_links.find_urls(body.messages[-1].content)
 
@@ -585,18 +607,21 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                     if shown:
                         yield event("reset")
                     yield event("status", text="Pesquisando na internet…")
+                    await charge(context, "web_searches")
                     results = await chat_search.web_search(search.group(1))
                     sources = chat_search.public_sources(results)
                     current = _with_note(conversation, chat_search.results_note(search.group(1), results, current_moment()))
                 if MARKER.search(text):
                     yield event("status", text="Criando a imagem…")
-                final, result = await finish(text, body)
+                final, result = await finish(text, body, context)
                 if sources:
                     result["sources"] = sources
                 result.update(kept_context(file_context, link_context))
                 yield event("done", text=final, model=model if admin else "", **result)
             except NoProviderError:
                 yield event("error", message="O modelo não respondeu agora. Tente de novo em instantes.")
+            except ApiError as error:  # e.g. the plan's monthly limit: the message is written for the client
+                yield event("error", message=error.message)
             except Exception:  # noqa: BLE001 - details never reach the browser
                 yield event("error", message="Não consegui concluir a resposta. Tente de novo.")
 
@@ -610,6 +635,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         if not (_configuration()[0] and image_available()):
             raise ApiError(503, "image_not_configured", "A criação de imagens não está disponível neste servidor.")
+        await charge(context, "images")
         payload = await image_payload(body.prompt)
         if not payload:
             raise ApiError(502, "image_unavailable", "Não consegui criar a imagem agora. Tente de novo em instantes.")
@@ -622,6 +648,8 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         if not (_configuration()[0] and chat_video.video_available()):
             raise ApiError(503, "video_not_configured", "A criação de vídeos não está disponível neste servidor.")
+        if body.action not in {"status", "download"}:
+            await charge(context, "videos")  # outside the try: the plan message must reach the person as written
         try:
             if body.action == "status":
                 return {"video": await chat_video.video_status(body.job_id)}

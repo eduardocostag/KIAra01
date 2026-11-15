@@ -3,6 +3,7 @@ import { ArrowRight, ChartNoAxesColumnIncreasing, Radar, Search, UsersRound } fr
 import { OrbitScene } from "@/components/brand/orbit-scene"
 import { SourceMark } from "@/components/brand/source-mark"
 import { RefreshWorkspace } from "@/components/app-shell/refresh-workspace"
+import { ResultsPanel } from "@/components/app-shell/results-panel"
 import { Button } from "@/components/ui/button"
 import { getPipelineDTO } from "@/lib/api/pipeline-server"
 import { leadDisplayName, pipelineStages, sourceLabels } from "@/lib/api/pipeline"
@@ -47,6 +48,7 @@ export default async function DashboardPage() {
         {metrics.map(({ label, value, icon: Icon, href }) => <Link key={label} href={href} className="kiara-dashboard-metric"><span className="kiara-dashboard-metric-icon"><Icon className="size-5" aria-hidden="true" /></span><div><p className="kiara-dashboard-metric-value">{value}</p><p className="kiara-dashboard-metric-label">{label}</p></div></Link>)}
       </div>
     </section>
+    <div className="mx-auto w-full max-w-6xl px-4 sm:px-6"><ResultsPanel /></div>
     <section className="kiara-dashboard-table" aria-labelledby="recent-title">
       <div className="kiara-dashboard-table-head"><h2 id="recent-title">Leads recentes</h2><div className="kiara-dashboard-table-actions"><RefreshWorkspace /><Link href="/app/pipeline" className="kiara-dashboard-see-all">Ver todos <ArrowRight className="size-3.5" /></Link></div></div>
       {recent.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><caption className="sr-only">Leads recentes com origem e status</caption><thead><tr><th scope="col">Lead</th><th scope="col">Origem</th><th scope="col">Tempo</th><th scope="col">Status</th></tr></thead><tbody>{recent.map((entry) => {

@@ -212,6 +212,13 @@ class WhatsAppServerService:
     async def _session(self, client) -> dict[str, Any] | None:
         return await client.find_session(SESSION_NAME)
 
+    async def notify_owner(self, phone: str, text: str, key: str) -> bool:
+        """A note to the business owner's own number (daily summary). Never used for customers."""
+        try:
+            return bool(await send_reply({"provider_thread_id": phone, "metadata": {}}, text, key, 0))
+        except (OpenWAError, OpenWARejected):
+            return False
+
     async def status(self) -> dict[str, Any]:
         client = self.client_factory()
         try:

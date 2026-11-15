@@ -246,10 +246,14 @@ class SdrService:
                 pass
         async with self.postgres._transaction(organization_id) as connection:
             config = await self._config(connection, org)
+            profile = await self._profile(connection, org)
+            config["ai_context"] = (str(config.get("ai_context") or "") + profile.pop("knowledge", "")).strip()
+        await self._daily_summary(organization_id, org, profile, summary)
         mode = config.get("sdr_mode", "off")
         summary["mode"] = mode
         if mode not in {"approval", "auto"}:
             return summary
+        config["answer_anytime"] = bool(profile.get("answer_anytime"))
         since = datetime.fromisoformat(config["sdr_since"]) if config.get("sdr_since") else datetime.now(UTC)
         auto = mode == "auto"
         now = datetime.now(UTC)
@@ -309,8 +313,40 @@ class SdrService:
         await self._send_approved(organization_id, org, config, summary, started)
         return summary
 
+    async def _profile(self, connection, org) -> dict[str, Any]:
+        """Sales-profile switches (24h answers, daily summary) and the business knowledge for the prompts."""
+        try:
+            row = await (await connection.execute(
+                """SELECT answer_anytime,daily_summary,daily_summary_hour,daily_summary_sent_on,owner_whatsapp
+                   FROM sales_profiles WHERE organization_id=%s""", (org,))).fetchone()
+            from .knowledge import knowledge_context, prompt_block
+            knowledge = prompt_block(await knowledge_context(connection, org, 6000))
+        except Exception:  # noqa: BLE001 - before the growth migration, the SDR keeps working as before
+            return {}
+        return {**(dict(row) if row else {}), "knowledge": knowledge}
+
+    async def _daily_summary(self, organization_id: str, org, profile: dict[str, Any], summary: dict[str, Any]) -> None:
+        """Once a day, after the chosen hour (Brasília), the owner gets today's priorities on WhatsApp."""
+        now = datetime.now(BRASILIA)
+        phone = str(profile.get("owner_whatsapp") or "")
+        if (not profile.get("daily_summary") or not phone or self.whatsapp is None or not hasattr(self.whatsapp, "notify_owner")
+                or now.hour < int(profile.get("daily_summary_hour") or 8) or profile.get("daily_summary_sent_on") == now.date()):
+            return
+        from .outreach_ai import daily_summary
+        async with self.postgres._transaction(organization_id) as connection:
+            claimed = await (await connection.execute(
+                """UPDATE sales_profiles SET daily_summary_sent_on=%s WHERE organization_id=%s
+                   AND (daily_summary_sent_on IS NULL OR daily_summary_sent_on<%s) RETURNING organization_id""",
+                (now.date(), org, now.date()))).fetchone()
+            if not claimed:
+                return  # another tick already sent today's summary
+            text = await daily_summary(connection, org)
+        summary["daily_summary"] = await self.whatsapp.notify_owner(phone, text, f"summary-{org}-{now.date().isoformat()}")
+
     async def _send_approved(self, organization_id: str, org, config: dict[str, Any], summary: dict[str, Any], started: float) -> None:
-        if self.inbox is None or not in_contact_hours(config):
+        outside = not in_contact_hours(config)
+        # 24h attendance: outside contact hours only answers to people who wrote go out; follow-ups wait.
+        if self.inbox is None or (outside and not config.get("answer_anytime")):
             return
         if self.whatsapp is not None:
             try:
@@ -327,8 +363,9 @@ class SdrService:
             budget = max(0, int(config.get("daily_limit") or 50) - int(sent["total"] if sent else 0))
             rows = await (await connection.execute(
                 """SELECT id,node_id,payload FROM action_requests WHERE organization_id=%s AND source='kiara'
-                   AND kind='whatsapp.reply' AND status='approved' ORDER BY decided_at,created_at LIMIT %s""",
-                (org, min(MAX_SENDS, budget)))).fetchall()
+                   AND kind='whatsapp.reply' AND status='approved' AND (%s OR left(node_id,10)='sdr:reply:')
+                   ORDER BY decided_at,created_at LIMIT %s""",
+                (org, not outside, min(MAX_SENDS, budget)))).fetchall()
         for row in rows:
             if time.monotonic() - started > TICK_DEADLINE_SECONDS - 30:
                 break

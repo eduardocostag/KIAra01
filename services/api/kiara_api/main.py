@@ -53,6 +53,11 @@ from .ports.identity import IdentityVerifier
 from .ports.inbox import InboxRepository
 from .ports.pipeline import PipelineRepository
 from .sales import SalesRepository, create_sales_router
+from .results import ResultsRepository, create_results_router
+from .knowledge import KnowledgeRepository, create_knowledge_router
+from .outreach_ai import OutreachAI, create_outreach_router
+from .team import TeamService, create_team_router
+from .usage import UsageService, create_usage_router
 from .social import SocialRepository, create_social_router
 from .automation import AutomationRepository, create_automation_router
 from .lead_company import LeadCompanyRepository, create_lead_company_router
@@ -416,7 +421,11 @@ def create_app(
     )
     app.include_router(create_pipeline_router(pipeline_entries_repository))
     app.include_router(create_platform_router(database_url=config.database_url))
-    app.include_router(create_chat_router())
+    growth_db = PostgresRepository(config.database_url) if config.database_url else None
+    usage_service = UsageService(growth_db) if growth_db else None
+    knowledge_repository = KnowledgeRepository(growth_db) if growth_db else None
+    app.state.team = TeamService(growth_db) if growth_db else None
+    app.include_router(create_chat_router(usage=usage_service, knowledge=knowledge_repository.context if knowledge_repository else None))
     app.include_router(create_server_gateway_router())
     app.include_router(create_db_admin_router(PostgresRepository(config.database_url) if config.database_url else None))
     app.include_router(create_whatsapp_server_router(WhatsAppServerService(PostgresRepository(config.database_url) if config.database_url else None)))
@@ -429,7 +438,11 @@ def create_app(
     app.include_router(create_automation_router(AutomationRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     if config.database_url:
         app.include_router(create_unified_inbox_router(UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None)))
-        app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url))))
+        app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url)), usage=usage_service))
+        app.include_router(create_knowledge_router(knowledge_repository))
+        app.include_router(create_outreach_router(OutreachAI(growth_db, usage=usage_service)))
+        app.include_router(create_team_router(app.state.team))
+        app.include_router(create_usage_router(usage_service))
         app.include_router(create_sdr_router(SdrService(
             PostgresRepository(config.database_url),
             UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None),
@@ -443,6 +456,7 @@ def create_app(
                 CompetitionRepository(PostgresRepository(config.database_url)),
             ))
         app.include_router(create_sales_router(SalesRepository(PostgresRepository(config.database_url))))
+        app.include_router(create_results_router(ResultsRepository(PostgresRepository(config.database_url))))
         app.include_router(create_lead_company_router(LeadCompanyRepository(PostgresRepository(config.database_url))))
         app.include_router(create_workspace_router(PostgresWorkspaceResetRepository(PostgresRepository(config.database_url))))
 
