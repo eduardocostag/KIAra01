@@ -16,3 +16,5 @@ websockets>=13,<18
 edge-tts>=7,<8
 # Kiara chat images: model output (PNG/WebP) re-encoded as a small JPEG before leaving Vercel.
 pillow>=11,<13
+# Kiara chat: text of PDFs the person attaches.
+pypdf>=6,<7

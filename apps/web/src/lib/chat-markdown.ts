@@ -1,6 +1,6 @@
 /** Turns the model's Markdown into clean blocks, so the chat never shows raw "##", "**" or "|" to people. */
 
-export type Inline = { text: string; bold?: boolean; italic?: boolean; code?: boolean }
+export type Inline = { text: string; bold?: boolean; italic?: boolean; code?: boolean; href?: string }
 export type TextBlock = { kind: "heading" | "paragraph" | "quote"; inlines: Inline[] }
 export type ListBlock = { kind: "bullets" | "numbers"; items: Inline[][] }
 export type Block =
@@ -20,7 +20,10 @@ export function parseInline(text: string): Inline[] {
     if (token.startsWith("***")) parts.push({ text: token.slice(3, -3), bold: true, italic: true })
     else if (token.startsWith("**") || token.startsWith("__")) parts.push({ text: token.slice(2, -2), bold: true })
     else if (token.startsWith("`")) parts.push({ text: token.slice(1, -1), code: true })
-    else if (token.startsWith("[")) parts.push({ text: token.slice(1, token.indexOf("](")) })
+    else if (token.startsWith("[")) {
+      const href = token.slice(token.indexOf("](") + 2, -1)
+      parts.push({ text: token.slice(1, token.indexOf("](")), ...(/^https?:\/\//i.test(href) ? { href } : {}) })
+    }
     else parts.push({ text: token.slice(1, -1), italic: true })
     last = match.index + token.length
   }

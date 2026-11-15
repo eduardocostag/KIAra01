@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     return Response.json({ error: { message: "Origem não autorizada." } }, { status: 403 })
   }
   const text = await request.text()
-  if (text.length > 200000) return Response.json({ error: { message: "Histórico grande demais." } }, { status: 413 })
+  if (text.length > 4_600_000) return Response.json({ error: { message: "Mensagem ou anexos grandes demais." } }, { status: 413 })
   let body: unknown
   try { body = JSON.parse(text) }
   catch { return Response.json({ error: { message: "Mensagem inválida." } }, { status: 400 }) }

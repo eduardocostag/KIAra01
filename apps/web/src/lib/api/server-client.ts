@@ -21,7 +21,8 @@ function upstreamFormatError(status: number, contentType: string, requestId: str
   return errorResponse(502, "upstream_invalid_response", "A API respondeu em formato inválido (" + (contentType || "tipo não informado") + ", HTTP " + status + "). KIARA_API_URL pode estar apontando para uma página em vez do backend.", requestId, { upstream_status: status })
 }
 
-export async function kiaraApi(path: string, init: RequestInit = {}) {
+/** `stream`: pass a server-sent event stream through as it arrives (the chat answer being written). */
+export async function kiaraApi(path: string, init: RequestInit = {}, options: { stream?: boolean } = {}) {
   const requestId = crypto.randomUUID()
   const startedAt = Date.now()
   const method = init.method ?? "GET"
@@ -70,7 +71,7 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
   }
 
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-  const timeoutMs = path === "/v1/chat/messages" ? 285_000 : path === "/v1/chat/image" ? 150_000 : path === "/v1/chat/video" ? 100_000 : path === "/v1/chat/speech" ? 40_000 : path === "/v1/whatsapp-server/sync" ? 55_000 : path === "/v1/whatsapp-official/connect" ? 55_000 : path.startsWith("/v1/inbox/threads/") && path.endsWith("/messages") ? 45_000 : path.startsWith("/v1/leads/") && path.endsWith("/company") ? 60_000 : path.endsWith("/confirm") || path.endsWith("/process")
+  const timeoutMs = path === "/v1/chat/messages" || path === "/v1/chat/stream" ? 285_000 : path === "/v1/chat/image" ? 150_000 : path === "/v1/chat/video" ? 100_000 : path === "/v1/chat/speech" ? 40_000 : path === "/v1/whatsapp-server/sync" ? 55_000 : path === "/v1/whatsapp-official/connect" ? 55_000 : path.startsWith("/v1/inbox/threads/") && path.endsWith("/messages") ? 45_000 : path.startsWith("/v1/leads/") && path.endsWith("/company") ? 60_000 : path.endsWith("/confirm") || path.endsWith("/process")
     ? 290_000
     : path.startsWith("/v1/competition/kiara/") || path.startsWith("/v1/competition/instagram/")
       ? 55_000
@@ -89,6 +90,13 @@ export async function kiaraApi(path: string, init: RequestInit = {}) {
         ...init.headers,
       },
     })
+    if (options.stream && response.ok && (response.headers.get("content-type") ?? "").includes("text/event-stream")) {
+      log("info", "kiara_api.stream_started", { upstream_status: response.status })
+      return new Response(response.body, { status: 200, headers: {
+        "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no",
+        "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId,
+      } })
+    }
     if (response.status === 204 || response.status === 205) {
       log("info", "kiara_api.request_completed", { upstream_status: response.status })
       return new Response(null, { status: response.status, headers: { "Cache-Control": "no-store", "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId } })

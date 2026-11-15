@@ -1,19 +1,21 @@
 "use client"
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, Copy, Download, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, Video, Volume2, Workflow } from "lucide-react"
+import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, Copy, Download, FileText, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, Video, Volume2, Workflow, X } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { blobBase64, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, validateChatAudio, type ChatArtifact, type ChatImage, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
+import { blobBase64, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, prepareAttachment, streamChat, StreamUnavailableError, validateChatAudio, type ChatArtifact, type ChatAttachment, type ChatImage, type ChatSource, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { parseBlocks, plainText, type Inline } from "@/lib/chat-markdown"
 import { cn } from "@/lib/utils"
 import { pollVideoJob } from "@/lib/video-polling"
 import { femininePortugueseVoice, VoiceConversation, type VoiceBackends } from "./voice-conversation"
 
 function InlineText({ parts }: { parts: Inline[] }) {
-  return <>{parts.map((part, index) => part.code
+  return <>{parts.map((part, index) => part.href
+    ? <a key={index} href={part.href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">{part.text}</a>
+    : part.code
     ? <code key={index} className="rounded bg-muted px-1 py-0.5 text-[0.9em]">{part.text}</code>
     : part.bold || part.italic ? <span key={index} className={cn(part.bold && "font-semibold", part.italic && "italic")}>{part.text}</span>
       : <span key={index}>{part.text}</span>)}</>
@@ -36,7 +38,19 @@ function KiaraText({ text }: { text: string }) {
   })}</div>
 }
 
-type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage }
+type SentFile = { name: string; kind: "image" | "pdf"; preview?: string }
+type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage
+  sources?: ChatSource[]; files?: SentFile[]; streaming?: boolean; status?: string }
+
+/** A photo or PDF chosen for the next message (with remove) or already sent (in the bubble). */
+function AttachmentChip({ file, onRemove }: { file: SentFile; onRemove?: () => void }) {
+  return <span className="flex items-center gap-2 rounded-xl border bg-card py-1 pl-1 pr-2 text-xs">
+    {/* eslint-disable-next-line @next/next/no-img-element -- local preview made in this browser */}
+    {file.preview ? <img src={file.preview} alt="" className="size-8 rounded-lg object-cover" /> : <FileText className="ml-1 size-4 text-primary" aria-hidden="true" />}
+    <span className="max-w-40 truncate">{file.name}</span>
+    {onRemove ? <button type="button" onClick={onRemove} aria-label={`Remover ${file.name}`} className="text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button> : null}
+  </span>
+}
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] }
 
 const modes = [
@@ -59,10 +73,11 @@ const HISTORY_LIMIT = 30
 
 function boundedHistory(messages: Message[]): ChatMessage[] {
   let remaining = 35_000
-  return messages.slice(-24).reverse().flatMap((message) => {
+  return messages.filter((message) => message.content.trim()).slice(-24).reverse().flatMap((message) => {
     if (remaining <= 0) return []
     // The picture's description goes with it, so "agora mais azul" can redraw the same scene.
-    const text = message.image?.prompt ? `${message.content}\n\n(imagem enviada: ${message.image.prompt})` : message.content
+    const files = message.files?.length ? `\n\n[anexos enviados nesta mensagem: ${message.files.map((file) => file.name).join(", ")}]` : ""
+    const text = (message.image?.prompt ? `${message.content}\n\n(imagem enviada: ${message.image.prompt})` : message.content) + files
     const content = text.slice(0, Math.min(10_000, remaining))
     remaining -= content.length
     return [{ role: message.role, content }]
@@ -79,10 +94,12 @@ function readHistory(key: string): Conversation[] {
 function writeHistory(key: string, conversations: Conversation[]) {
   // Generated HTML can be large; history keeps the text and plans only.
   // Pictures keep only their small copy: full images would fill the browser's storage.
-  const slim = conversations.slice(0, HISTORY_LIMIT).map((conversation) => ({ ...conversation, messages: conversation.messages.map(({ artifact, image, ...message }) => ({
+  const slim = conversations.slice(0, HISTORY_LIMIT).map((conversation) => ({ ...conversation, messages: conversation.messages.filter((message) => !message.streaming || message.content).map(({ artifact, image, ...rest }) => {
+    const message = { ...rest, streaming: undefined, status: undefined }  // live-typing state is never saved
+    return {
     ...(artifact ? { ...message, content: `${message.content}\n\n[Arquivo gerado: ${artifact.name}]` } : message),
     ...(image?.thumb ? { image: { src: image.thumb, thumb: image.thumb, prompt: image.prompt } } : {}),
-  })) }))
+  } }) }))
   try { localStorage.setItem(key, JSON.stringify(slim)) } catch { /* Storage full or blocked: history stays in memory. */ }
 }
 
@@ -198,6 +215,8 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
   const chunksRef = useRef<Blob[]>([])
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const attachRef = useRef<HTMLInputElement>(null)
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const draftRef = useRef<HTMLTextAreaElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const recordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -269,6 +288,38 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
     })
   }
 
+  function patchMessage(conversationId: string, messageId: string, patch: Partial<Message>, persist = false) {
+    setConversations((current) => {
+      const next = current.map((conversation) => conversation.id !== conversationId ? conversation : {
+        ...conversation, messages: conversation.messages.map((message) => message.id === messageId ? { ...message, ...patch } : message) })
+      conversationsRef.current = next
+      if (persist) writeHistory(storageKey, next)
+      return next
+    })
+  }
+
+  function removeMessage(conversationId: string, messageId: string) {
+    setConversations((current) => {
+      const next = current.map((conversation) => conversation.id !== conversationId ? conversation : {
+        ...conversation, messages: conversation.messages.filter((message) => message.id !== messageId) })
+      conversationsRef.current = next
+      writeHistory(storageKey, next)
+      return next
+    })
+  }
+
+  async function addFiles(list: FileList | File[] | null) {
+    const files = Array.from(list ?? []).slice(0, Math.max(0, 4 - attachments.length))
+    if (!files.length) return
+    setError("")
+    try {
+      const prepared = await Promise.all(files.map(prepareAttachment))
+      const total = [...attachments, ...prepared].reduce((sum, file) => sum + file.data_base64.length, 0)
+      if (total > 4_100_000) throw new Error("Os anexos passam de 3 MB no total. Remova algum arquivo.")
+      setAttachments((current) => [...current, ...prepared].slice(0, 4))
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não consegui anexar o arquivo.") }
+  }
+
   function newConversation() {
     if (busy || recording) return
     stopSpeech(); setActiveId(""); setDraft(""); setError(""); setNotice(""); setMode("chat")
@@ -293,25 +344,55 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
   }
 
   async function send() {
-    const content = draft.trim()
+    const sentFiles = mode === "chat" ? attachments : []
+    const content = draft.trim() || (sentFiles.length ? "Analise o que eu anexei." : "")
     if (!content || busy || recording || !available) return
     const conversationId = activeId || crypto.randomUUID()
-    const userMessage: Message = { id: crypto.randomUUID(), role: "user", content }
-    const history = [...messages, userMessage]
+    const userMessage: Message = { id: crypto.randomUUID(), role: "user", content,
+      ...(sentFiles.length ? { files: sentFiles.map(({ name, kind, preview }) => ({ name, kind, preview })) } : {}) }
+    // The files go as attachments now; the note "[anexos enviados…]" only marks them in later turns.
+    const history = [...messages, { ...userMessage, files: undefined }]
     setActiveId(conversationId)
     appendMessage(conversationId, userMessage, content.replace(/\s+/g, " ").slice(0, 60))
-    setDraft(""); setBusy(true); setError(""); setNotice("")
+    setDraft(""); setAttachments([]); setBusy(true); setError(""); setNotice("")
     const controller = new AbortController()
     abortRef.current = controller
-    try {
+    const files = sentFiles.length ? { attachments: sentFiles.map(({ name, mime, data_base64 }) => ({ name, mime, data_base64 })) } : {}
+
+    const classic = async () => {
       const action = mode === "chat" ? "chat" : mode === "website" || mode === "dashboard" ? "build" : mode === "automation" ? "plan" : mode
-      const body = mode === "chat" ? { messages: boundedHistory(history) } : action === "build" ? { prompt: content, kind: mode } : mode === "video" ? { action: "start", prompt: content } : { prompt: content }
+      const body = mode === "chat" ? { messages: boundedHistory(history), ...files } : action === "build" ? { prompt: content, kind: mode } : mode === "video" ? { action: "start", prompt: content } : { prompt: content }
       const reply = parseChatReply(await chatRequest(transport, action, body, controller.signal))
       const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
-      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video, image })
+      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video, image, sources: reply.sources })
+    }
+
+    // The answer appears while it is written; the classic request stays as the fallback.
+    const streamed = async () => {
+      const replyId = crypto.randomUUID()
+      appendMessage(conversationId, { id: replyId, role: "assistant", content: "", streaming: true })
+      let shown = ""
+      try {
+        const reply = await streamChat({ messages: boundedHistory(history), ...files }, (event) => {
+          if (event.type === "delta") { shown += event.text; patchMessage(conversationId, replyId, { content: shown, status: undefined }) }
+          else if (event.type === "reset") { shown = ""; patchMessage(conversationId, replyId, { content: "" }) }
+          else patchMessage(conversationId, replyId, { status: event.text })
+        }, controller.signal)
+        const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
+        patchMessage(conversationId, replyId, { content: reply.text, image, video: reply.video, sources: reply.sources, streaming: false, status: undefined }, true)
+      } catch (reason) {
+        if (reason instanceof StreamUnavailableError && !shown) { removeMessage(conversationId, replyId); return classic() }
+        if (shown) patchMessage(conversationId, replyId, { streaming: false, status: undefined }, true)
+        else removeMessage(conversationId, replyId)
+        throw reason
+      }
+    }
+
+    try {
+      await (mode === "chat" && transport === "cloud" ? streamed() : classic())
     } catch (reason) {
       if (controller.signal.aborted) setNotice("Geração interrompida. A solicitação pode já ter sido recebida pelo serviço.")
-      else { setError(reason instanceof Error ? reason.message : "Não foi possível concluir a resposta."); setDraft(content) }
+      else { setError(reason instanceof Error ? reason.message : "Não foi possível concluir a resposta."); setDraft(content); setAttachments(sentFiles) }
     } finally { setBusy(false); abortRef.current = null }
   }
 
@@ -419,6 +500,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
     } : undefined,
   }
   const voiceReady = Boolean(status?.connected && capability("chat")?.available)
+  const canAttach = mode === "chat" && transport === "cloud" && Boolean(status?.connected)
 
   async function copy(message: Message) {
     try { await navigator.clipboard.writeText(message.role === "assistant" ? plainText(message.content) : message.content); setCopied(message.id); setTimeout(() => setCopied(""), 1500) } catch { setError("Não foi possível copiar.") }
@@ -427,10 +509,13 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
   const statusLabel = checking ? "Verificando…" : status?.connected ? (status.model || (transport === "local" ? "Neste computador" : "IA hospedada")) : "IA desconectada"
   const composer = <div className="w-full">
     <div className="rounded-3xl border bg-card px-3 pb-2 pt-3 shadow-sm focus-within:border-primary/40">
+      {attachments.length ? <div className="mb-2 flex flex-wrap gap-2">{attachments.map((file, index) => <AttachmentChip key={`${file.name}-${index}`} file={file}
+        onRemove={() => setAttachments((current) => current.filter((_, position) => position !== index))} />)}</div> : null}
       <label className="sr-only" htmlFor="kiara-chat-message">Sua mensagem para a Kiara</label>
       <textarea ref={draftRef} id="kiara-chat-message" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={10_000} rows={1} placeholder={activeMode.placeholder} disabled={busy || recording}
         onInput={(event) => { const element = event.currentTarget; element.style.height = "auto"; element.style.height = `${Math.min(element.scrollHeight, 208)}px` }}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }}
+        onPaste={(event) => { const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/")); if (images.length && canAttach) { event.preventDefault(); void addFiles(images) } }}
         className="max-h-52 min-h-7 w-full resize-none bg-transparent px-1 text-[15px] leading-6 outline-none placeholder:text-muted-foreground" />
       <div className="mt-2 flex items-center gap-1">
         <DropdownMenu>
@@ -441,12 +526,13 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
           </DropdownMenuContent>
         </DropdownMenu>
         <input ref={fileRef} className="sr-only" type="file" accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,audio/aac,audio/flac" onChange={(event) => { const file = event.target.files?.[0]; if (file) void transcribe(file) }} aria-label="Arquivo de áudio para transcrever" tabIndex={-1} />
-        <Button type="button" variant="ghost" size="icon" className="size-8 rounded-full text-muted-foreground" onClick={() => fileRef.current?.click()} disabled={busy || recording || !canTranscribe} aria-label="Anexar áudio" title={canTranscribe ? "Anexar áudio de até 5 MB" : "Transcrição de áudio não conectada"}><Paperclip /></Button>
+        <input ref={attachRef} className="sr-only" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { void addFiles(event.target.files); event.target.value = "" }} aria-label="Anexar foto ou PDF" tabIndex={-1} />
+        <Button type="button" variant="ghost" size="icon" className="size-8 rounded-full text-muted-foreground" onClick={() => (canAttach ? attachRef : fileRef).current?.click()} disabled={busy || recording || (!canAttach && !canTranscribe) || attachments.length >= 4} aria-label={canAttach ? "Anexar foto ou PDF" : "Anexar áudio"} title={canAttach ? "Anexar fotos ou PDF (até 3 MB no total)" : canTranscribe ? "Anexar áudio de até 5 MB" : "Anexos indisponíveis nesta conexão"}><Paperclip /></Button>
         <Button type="button" variant="ghost" size="icon" className={cn("size-8 rounded-full text-muted-foreground", recording && "bg-destructive/15 text-destructive")} onClick={() => void startRecording()} disabled={busy || !canTranscribe} aria-label={recording ? "Parar gravação" : "Gravar áudio"} aria-pressed={recording}>{recording ? <Square /> : <Mic />}</Button>
         <div className="ml-auto">
           {busy ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => abortRef.current?.abort()} aria-label="Interromper"><Square className="fill-current" /></Button>
-            : !draft.trim() && !recording ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => { stopSpeech(); setVoiceOpen(true) }} disabled={!voiceReady || checking} aria-label="Conversar por voz" title={voiceReady ? "Conversar por voz" : "Conecte a IA para conversar por voz"}><AudioLines /></Button>
-            : <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => void send()} disabled={!draft.trim() || !available || checking || recording} aria-label={mode === "automation" ? "Preparar plano" : "Enviar"}><ArrowUp /></Button>}
+            : !draft.trim() && !attachments.length && !recording ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => { stopSpeech(); setVoiceOpen(true) }} disabled={!voiceReady || checking} aria-label="Conversar por voz" title={voiceReady ? "Conversar por voz" : "Conecte a IA para conversar por voz"}><AudioLines /></Button>
+            : <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => void send()} disabled={(!draft.trim() && !attachments.length) || !available || checking || recording} aria-label={mode === "automation" ? "Preparar plano" : "Enviar"}><ArrowUp /></Button>}
         </div>
       </div>
     </div>
@@ -481,22 +567,25 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
       <div className="min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions">
         <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
           {messages.map((message, index) => message.role === "user"
-            ? <div key={message.id} className={cn("flex justify-end", index >= messages.length - 2 && "fx-rise")}><div className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-6">{message.content}</div></div>
+            ? <div key={message.id} className={cn("flex flex-col items-end gap-1.5", index >= messages.length - 2 && "fx-rise")}>
+              {message.files?.length ? <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">{message.files.map((file, position) => <AttachmentChip key={position} file={file} />)}</div> : null}
+              <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-6">{message.content}</div></div>
             : <article key={message.id} className={cn("flex gap-3", index >= messages.length - 2 && "fx-rise")} aria-label="Resposta da Kiara">
               <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-card text-primary"><Bot className="size-4" aria-hidden="true" /></span>
               <div className="min-w-0 flex-1">
-                <KiaraText text={message.content} />
+                {message.content ? <KiaraText text={message.content} /> : message.streaming ? <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status"><span className="kiara-thinking" aria-hidden="true"><i /><i /><i /></span>{message.status || "Pensando…"}</div> : null}
                 {message.image && <Picture image={message.image} />}
                 {message.artifact && <Artifact artifact={message.artifact} />}
                 {message.video && <VideoJob key={message.video.id} initial={message.video} transport={transport} />}
                 {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}
+                {message.sources?.length ? <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"><span>Fontes:</span>{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" title={source.title} className="rounded-full border px-2 py-0.5 hover:bg-muted hover:text-foreground">{source.site}</a>)}</div> : null}
                 <div className="mt-1 flex gap-0.5 text-muted-foreground">
                   <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void copy(message)} aria-label="Copiar resposta">{copied === message.id ? <Check /> : <Copy />}</Button>
                   <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => void speak(plainText(message.content))} disabled={speaking || busy} aria-label="Ouvir resposta"><Volume2 /></Button>
                 </div>
               </div>
             </article>)}
-          {busy ? <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status"><span className="kiara-thinking" aria-hidden="true"><i /><i /><i /></span>{notice.startsWith("Transcrevendo") ? "Transcrevendo áudio…" : "Pensando…"}</div> : null}
+          {busy && !messages.at(-1)?.streaming ? <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status"><span className="kiara-thinking" aria-hidden="true"><i /><i /><i /></span>{notice.startsWith("Transcrevendo") ? "Transcrevendo áudio…" : "Pensando…"}</div> : null}
           <div ref={endRef} />
         </div>
       </div>

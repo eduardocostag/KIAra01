@@ -8,7 +8,9 @@ export type ChatPlan = { id: string; steps: string[]; requires_approval: true }
 export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null }
 /** `src` is a data URL; `thumb` is the small copy kept in this browser's history. */
 export type ChatImage = { src: string; prompt: string; thumb?: string }
-export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage }
+export type ChatSource = { title: string; url: string; site: string }
+export type ChatAttachment = { name: string; mime: "image/jpeg" | "image/png" | "image/webp" | "application/pdf"; data_base64: string; kind: "image" | "pdf"; preview?: string }
+export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage; sources?: ChatSource[] }
 export const CHAT_AUDIO_MAX_BYTES = 5 * 1024 * 1024
 const audioTypes = new Set(["audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac"])
 
@@ -52,7 +54,90 @@ export function parseChatReply(value: unknown): ChatReply {
   }
   if (data.video != null) reply.video = parseVideoJob(data.video)
   if (data.image != null) reply.image = parseChatImage(data.image)
+  if (Array.isArray(data.sources)) reply.sources = parseSources(data.sources)
   return reply
+}
+
+function parseSources(values: unknown[]): ChatSource[] {
+  return values.flatMap((value) => {
+    if (!value || typeof value !== "object") return []
+    const item = value as Record<string, unknown>
+    const url = typeof item.url === "string" && /^https?:\/\//.test(item.url) ? item.url : ""
+    return url ? [{ url, title: String(item.title || item.site || url).slice(0, 160), site: String(item.site || new URL(url).hostname).slice(0, 80) }] : []
+  }).slice(0, 6)
+}
+
+export type StreamEvent = { type: "delta"; text: string } | { type: "reset" } | { type: "status"; text: string }
+
+/** Thrown when the streaming route is not usable at all, so the caller can use the classic request. */
+export class StreamUnavailableError extends Error {}
+
+/** The chat answer while it is written. Resolves with the final reply; partial text arrives through `onEvent`. */
+export async function streamChat(body: Record<string, unknown>, onEvent: (event: StreamEvent) => void, signal?: AbortSignal): Promise<ChatReply> {
+  const timeout = AbortSignal.timeout(300_000)
+  const response = await fetch("/api/chat/stream", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null)
+    const message = (payload as { error?: { message?: string } } | null)?.error?.message
+    if (response.status === 422 || response.status === 413) throw new Error(message || "Não foi possível enviar os anexos.")
+    throw new StreamUnavailableError(message || `HTTP ${response.status}`)
+  }
+  if (!response.body || !(response.headers.get("content-type") ?? "").includes("text/event-stream")) throw new StreamUnavailableError("sem stream")
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  for (;;) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+    let boundary = buffer.indexOf("\n\n")
+    while (boundary >= 0) {
+      const chunk = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      boundary = buffer.indexOf("\n\n")
+      const line = chunk.split("\n").find((item) => item.startsWith("data:"))
+      if (!line) continue
+      const event = JSON.parse(line.slice(5)) as Record<string, unknown>
+      if (event.type === "delta" && typeof event.text === "string") onEvent({ type: "delta", text: event.text })
+      else if (event.type === "reset") onEvent({ type: "reset" })
+      else if (event.type === "status" && typeof event.text === "string") onEvent({ type: "status", text: event.text })
+      else if (event.type === "error") throw new Error(typeof event.message === "string" ? event.message : "Não foi possível concluir a resposta.")
+      else if (event.type === "done") return parseChatReply({ ...event, provider: "kiara" })
+    }
+    if (done) break
+  }
+  throw new Error("A resposta foi interrompida. Tente de novo.")
+}
+
+const ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"])
+export const CHAT_ATTACHMENT_LIMIT = 3 * 1024 * 1024
+
+/** Photos are resized in the browser (at most 1600 px, JPEG) so several fit in one message; PDFs go as they are. */
+export async function prepareAttachment(file: File): Promise<ChatAttachment> {
+  const mime = file.type.toLowerCase()
+  if (!ATTACHMENT_TYPES.has(mime) && !mime.startsWith("image/")) throw new Error("Anexe uma foto (JPG, PNG, WebP) ou um PDF.")
+  if (mime === "application/pdf") {
+    if (file.size > CHAT_ATTACHMENT_LIMIT) throw new Error("O PDF pode ter no máximo 3 MB.")
+    return { name: file.name.slice(0, 200), mime: "application/pdf", kind: "pdf", data_base64: await blobBase64(file) }
+  }
+  const url = URL.createObjectURL(file)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image()
+      element.onload = () => resolve(element)
+      element.onerror = () => reject(new Error("Não consegui abrir essa imagem."))
+      element.src = url
+    })
+    const draw = (side: number, quality: number) => {
+      const scale = Math.min(1, side / Math.max(image.naturalWidth, image.naturalHeight))
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+      canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL("image/jpeg", quality)
+    }
+    const full = draw(1600, 0.85)
+    return { name: file.name.slice(0, 200) || "foto.jpg", mime: "image/jpeg", kind: "image", data_base64: full.split(",")[1], preview: draw(160, 0.7) }
+  } finally { URL.revokeObjectURL(url) }
 }
 
 export function parseChatImage(value: unknown): ChatImage {
