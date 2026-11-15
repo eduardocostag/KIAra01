@@ -1497,6 +1497,28 @@ async def maps_search(query: str, limit: int) -> list[dict[str, Any]]:
     return merge_maps_rows([*structured, *browsed])[:limit]
 
 
+MAPS_BROWSER_QUEUE_SECONDS = 80
+
+
+async def _read_kiara_browser(endpoint: str, query: str, limit: int, headers: dict[str, str]) -> list[dict[str, Any]]:
+    """Kiara's own Maps browser serves a few searches at a time; when it is busy (HTTP 503 before the
+    handshake) wait in line a little instead of falling back to weaker sources."""
+    from .cdp_maps import read_maps
+
+    deadline = time.monotonic() + MAPS_BROWSER_QUEUE_SECONDS
+    delay = 2.0
+    while True:
+        try:
+            return await read_maps(endpoint, maps_search_url(query), min(limit, HUNTER_MAX_RESULTS),
+                                   MAPS_DETAIL_SCRIPT, maps_detail_result, headers=headers)
+        except Exception as exc:  # noqa: BLE001 - only "busy" is retried; anything else falls back
+            if "503" not in str(exc) or time.monotonic() + delay > deadline:
+                raise
+            logger.info("hunter.maps_browser.queued")
+            await asyncio.sleep(delay)
+            delay = min(delay * 1.5, 8.0)
+
+
 async def _read_maps_remote(connect_url: str, query: str, limit: int, *, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """Remote browser over raw CDP first (works on Vercel); Playwright's driver is the fallback."""
     from .cdp_maps import read_maps
@@ -1574,7 +1596,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
     if obscura:
         endpoint, headers = obscura
         try:
-            rows = await _read_maps_remote(endpoint, query, limit, headers=headers)
+            rows = await _read_kiara_browser(endpoint, query, limit, headers)
             if has_verified_details(rows):
                 return await supplement(rows)
             unverified_rows.extend(rows)
@@ -2086,6 +2108,11 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         warnings.append("Sem e-mail significa que nenhum endereço foi encontrado nas fontes e páginas inspecionadas; não prova ausência em toda a internet.")
     if options["website_quality_filter"] == "opportunity":
         warnings.append("Oportunidade digital usa sinais técnicos verificáveis; a Kiara não classifica gosto visual como fato.")
+        without_site = sum(item.get("source") == "google_maps" and item.get("public_data", {}).get("detail_inspected") is True
+                           and item.get("public_data", {}).get("website_status") == "not_listed" for item in candidates)
+        if without_site and len(results) < search["result_limit"]:
+            warnings.append(f"{without_site} empresa(s) encontradas não têm site no Google Maps, uma oportunidade ainda maior. "
+                            "Pesquise o mesmo nicho com \"sem site\" para vê-las.")
     if validation["unknown"]:
         warnings.append(f"{validation['unknown']} candidato(s) excluído(s) por falta de evidência para os filtros solicitados.")
     partial_count = validation.get("probable", 0) + validation.get("to_review", 0)

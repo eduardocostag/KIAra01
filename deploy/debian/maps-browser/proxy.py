@@ -2,7 +2,7 @@
 
 Chromium's DevTools websocket has a random id per launch, so this proxy offers a fixed address
 (ws://127.0.0.1:8892/cdp) and forwards each connection to the current browser. It also:
-* limits simultaneous searches (extra ones are refused at once, so the Hunter falls back immediately);
+* limits simultaneous searches: extra ones get HTTP 503 before the handshake and the Hunter retries shortly;
 * relaunches Chromium if it dies, and restarts it after a while idle to drop leftover tabs and memory.
 The gateway in front of it requires the gateway token; this process listens only on 127.0.0.1.
 """
@@ -32,6 +32,7 @@ FLAGS = [
 
 browser: subprocess.Popen | None = None
 active = 0
+reservations: list[float] = []  # handshakes accepted but not yet running (expire if the client gives up)
 last_used = time.monotonic()
 lock = asyncio.Lock()
 
@@ -78,9 +79,8 @@ async def handle(client) -> None:
     if client.request.path.split("?")[0] != "/cdp":
         await client.close(1008, "not found")
         return
-    if active >= MAX_SESSIONS:
-        await client.close(1013, "busy")  # try again later: the Hunter falls back right away
-        return
+    if reservations:
+        reservations.pop(0)
     active += 1
     try:
         upstream_url = await ensure_browser()
@@ -106,6 +106,12 @@ async def janitor() -> None:
 async def health(connection, request):
     if request.path == "/healthz":
         return connection.respond(200, f"ok active={active}\n")
+    # Busy: refuse before the handshake (HTTP 503) so the Hunter waits a few seconds and tries again.
+    now = time.monotonic()
+    reservations[:] = [stamp for stamp in reservations if now - stamp < 20]
+    if active + len(reservations) >= MAX_SESSIONS:
+        return connection.respond(503, "busy\n")
+    reservations.append(now)
     return None
 
 

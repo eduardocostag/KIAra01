@@ -143,3 +143,14 @@ Para aumentar a cota gratuita, crie um token de leitura em huggingface.co/settin
 sudo nano /opt/kiara/video/.env          # preencha HF_TOKEN=...
 sudo sh -c 'cd /opt/kiara/video && docker compose up -d'
 ```
+
+## Navegador do Google Maps do Hunter (kiara-maps-browser)
+
+O Hunter lê o Google Maps com um navegador de verdade. O plano grátis do Browserbase tem só 60 minutos por mês;
+por isso o servidor roda o próprio Chromium (`/opt/kiara/maps-browser`, só em `127.0.0.1:8892`), sem limite de minutos.
+
+- O gateway expõe somente o websocket `wss://<servidor>/cdp`, com o token do gateway. Nada mais do navegador sai.
+- No máximo 3 buscas ao mesmo tempo (`MAX_SESSIONS`); a quarta é recusada na hora e o Hunter usa a reserva
+  (Browserbase, se houver minutos, e depois trechos indexados).
+- Depois de 10 minutos parado, o Chromium é reiniciado limpo na próxima busca.
+- A API na Vercel usa este navegador sozinha quando o gateway está configurado. Para desligar: `KIARA_MAPS_BROWSER=off`.

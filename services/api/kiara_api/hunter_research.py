@@ -246,7 +246,8 @@ def website_opportunity(url: str, content: str, links: list[str]) -> tuple[int, 
     """Score observable homepage signals; never claim subjective visual quality."""
     score, signals = 100, []
     if urlsplit(url).scheme != "https":
-        score -= 25; signals.append("Site sem HTTPS")
+        # Chrome shows "Não seguro" on every page of a site without HTTPS: a weak site by any measure.
+        score -= 45; signals.append("Site sem HTTPS")
     words = len(clean_summary(content, 5000).split())
     if words < 80:
         score -= 30; signals.append("Pouco conteúdo público na página analisada")

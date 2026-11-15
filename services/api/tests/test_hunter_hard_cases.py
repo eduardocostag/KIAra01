@@ -109,3 +109,34 @@ def test_maps_browser_defaults_to_kiara_server(monkeypatch):
     assert hunter._obscura_connection() is None
     monkeypatch.setenv("OBSCURA_CDP_URL", "wss://other.example/cdp")
     assert hunter._obscura_connection()[0] == "wss://other.example/cdp"
+
+
+def test_busy_maps_browser_waits_in_line(monkeypatch):
+    import asyncio
+
+    from kiara_api import cdp_maps, hunter
+
+    calls = []
+
+    async def read_maps(*_args, **_kwargs):
+        calls.append(1)
+        if len(calls) < 3:
+            raise RuntimeError("server rejected WebSocket connection: HTTP 503")
+        return [{"title": "Lead"}]
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(cdp_maps, "read_maps", read_maps)
+    monkeypatch.setattr(hunter.asyncio, "sleep", no_sleep)
+    rows = asyncio.run(hunter._read_kiara_browser("wss://x/cdp", "padaria", 5, {}))
+    assert rows == [{"title": "Lead"}] and len(calls) == 3
+
+    async def broken(*_args, **_kwargs):
+        raise RuntimeError("maps_results_unavailable")
+
+    monkeypatch.setattr(cdp_maps, "read_maps", broken)
+    try:
+        asyncio.run(hunter._read_kiara_browser("wss://x/cdp", "padaria", 5, {}))
+    except RuntimeError as error:
+        assert "maps_results_unavailable" in str(error)  # other failures fall back at once

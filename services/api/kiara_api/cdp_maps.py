@@ -27,6 +27,11 @@ ACCEPT_CONSENT = """(() => { if (location.hostname !== 'consent.google.com') ret
   if (button) { button.click(); return true } return false })()"""
 
 
+BLOCKED_RESOURCES = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.avif", "*.svg", "*.ico", "*.woff", "*.woff2",
+                     "*.ttf", "*.mp4", "*.webm", "*googleusercontent.com/*", "*gstatic.com/*/vt*", "*google.com/maps/vt*",
+                     "*/kh/v=*", "*streetviewpixels*", "*doubleclick.net*", "*googlesyndication*"]
+
+
 class CdpError(RuntimeError):
     pass
 
@@ -98,6 +103,13 @@ class Tab:
         tab = cls(cdp, target, session)
         await tab.cdp.send("Page.enable", session=session)
         await tab.cdp.send("Emulation.setLocaleOverride", {"locale": "pt-BR"}, session=session)
+        # Photos, fonts, video and map tiles are never read: skipping them makes each search far lighter,
+        # so a browser serves more searches at once. Best effort: older browsers may not support it.
+        try:
+            await tab.cdp.send("Network.enable", session=session, timeout=5)
+            await tab.cdp.send("Network.setBlockedURLs", {"urls": BLOCKED_RESOURCES}, session=session, timeout=5)
+        except (CdpError, TimeoutError):
+            pass
         return tab
 
     async def evaluate(self, expression: str, timeout: float = 15) -> Any:
