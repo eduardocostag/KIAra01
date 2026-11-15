@@ -1520,12 +1520,10 @@ async def _read_kiara_browser(endpoint: str, query: str, limit: int, headers: di
 
 
 async def _read_maps_remote(connect_url: str, query: str, limit: int, *, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    """Remote browser over raw CDP first (works on Vercel); Playwright's driver is the fallback."""
-    from .cdp_maps import read_maps
-
+    """Remote browser over raw CDP first (works on Vercel, waits in line when Kiara's browser is busy);
+    Playwright's driver is the fallback."""
     try:
-        return await read_maps(connect_url, maps_search_url(query), min(limit, HUNTER_MAX_RESULTS),
-                               MAPS_DETAIL_SCRIPT, maps_detail_result, headers=headers)
+        return await _read_kiara_browser(connect_url, query, limit, headers or {})
     except Exception as exc:  # noqa: BLE001 - Playwright remains an independent path
         logger.warning("hunter.maps.raw_cdp_failed %s", _safe_error(exc))
     return await _read_maps_cdp(connect_url, query, limit, headers=headers)
@@ -1596,7 +1594,7 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
     if obscura:
         endpoint, headers = obscura
         try:
-            rows = await _read_kiara_browser(endpoint, query, limit, headers)
+            rows = await _read_maps_remote(endpoint, query, limit, headers=headers)
             if has_verified_details(rows):
                 return await supplement(rows)
             unverified_rows.extend(rows)
