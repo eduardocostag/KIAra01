@@ -8,6 +8,10 @@ import { LaunchBadge } from "@/components/early-access/launch-badge"
 import { ChatWorkspace } from "@/components/chat/chat-workspace"
 import { WelcomeTour } from "@/components/app-shell/welcome-tour"
 import { PageSkeleton } from "@/components/app-shell/page-skeleton"
+import { TodayQueue } from "@/components/app-shell/today-queue"
+import { CompanyWorkspace } from "@/components/app-shell/company-workspace"
+import { TeamWorkspace, PlanWorkspace } from "@/components/app-shell/team-plan"
+import { ResultsPanel } from "@/components/app-shell/results-panel"
 import { AutomationWorkspace } from "@/components/automation/automation-workspace"
 import { HunterClient } from "@/app/(app)/app/(leads-module)/hunter/hunter-client"
 import { previewConversations, previewEntries } from "./leads-fixtures"
@@ -28,6 +32,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const { workspace, view } = await searchParams
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace isAdmin />
+  if (workspace === "fila") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-6xl"><TodayQueue entries={previewEntries} /></div></AppShell>
+  if (workspace === "empresa") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><CompanyWorkspace /></div></AppShell>
+  if (workspace === "equipe") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><TeamWorkspace /></div></AppShell>
+  if (workspace === "plano") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-5xl"><PlanWorkspace /></div></AppShell>
+  if (workspace === "resultados") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-6xl"><ResultsPanel /></div></AppShell>
   if (workspace === "welcome") return <div className="min-h-dvh"><WelcomeTour userId={`preview-${view ?? "x"}`} fullAccess={view !== "client"} /></div>
   if (workspace === "skeleton") return <AppShell previewModule="/app/leads"><PageSkeleton variant={(view as "list" | "board" | "detail" | "inbox" | "cards") ?? "list"} /></AppShell>
   if (workspace === "automation-flow") return <AutomationWorkspace />

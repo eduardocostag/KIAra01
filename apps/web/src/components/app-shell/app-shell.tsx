@@ -18,6 +18,10 @@ import {
   Workflow,
   Sparkles,
   SlidersHorizontal,
+  ListChecks,
+  Building2,
+  Users as Team,
+  Gem,
 } from "lucide-react";
 import { KiaraBrand } from "@/components/brand/kiara-brand";
 import { Button } from "@/components/ui/button";
@@ -48,7 +52,11 @@ const navConfigs = {
   "/app/leads": [
     { href: "/app/leads", label: "Visão geral", icon: House },
     { href: "/app/hunter", label: "Buscar leads", icon: Search },
+    { href: "/app/fila", label: "Fila de hoje", icon: ListChecks },
     { href: "/app/pipeline", label: "Contatos", icon: UsersRound },
+    { href: "/app/empresa", label: "Minha empresa", icon: Building2 },
+    { href: "/app/equipe", label: "Equipe", icon: Team },
+    { href: "/app/plano", label: "Plano", icon: Gem },
   ],
   "/app/whatsapp": [
     { href: "/app/whatsapp", label: "Visão geral", icon: House },
