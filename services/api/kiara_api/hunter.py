@@ -1279,7 +1279,13 @@ def _obscura_connection() -> tuple[str, dict[str, str]] | None:
     """Return a server-side Obscura CDP connection without leaking its secret."""
     endpoint = os.getenv("OBSCURA_CDP_URL", "").strip()
     if not endpoint:
-        return None
+        # Kiara's own Chromium on the always-on Debian server (kiara-maps-browser), behind the gateway:
+        # free and without a minute limit. KIARA_MAPS_BROWSER=off turns it off.
+        from .server_gateway import gateway_configuration
+        base, token = gateway_configuration()
+        if not base or os.getenv("KIARA_MAPS_BROWSER", "").strip().lower() == "off":
+            return None
+        return "wss://" + base.split("://", 1)[1] + "/cdp", {"Authorization": f"Bearer {token}"}
     parsed = urlsplit(endpoint)
     if parsed.scheme not in {"https", "wss", "http", "ws"} or not parsed.hostname or parsed.username or parsed.password:
         logger.warning("hunter.obscura.invalid_endpoint")
@@ -1640,7 +1646,7 @@ async def _read_maps_cdp(connect_url: str, query: str, limit: int, *, headers: d
     from playwright.async_api import async_playwright
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.connect_over_cdp(connect_url, headers=headers, timeout=10_000)
+        browser = await playwright.chromium.connect_over_cdp(connect_url, headers=headers or None, timeout=10_000)
         try:
             context = browser.contexts[0]
             page = context.pages[0]
@@ -1741,7 +1747,11 @@ MAPS_BRAZIL_VIEWPORT = "@-14.235,-51.9253,5z"
 
 
 def maps_search_url(query: str) -> str:
-    """Google Maps search anchored on Brazil (viewport + gl=br), in Portuguese."""
+    """Google Maps search anchored on Brazil (viewport + gl=br), in Portuguese.
+
+    Maps reads "A para B" as directions ("contabilidade para médicos" opened a route to a clinic named
+    Multi Médicos), so the connectors that mean "to" are dropped from the Maps text only."""
+    query = re.sub(r"\s{2,}", " ", re.sub(r"(?i)\b(?:para|pra|p/|ate|até)\b", " ", query)).strip()
     return f"https://www.google.com/maps/search/{quote(query, safe='')}/{MAPS_BRAZIL_VIEWPORT}?hl=pt-BR&gl=br"
 
 

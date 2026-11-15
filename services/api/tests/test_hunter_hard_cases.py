@@ -88,3 +88,24 @@ def test_weak_site_signals_are_verifiable():
     good = ["https://pneus.com.br/a", "https://pneus.com.br/b", "https://wa.me/5553999998888"]
     assert website_opportunity("https://pneus.com.br", modern, good) == (100, [])
     assert [brazilian_mobile(x) for x in ("53999998888", "+55 53 99999-8888", "5332221111")] == [True, True, False]
+
+
+def test_maps_never_reads_para_as_directions():
+    from kiara_api.hunter import maps_search_url
+
+    url = maps_search_url("contabilidade para médicos Belo Horizonte, MG")
+    assert "/maps/search/contabilidade%20m%C3%A9dicos%20Belo%20Horizonte%2C%20MG/" in url
+    assert "/maps/search/personal%20trainer%20idosos/" in maps_search_url("personal trainer pra idosos")
+
+
+def test_maps_browser_defaults_to_kiara_server(monkeypatch):
+    from kiara_api import hunter
+
+    monkeypatch.delenv("OBSCURA_CDP_URL", raising=False)
+    monkeypatch.setenv("KIARA_SERVER_GATEWAY_URL", "https://kiara-debian.example.ts.net")
+    monkeypatch.setenv("KIARA_SERVER_GATEWAY_TOKEN", "gw-token")
+    assert hunter._obscura_connection() == ("wss://kiara-debian.example.ts.net/cdp", {"Authorization": "Bearer gw-token"})
+    monkeypatch.setenv("KIARA_MAPS_BROWSER", "off")
+    assert hunter._obscura_connection() is None
+    monkeypatch.setenv("OBSCURA_CDP_URL", "wss://other.example/cdp")
+    assert hunter._obscura_connection()[0] == "wss://other.example/cdp"

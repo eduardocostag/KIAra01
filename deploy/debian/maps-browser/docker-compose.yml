@@ -1,0 +1,26 @@
+# Installed at /opt/kiara/maps-browser. Headless Chromium for the Hunter's Google Maps reading (free, no minute limit).
+# Listens only on 127.0.0.1:8892; the gateway exposes it as wss://.../cdp behind the gateway token.
+services:
+  maps-browser:
+    build: .
+    image: kiara-maps-browser:1
+    container_name: kiara-maps-browser
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      MAX_SESSIONS: "3"
+    mem_limit: 2g
+    cpus: 2
+    shm_size: 512m
+    read_only: true
+    tmpfs:
+      - /tmp:uid=10002,gid=10002
+      - /home/kiara:uid=10002,gid=10002
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8892/healthz', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
