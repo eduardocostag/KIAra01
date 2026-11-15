@@ -2,7 +2,7 @@
 #
 # - Every route except /healthz requires `Authorization: Bearer $KIARA_GATEWAY_TOKEN`.
 # - The real OmniRoute and OpenWA keys are injected here and never leave the server.
-# - Only the inference API (/v1), the WhatsApp API (/api) and Kokoro speech synthesis pass;
+# - Only the inference API (/v1), the WhatsApp API (/api), Kokoro speech synthesis and video jobs pass;
 #   dashboards, Ollama and Redis do not.
 {
 	admin off
@@ -64,6 +64,24 @@ http://:8088 {
 			}
 			uri strip_prefix /tts
 			reverse_proxy 127.0.0.1:8880 {
+				header_up Host {upstream_hostport}
+				header_up -Authorization
+			}
+		}
+	}
+
+	# Kiara video jobs (kiara-video): create a job, read its status, download the finished MP4. Nothing else.
+	handle /video/* {
+		route {
+			@denied not header Authorization "Bearer {$KIARA_GATEWAY_TOKEN}"
+			respond @denied "unauthorized" 401
+			@blocked expression `!((method('POST') && path('/video/jobs')) || (method('GET') && path_regexp('^/video/jobs/[0-9a-f]{32}(/file)?$')))`
+			respond @blocked "video gateway: operation not allowed" 403
+			request_body {
+				max_size 16KB
+			}
+			uri strip_prefix /video
+			reverse_proxy 127.0.0.1:8891 {
 				header_up Host {upstream_hostport}
 				header_up -Authorization
 			}

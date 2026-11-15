@@ -113,7 +113,14 @@ export function chatServerUrl(value = process.env.NEXT_PUBLIC_KIARA_CHAT_URL): s
 }
 
 /** Downloads a finished video from the local bridge (videos are produced on this computer). */
-export async function fetchVideo(jobId: string): Promise<Blob> {
+export async function fetchVideo(jobId: string, transport: ChatTransport = "local"): Promise<Blob> {
+  if (transport === "cloud") {
+    // Kiara's server keeps the finished clip (at most 3 MB); it arrives as base64 inside JSON.
+    const payload = object(await chatRequest("cloud", "video", { action: "download", job_id: jobId }))
+    if (payload.mime !== "video/mp4" || typeof payload.data_base64 !== "string" || !payload.data_base64) throw new Error("O vídeo não pôde ser baixado.")
+    const bytes = Uint8Array.from(atob(payload.data_base64), (char) => char.charCodeAt(0))
+    return new Blob([bytes], { type: "video/mp4" })
+  }
   const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store" })))
   if (typeof session.access_token !== "string" || !session.access_token) throw new Error("Não foi possível autorizar o acesso ao serviço local.")
   const response = await fetch(`${chatServerUrl()}/api/video`, { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ action: "download", job_id: jobId }), signal: AbortSignal.timeout(300_000) })

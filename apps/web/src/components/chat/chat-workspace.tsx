@@ -52,7 +52,7 @@ const suggestions = [
   { mode: "chat" as const, title: "Organizar prioridades", text: "Ajude a organizar as prioridades da minha operação e sugira próximos passos." },
   { mode: "website" as const, title: "Criar um site", text: "Crie um site institucional responsivo com apresentação, serviços, perguntas frequentes e contato." },
   { mode: "dashboard" as const, title: "Montar um dashboard", text: "Crie um dashboard comercial com indicadores e filtros. Identifique claramente os dados de demonstração." },
-  { mode: "video" as const, title: "Vídeo de apresentação", text: "Crie um vídeo de apresentação da Kiara para Ana e Pedro, mostrando os módulos Leads e WhatsApp, com tom profissional e animado." },
+  { mode: "video" as const, title: "Criar um vídeo curto", text: "Crie um vídeo vertical de 6 segundos de ondas do mar ao pôr do sol, com luz dourada, para o Reels." },
   { mode: "automation" as const, title: "Planejar uma tarefa", text: "Prepare um plano revisável para organizar arquivos e automatizar tarefas recorrentes no computador." },
 ]
 const HISTORY_LIMIT = 30
@@ -144,22 +144,23 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
   async function load() {
     setError("")
-    try { setUrl(URL.createObjectURL(await fetchVideo(job.id))) } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
+    try { setUrl(URL.createObjectURL(await fetchVideo(job.id, transport))) } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
   }
   const name = `kiara-video-${job.id.slice(0, 8)}.mp4`
   return <section className="mt-3 overflow-hidden rounded-2xl border" aria-label="Vídeo da Kiara">
     <div className="flex flex-wrap items-center gap-3 p-3">
       <Video className="size-5 text-primary" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{job.title || "Vídeo de apresentação"}</p>
-        <p className="text-xs text-muted-foreground" role="status">{job.status === "failed" ? job.error : job.status === "done" ? `Pronto${job.duration ? ` · ${Math.floor(job.duration / 60)}min${String(Math.round(job.duration % 60)).padStart(2, "0")}` : ""} · gerado neste computador` : job.message}</p>
+        <p className="truncate text-sm font-medium">{job.title || "Vídeo da Kiara"}</p>
+        <p className="text-xs text-muted-foreground" role="status">{job.status === "failed" ? job.error : job.status === "done" ? `Pronto${job.duration ? ` · ${job.duration < 60 ? `${Math.round(job.duration)}s` : `${Math.floor(job.duration / 60)}min${String(Math.round(job.duration % 60)).padStart(2, "0")}`}` : ""}${transport === "local" ? " · gerado neste computador" : ""}` : job.message}</p>
       </div>
       {job.status === "done" && !url ? <Button type="button" size="sm" variant="outline" onClick={() => void load()}><Video aria-hidden="true" />Assistir</Button> : null}
       {pollPaused && job.status === "running" ? <Button type="button" size="sm" variant="outline" onClick={() => { setPollPaused(false); setError(""); setPollAttempt((attempt) => attempt + 1) }}><RefreshCw aria-hidden="true" />Retomar acompanhamento</Button> : null}
       {url ? <Button type="button" size="sm" variant="outline" asChild><a href={url} download={name}><Download aria-hidden="true" />Baixar</a></Button> : null}
     </div>
     {job.status === "running" ? <div className="h-1 bg-muted"><div className="h-full bg-primary transition-[width] duration-700" style={{ width: `${Math.max(3, job.progress * 100)}%` }} /></div> : null}
-    {url ? <video className="aspect-video w-full border-t bg-black" src={url} controls autoPlay playsInline /> : null}
+    {url ? <video className="max-h-[70vh] w-full border-t bg-black object-contain" src={url} controls autoPlay loop playsInline /> : null}
+    {job.status === "done" && job.warnings.length ? <p className="border-t px-3 py-2 text-xs text-muted-foreground">{job.warnings[0]}</p> : null}
     {error ? <p className="border-t px-3 py-2 text-xs text-destructive">{error}</p> : null}
   </section>
 }

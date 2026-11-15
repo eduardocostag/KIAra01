@@ -27,8 +27,8 @@ IMAGE_STYLE = (
     "para ajustar uma imagem que você já criou nesta conversa), escreva uma frase curta e natural e, em seguida, "
     "uma linha exatamente assim: [[IMAGEM: descrição completa e visual da imagem, com assunto, estilo, cores, "
     "enquadramento e luz]]. Ao ajustar uma imagem anterior, descreva a imagem inteira de novo com a mudança pedida. "
-    "Nunca diga que não consegue gerar imagens e nunca invente links. Vídeos você ainda não gera: nesse caso, diga isso "
-    "em uma frase e ajude de outra forma. Só use a marcação quando a pessoa realmente quiser uma imagem."
+    "Nunca diga que não consegue gerar imagens e nunca invente links. Só use a marcação quando a pessoa realmente "
+    "quiser uma imagem (para vídeo, use a marcação de vídeo quando ela existir)."
 )
 
 

@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from . import chat_video
 from .chat_image import IMAGE_STYLE, MARKER, generate_image, image_available
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
@@ -116,6 +117,26 @@ class ChatRequest(BaseModel):
 class ImageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=3, max_length=3000)
+
+
+class VideoRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["start", "status", "download"] = "start"
+    prompt: str = Field(default="", max_length=3000)
+    job_id: str = Field(default="", max_length=32)
+
+    @model_validator(mode="after")
+    def complete(self):
+        if self.action == "start" and len(self.prompt.strip()) < 3:
+            raise ValueError("Descreva o vídeo")
+        if self.action != "start" and not self.job_id:
+            raise ValueError("Informe o vídeo")
+        return self
+
+
+def _title(text: str) -> str:
+    words = re.sub(r"\s+", " ", text).strip()
+    return (words[:57] + "…") if len(words) > 60 else words or "Vídeo da Kiara"
 
 
 class SpeechRequest(BaseModel):
@@ -302,9 +323,11 @@ def create_chat_router(provider_factory=None, image_generator=None) -> APIRouter
         images = available and image_available()
         capabilities.append({"id": "image", "available": images,
                              "detail": "Imagens pelo servidor da Kiara." if images else "Gerador de imagem não configurado."})
+        videos = available and chat_video.video_available()
+        capabilities.append({"id": "video", "available": videos,
+                             "detail": "Vídeos curtos pelo servidor da Kiara." if videos else "Gerador de vídeo não configurado."})
         capabilities += [{"id": kind, "available": False, "detail": detail} for kind, detail in (
             ("transcribe", "Exige transcrição no executor local."),
-            ("video", "Gerador de vídeo real ainda não configurado."),
             ("website", "Geração de artefatos disponível pela conexão local."),
             ("dashboard", "Geração de artefatos disponível pela conexão local."),
             ("automation", "Ações exigem executor local e autorização."),
@@ -328,8 +351,11 @@ def create_chat_router(provider_factory=None, image_generator=None) -> APIRouter
         system += "\n" + current_moment()
         if body.voice:
             system += "\n" + VOICE_STYLE
-        elif image_available():
-            system += "\n" + IMAGE_STYLE
+        else:
+            if image_available():
+                system += "\n" + IMAGE_STYLE
+            if chat_video.video_available():
+                system += "\n" + chat_video.VIDEO_STYLE
         conversation = [{"role": "system", "content": system}, *(item.model_dump() for item in body.messages)]
         text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
         if not text:
@@ -344,6 +370,16 @@ def create_chat_router(provider_factory=None, image_generator=None) -> APIRouter
                 text = text or "Aqui está a imagem."
             else:
                 text = (text + "\n\n" if text else "") + "Não consegui criar a imagem agora. Tente de novo em instantes."
+        clip = chat_video.MARKER.search(text)
+        text = chat_video.MARKER.sub("", text).strip()
+        if clip and not body.voice and "image" not in result:
+            portrait, seconds = chat_video.parse_options(clip.group("options"))
+            try:
+                result["video"] = await chat_video.start_video(clip.group("prompt"), portrait=portrait, seconds=seconds,
+                                                               title=_title(body.messages[-1].content))
+                text = text or "Estou preparando o vídeo. Leva cerca de um minuto."
+            except Exception:  # noqa: BLE001 - the video service must never break the chat
+                text = (text + "\n\n" if text else "") + "Não consegui começar o vídeo agora. Tente de novo em instantes."
         text = text or "Pode repetir o pedido com um pouco mais de detalhe?"
         if not _is_system_admin(context):
             return {"text": text, "provider": "kiara", "model": "", **result}
@@ -360,6 +396,30 @@ def create_chat_router(provider_factory=None, image_generator=None) -> APIRouter
         if not payload:
             raise ApiError(502, "image_unavailable", "Não consegui criar a imagem agora. Tente de novo em instantes.")
         return {"text": "Pronto! Aqui está a imagem.", "provider": "kiara", "model": "", "image": payload}
+
+    @router.post("/video")
+    async def video(body: VideoRequest, response: Response,
+                    context: Annotated[RequestContext, Depends(authenticated_context)]):
+        _authorize(context)
+        response.headers["Cache-Control"] = "no-store, private"
+        if not (_configuration()[0] and chat_video.video_available()):
+            raise ApiError(503, "video_not_configured", "A criação de vídeos não está disponível neste servidor.")
+        try:
+            if body.action == "status":
+                return {"video": await chat_video.video_status(body.job_id)}
+            if body.action == "download":
+                data = await chat_video.video_file(body.job_id)
+                return {"mime": "video/mp4", "data_base64": base64.b64encode(data).decode("ascii")}
+            plan, _model = await complete_conversation([{"role": "system", "content": chat_video.PLAN_PROMPT},
+                                                       {"role": "user", "content": body.prompt}], fast=True,
+                                                      provider_factory=provider_factory, max_tokens=800)
+            prompt, portrait, seconds, title = chat_video.parse_plan(plan, body.prompt)
+            job = await chat_video.start_video(prompt, portrait=portrait, seconds=seconds, title=title or _title(body.prompt))
+            return {"text": "Estou preparando o vídeo. Leva cerca de um minuto.", "provider": "kiara", "model": "", "video": job}
+        except ValueError:
+            raise ApiError(422, "invalid_video_job", "Vídeo não encontrado.") from None
+        except Exception:  # noqa: BLE001 - no service details to the browser
+            raise ApiError(502, "video_unavailable", "O serviço de vídeo não respondeu. Tente de novo em instantes.") from None
 
     @router.post("/speech")
     async def speech(body: SpeechRequest, response: Response,

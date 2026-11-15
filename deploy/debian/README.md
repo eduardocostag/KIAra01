@@ -122,3 +122,24 @@ ssh kiara-debian 'sudo install -m 644 /tmp/Caddyfile /opt/kiara/gateway/ && sudo
 ```
 
 Trocar o token: gere outro em `.env` (`openssl rand -hex 32`), recrie o contêiner e atualize a Vercel.
+
+## Vídeos da Kiara (kiara-video)
+
+O servidor não tem GPU, então o contêiner `kiara-video` (`/opt/kiara/video`, só em `127.0.0.1:8891`) apenas organiza a fila
+e chama geradores externos, do melhor para o mais simples. Quando um falha ou fica sem cota, o próximo assume:
+
+1. **Pollinations** (pago, só com `POLLINATIONS_KEY`; modelo em `POLLINATIONS_MODEL`): Veo, Seedance, Kling, Wan.
+2. **Wan 2.2** num Space ZeroGPU do Hugging Face (só com `HF_TOKEN`): anima a imagem criada pela Kiara.
+3. **LTX-Video** (Space `Lightricks/ltx-video-distilled`): anima a imagem da Kiara ou gera direto do texto. Funciona sem
+   conta, mas a cota anônima do Hugging Face é pequena (por IP, por dia).
+4. **Sempre disponível:** a imagem da Kiara com movimento de câmera, feita com ffmpeg aqui mesmo.
+
+O gateway expõe só `POST /video/jobs`, `GET /video/jobs/{id}` e `GET /video/jobs/{id}/file`, com o token do gateway.
+Os vídeos saem em H.264 de até 3 MB e são apagados depois de 72 h. Segredos em `/opt/kiara/video/.env` (root, 0600).
+
+Para aumentar a cota gratuita, crie um token de leitura em huggingface.co/settings/tokens e, no servidor:
+
+```sh
+sudo nano /opt/kiara/video/.env          # preencha HF_TOKEN=...
+sudo sh -c 'cd /opt/kiara/video && docker compose up -d'
+```
