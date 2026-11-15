@@ -1903,8 +1903,19 @@ def _own_host(url: Any) -> str | None:
     return host if host and not any(host == shared or host.endswith("." + shared) for shared in _SHARED_HOSTS) else None
 
 
+# Words that describe the kind of business, not which one: "Clínica Sorriso" and "Clínica Dente de Leite"
+# share "clinica" but are different companies, even when a shared front desk gives them the same phone.
+_GENERIC_NAME_WORDS = frozenset({
+    "clinica", "clinicas", "centro", "studio", "estudio", "espaco", "instituto", "consultorio", "escritorio", "loja",
+    "lojas", "salao", "academia", "odontologia", "odontologica", "medica", "medico", "estetica", "advocacia",
+    "advogados", "associados", "grupo", "servicos", "comercio", "empresa", "oficina", "restaurante", "barbearia",
+    "petshop", "veterinaria", "hospital", "farmacia", "contabilidade", "imobiliaria", "escola", "sociedade", "ltda",
+})
+
+
 def _title_tokens(row: dict[str, Any]) -> set[str]:
-    return {token for token in folded(str(row.get("title") or "")).split() if len(token) >= 4}
+    return {token for token in folded(str(row.get("title") or "")).split()
+            if len(token) >= 4 and token.strip(".,;:|-–()") not in _GENERIC_NAME_WORDS}
 
 
 def combine_same_business(candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
@@ -2060,7 +2071,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
         if "google_maps" not in search["sources"]:
             warnings.append("Selecione Google Maps para verificar o filtro sem site. Outras fontes sem evidência foram excluídas.")
     if options["contact_filter"] == "whatsapp":
-        warnings.append("WhatsApp exige um link público explícito. Um número de celular isolado não confirma WhatsApp.")
+        warnings.append("WhatsApp confirmado exige um link público. Empresas só com celular aparecem como Provável: confirme antes de chamar.")
     if options["email_filter"] == "without_email":
         warnings.append("Sem e-mail significa que nenhum endereço foi encontrado nas fontes e páginas inspecionadas; não prova ausência em toda a internet.")
     if options["website_quality_filter"] == "opportunity":

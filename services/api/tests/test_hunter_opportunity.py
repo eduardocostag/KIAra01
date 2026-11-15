@@ -23,13 +23,13 @@ def test_website_opportunity_uses_observable_signals() -> None:
 def test_missing_email_requires_inspection_and_rejects_observed_email() -> None:
     search = {"query": "clínicas sem email", "research_mode": "broad", "website_filter": "any", "contact_filter": "any"}
     rows = [
-        {"source": "web", "title": "Sem email", "url": "https://one.example", "public_data": {
+        {"source": "web", "summary": "Clínica médica", "title": "Sem email", "url": "https://one.example", "public_data": {
             "enrichment": "completed", "phone": "+5511999990000", "address": "São Paulo", "address_evidence": "verified_public_page",
         }},
-        {"source": "web", "title": "Com email", "url": "https://two.example", "public_data": {
+        {"source": "web", "summary": "Clínica médica", "title": "Com email", "url": "https://two.example", "public_data": {
             "enrichment": "completed", "phone": "+5511999990001", "address": "São Paulo", "address_evidence": "verified_public_page", "email": "oi@two.example",
         }},
-        {"source": "web", "title": "Não inspecionado", "url": "https://three.example",
+        {"source": "web", "summary": "Clínica médica", "title": "Não inspecionado", "url": "https://three.example",
          "public_data": {"phone": "+5511999990002", "address": "São Paulo", "address_evidence": "verified_public_page"}},
     ]
     accepted, counts = filter_results(rows, search)

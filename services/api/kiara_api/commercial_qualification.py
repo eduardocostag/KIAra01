@@ -12,12 +12,15 @@ def qualify_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
     text = unicodedata.normalize("NFKD", " ".join(incoming).casefold())
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = re.sub(r'"[^"\n]*"|“[^”\n]*”', "", text)
+    # Courtesy phrases with "sem"/"não" are agreement, not negation ("sem problema, pode mandar o orçamento").
+    text = re.sub(r"\b(?:sem (?:problemas?|duvidas?|compromisso)|nao tem problema|nao ha problema)\b", " ", text)
     reasons = []
     score = 10 if incoming else 0
     signals = [
         (r"\b(orcamento|preco|valor|quanto custa|proposta)\b", 25, "Solicitou preço ou proposta"),
         (r"\b(quero contratar|quero comprar|fechar|contratar|comprar)\b", 35, "Expressou intenção de compra"),
-        (r"\b(hoje|amanha|urgente|esta semana|agendar|reuniao)\b", 20, "Indicou prazo ou próximo compromisso"),
+        (r"\b(hoje|amanha|urgente|esta semana|essa semana|semana que vem|proxima semana|o quanto antes|o mais rapido|"
+         r"agendar|marcar|reuniao)\b", 20, "Indicou prazo ou próximo compromisso"),
         (r"\b(interesse|interessado|preciso|necessito|gostaria)\b", 15, "Descreveu interesse ou necessidade"),
     ]
     for pattern, points, reason in signals:
@@ -26,7 +29,9 @@ def qualify_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
         if positive:
             score += points
             reasons.append(reason)
-    optout = bool(re.search(r"\b(nao tenho interesse|sem interesse|pare de|nao me envie|remova meu|sair)\b", text))
+    # "sair" alone is everyday speech ("vou sair do trabalho"); only leaving the list is an opt-out.
+    optout = bool(re.search(r"\b(nao tenho interesse|sem interesse|pare de|nao me envie|nao quero (?:mais )?receber|"
+                            r"remova meu|me (?:tira|tire|remova|exclua) d[ae]|sair da (?:lista|sua lista)|descadastr\w*)\b", text))
     handoff = bool(re.search(r"\b(atendente|falar com humano|pessoa de verdade|falar com uma pessoa)\b", text))
     latest = unicodedata.normalize("NFKD", incoming[-1].casefold()) if incoming else ""
     latest = "".join(c for c in latest if not unicodedata.combining(c))

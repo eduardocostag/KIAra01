@@ -70,7 +70,23 @@ SYNONYMS: tuple[tuple[str, ...], ...] = (
     ("transportadora", "transporte", "logistica", "frete"),
     ("seguradora", "corretora de seguros", "seguros"),
     ("autoescola", "auto escola", "centro de formacao de condutores", "cfc"),
+    ("software", "erp", "sistema de gestao", "sistemas de gestao", "software house", "desenvolvimento de software",
+     "desenvolvimento de sistemas"),
 )
+
+# Words that pick ONE kind inside a family: a "restaurante japonês" search must not accept a churrascaria
+# (a restaurant) and must accept a temakeria (no "restaurante" in the name). When the search names a type,
+# the business must show that type.
+TYPES: dict[str, tuple[str, ...]] = {
+    "japones": ("japones", "japonesa", "sushi", "temaki", "temakeria", "sashimi", "nipo", "japan"),
+    "italiano": ("italiano", "italiana", "cantina", "trattoria", "massas", "pasta"),
+    "chines": ("chines", "chinesa", "china", "yakisoba"),
+    "arabe": ("arabe", "esfiha", "esfirra", "sfiha", "libanes", "libanesa"),
+    "mexicano": ("mexicano", "mexicana", "tacos", "burrito", "tex mex"),
+    "vegano": ("vegano", "vegana", "vegetariano", "vegetariana", "plant based"),
+    "crossfit": ("crossfit", "cross fit", "cross training"),
+    "pilates": ("pilates",),
+}
 
 
 def fold(value: str) -> str:
@@ -135,6 +151,10 @@ def matches_niche(query: str, observed_text: str) -> bool:
     observed = words(observed_text)
     if not observed:
         return False
+    query_words = set(words(query))
+    named_types = [options for options in TYPES.values() if any(word in query_words for word in options if " " not in word)]
+    if named_types:
+        return all(any(_phrase_present(option, observed) for option in options) for options in named_types)
     for term in niche_terms(query)[1:]:
         if _phrase_present(term, observed):
             return True

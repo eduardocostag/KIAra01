@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import re
 import unicodedata
+from datetime import date
 from typing import Any
 from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
@@ -172,6 +173,9 @@ def whatsapp_link(value: Any) -> str | None:
     return f"https://wa.me/{digits}" if re.fullmatch(r"[1-9]\d{9,14}", digits) else None
 
 
+_FILE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "ico", "bmp", "css", "js", "pdf", "mp4", "woff", "woff2"})
+
+
 def extract_contacts(text: str, links: list[str] | None = None) -> dict[str, Any]:
     links = [link for link in links or [] if isinstance(link, str)]
     candidates = links + re.findall(r"https?://[^\s<>\]\)\"']+", html.unescape(text))
@@ -182,8 +186,11 @@ def extract_contacts(text: str, links: list[str] | None = None) -> dict[str, Any
     tel = tel or (phone_number(match.group(1)) if match else None)
     if not tel and whatsapp:
         tel = "+" + urlsplit(whatsapp).path.strip("/")
-    email_match = re.search(r"(?<![\w.+-])([\w.+-]{1,64}@[\w.-]+\.[a-zA-Z]{2,24})(?![\w.-])", html.unescape(text))
-    email = email_match.group(1).lower() if email_match else None
+    # A sentence may end right after the address ("contato@clinica.com.br."); retina image names
+    # ("logo@2x.png") look like addresses but end in a file extension.
+    email = next((match.group(1).lower() for match in re.finditer(
+        r"(?<![\w.+-])([\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)*\.[a-zA-Z]{2,24})(?![\w-])(?!\.[\w-])", html.unescape(text))
+        if match.group(1).rsplit(".", 1)[-1].lower() not in _FILE_EXTENSIONS), None)
     result = {"phone": tel, "whatsapp_url": whatsapp}
     if email:
         result["email"] = email
@@ -249,7 +256,31 @@ def website_opportunity(url: str, content: str, links: list[str]) -> tuple[int, 
     internal = [link for link in links if safe_public_url(link) and urlsplit(link).hostname == urlsplit(url).hostname]
     if len(internal) < 2:
         score -= 20; signals.append("Estrutura de navegação pública limitada")
+    host = (urlsplit(url).hostname or "").lower()
+    builder = next((domain for domain in _FREE_BUILDERS if host == domain or host.endswith("." + domain)), None)
+    if builder:
+        score -= 30; signals.append(f"Site em subdomínio gratuito ({builder})")
+    years = [int(year) for year in re.findall(r"(?:©|&copy;|\(c\)|copyright)\s*(?:\d{4}\s*[-–]\s*)?((?:19|20)\d{2})", content, re.IGNORECASE)]
+    if years and max(years) <= date.today().year - 3:
+        score -= 25; signals.append(f"Rodapé com ano {max(years)}: site possivelmente desatualizado")
+    if not contacts.get("whatsapp_url"):
+        score -= 10; signals.append("Sem botão ou link de WhatsApp no site")
     return max(0, score), signals
+
+
+# Free site builders: a business site on their subdomain is a verifiable digital gap.
+_FREE_BUILDERS = ("wixsite.com", "negocio.site", "business.site", "blogspot.com", "wordpress.com", "webnode.page",
+                  "webnode.com.br", "site123.me", "ueniweb.com", "godaddysites.com", "weebly.com", "jimdosite.com",
+                  "sites.google.com", "carrd.co", "squarespace.com", "netlify.app", "vercel.app")
+
+
+def brazilian_mobile(value: Any) -> bool:
+    """A Brazilian mobile number (DDD + 9 digits starting with 9): WhatsApp is likely, not proven."""
+    digits = re.sub(r"\D", "", str(value or ""))
+    if digits.startswith("55") and len(digits) == 13:
+        digits = digits[2:]
+    digits = digits.lstrip("0")
+    return len(digits) == 11 and digits[2] == "9" and digits[:2] not in {"00", "10"}
 
 
 _PROFILE_DOMAINS = {
@@ -507,12 +538,16 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
         # business listed there. Do not import its footer phone as a prospect.
         directory_hosts = {"doctoralia.com.br", "locaisdobrasil.com.br", "maisnobairro.com.br",
                            "dentmap.com.br", "gyms1.com", "telelistas.net", "guiamais.com.br",
-                           "apontador.com.br", "solutudo.com.br"}
+                           "apontador.com.br", "solutudo.com.br", "cylex.com.br", "oggo.com.br", "cidades.io",
+                           "dembli.com", "autos1000.com", "infoisinfo-br.com", "exa.ai", "econodata.com.br",
+                           "cnpj.biz", "casadosdados.com.br", "empresaqui.com.br", "guiamais.com", "brasilnaweb.com.br"}
         return bool(
             is_profile_url(url)
             or any(host == domain or host.endswith("." + domain) for domain in directory_hosts)
             or host in {"drive.google.com", "docs.google.com"}
             or re.search(r"\b(?:dicionario|significado|sinonimos|enciclopedia)\b", title)
+            # Directory listings: "Dentistas perto de você", "Encontre um advogado", "Guia de restaurantes".
+            or re.search(r"\b(?:perto de (?:voce|mim)|encontre (?:o|a|os|as|um|uma|seu|sua)\b|lista de|guia de|catalogo de)", title)
             or re.search(r"/(?:equipe|equipe-tecnica|team|profissionais)(?:/|$)", path)
             or re.search(r"/(?:blog|artigos?|noticias?|news|posts?|search|maps/search)(?:/|$)", path)
             or re.match(
@@ -527,8 +562,45 @@ def is_editorial_or_post(item: dict[str, Any]) -> bool:
     return False
 
 
+def specialty_terms(search: dict[str, Any]) -> list[str]:
+    """What the search asks for beyond the kind of business: "previdenciário" in "advogado previdenciário",
+    "implante" in "dentista implante dentário", "24h" in "clínica veterinária 24 horas"."""
+    from .niche_match import SYNONYMS, STOPWORDS, TYPES, _phrase_present, words
+
+    query_words = words(research_options(search)["provider_query"])
+    family: set[str] = set()
+    for group in SYNONYMS:
+        if any(_phrase_present(member, query_words) for member in group):
+            family.update(word for member in group for word in words(member))
+    family.update(word for options in TYPES.values() for option in options for word in words(option))
+    terms = [word for word in query_words if len(word) >= 4 and word not in STOPWORDS and word not in family
+             and word not in {"horas", "hora", "clinica", "clinicas", "loja", "lojas", "empresa", "empresas"}]
+    if "24" in query_words or "24h" in query_words:
+        terms.append("24h")
+    return list(dict.fromkeys(terms))
+
+
+def specialty_match(item: dict[str, Any], terms: list[str]) -> bool:
+    if not terms:
+        return False
+    data = item.get("public_data") or {}
+    text = " ".join(str(value or "") for value in (item.get("title"), item.get("summary"), data.get("category"),
+                                                   data.get("profile_bio")))
+    observed = re.findall(r"[a-z0-9]+", folded(text))
+    for term in terms:
+        if term == "24h":
+            if re.search(r"\b24\s*h|\b24\s*horas", folded(text)):
+                return True
+            continue
+        root = term[:max(5, len(term) - 3)]
+        if any(word.startswith(root) or len(word) >= 4 and root.startswith(word) for word in observed):
+            return True
+    return False
+
+
 def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, int]]:
     options = research_options(search)
+    specialty = specialty_terms(search)
     accepted: list[dict[str, Any]] = []
     counts = {"checked": len(items), "accepted": 0, "excluded": 0, "unknown": 0,
               "incomplete": 0, "source_failures": 0, "confirmed": 0, "probable": 0, "to_review": 0}
@@ -609,7 +681,12 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
             rejected = data["website_status"] == "not_listed"
             unknown = data["website_status"] == "unknown"
         if contact == "whatsapp" and not data["whatsapp_url"]:
-            unknown = True
+            # A mobile number usually has WhatsApp, but only a public link proves it: shown as Provável.
+            if brazilian_mobile(data.get("phone")):
+                tier = "probable" if tier == "confirmed" else tier
+                data["whatsapp_probable"] = True
+            else:
+                unknown = True
         if contact == "phone" and not data["phone"]:
             unknown = True
         if options["email_filter"] == "without_email":
@@ -640,11 +717,12 @@ def filter_results(items: list[dict[str, Any]], search: dict[str, Any]) -> tuple
         if options["email_filter"] == "without_email": reasons.append("E-mail não encontrado nas fontes inspecionadas")
         if options["website_quality_filter"] == "opportunity": reasons.extend(data.get("website_quality_signals") or [])
         if contact == "phone": reasons.append("Telefone público confirmado")
-        if contact == "whatsapp": reasons.append("WhatsApp público confirmado")
+        if contact == "whatsapp":
+            reasons.append("Celular informado; WhatsApp ainda não confirmado" if data.get("whatsapp_probable") else "WhatsApp público confirmado")
         data["match_reasons"] = list(dict.fromkeys(reasons))
         data["research_objective"] = options["objective"]
         data["verification_version"] = 1
-        apply_lead_tier(item, tier)
+        apply_lead_tier(item, tier, specialty)
         counts[tier] += 1
         counts["incomplete"] += int(tier != "confirmed")
         (accepted if tier == "confirmed" else partial).append(item)
@@ -692,16 +770,22 @@ def _verified_elsewhere(item: dict[str, Any], search: dict[str, Any]) -> bool:
     return bool(verified and search.get("location") and not address_matches_location(address, search.get("location")))
 
 
-def apply_lead_tier(item: dict[str, Any], tier: str) -> None:
+def apply_lead_tier(item: dict[str, Any], tier: str, specialty: list[str] | None = None) -> None:
     """Confidence tier plus a hot/warm/cold temperature with its reasons, for the result card."""
     from .company_data import lead_fit
 
     data = item["public_data"]
     fit = lead_fit({key: data.get(key) for key in ("phone", "email", "whatsapp_url", "website_status",
                                                    "website_quality_score", "rating", "user_rating_count")})
-    score = max(0, min(100, fit["score"] + 20 - TIER_PENALTY[tier]))
+    # The specialty the user asked for, seen in the business's own name or description, matters more
+    # to a salesperson than another review: "Advocacia Previdenciária" beats a generic law firm.
+    focused = specialty_match(item, specialty or [])
+    score = max(0, min(100, fit["score"] + 20 - TIER_PENALTY[tier] + (25 if focused else 0)))
     temperature = "hot" if score >= 55 else "warm" if score >= 30 else "cold"
     reasons = [reason["text"] for reason in fit["reasons"] if reason["points"] > 0][:3]
+    if focused:
+        reasons.insert(0, "Especialidade pedida aparece no nome ou na descrição")
+    data["specialty_match"] = focused
     if tier == "probable":
         reasons.append("Endereço ou critério ainda não confirmado")
     elif tier == "to_review":

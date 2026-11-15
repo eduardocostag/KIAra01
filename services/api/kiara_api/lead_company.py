@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,9 +36,26 @@ def cnpj_from_website(url: str) -> str | None:
     """First valid CNPJ printed on the lead's own website (usually in the footer)."""
     from .hunter import _fetch_public_page
 
-    text, _links, _mode = _fetch_public_page(url)
+    text, links, _mode = _fetch_public_page(url)
     found = find_cnpjs(text)
-    return found[0] if found else None
+    if found:
+        return found[0]
+    # Most small-business sites print the CNPJ only on the contact, about or privacy page.
+    host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+    pages = [link for link in dict.fromkeys(links)
+             if (urlsplit(link).hostname or "").lower().removeprefix("www.") == host
+             and _CNPJ_PAGES.search(urlsplit(link).path.lower())]
+    for page in pages[:3]:
+        try:
+            found = find_cnpjs(_fetch_public_page(page)[0])
+        except Exception:  # noqa: BLE001 - one broken page does not stop the others
+            continue
+        if found:
+            return found[0]
+    return None
+
+
+_CNPJ_PAGES = re.compile(r"contato|contact|fale-conosco|sobre|quem-somos|empresa|institucional|privacidade|privacy|termos|politica")
 
 
 class LeadCompanyRepository:
@@ -86,7 +105,7 @@ class LeadCompanyRepository:
             if not isinstance(website, str) or not website:
                 raise ApiError(422, "cnpj_required", "Este lead não tem site para procurar o CNPJ. Informe o CNPJ manualmente.")
             try:
-                digits = await asyncio.wait_for(asyncio.to_thread(self._discover, website), timeout=25)
+                digits = await asyncio.wait_for(asyncio.to_thread(self._discover, website), timeout=45)
             except Exception:  # noqa: BLE001 - external site failures are reported without detail
                 digits = None
             if not digits:

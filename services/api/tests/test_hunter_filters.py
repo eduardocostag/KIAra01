@@ -264,7 +264,10 @@ def test_exact_reported_query_excludes_own_website_and_requires_public_whatsapp(
     assert kept[0]["public_data"]["criterion_status"] == "verified"
     assert kept[0]["public_data"]["whatsapp_url"] == "https://wa.me/5511912345678"
     assert kept[0]["public_data"]["website_status"] == "not_listed"
-    assert {key: stats[key] for key in ("checked", "confirmed", "unknown")} == {"checked": 5, "confirmed": 1, "unknown": 2}
+    # The phone-only mobile is kept as Provável (WhatsApp likely, not proven) instead of being discarded.
+    assert {key: stats[key] for key in ("checked", "confirmed", "unknown")} == {"checked": 5, "confirmed": 1, "unknown": 1}
+    probable = [item for item in filter_results(items, search(contact_filter="whatsapp"))[0] if item["title"] == "no-site-phone-only"]
+    assert probable and probable[0]["public_data"]["lead_tier"] == "probable" and probable[0]["public_data"]["whatsapp_probable"]
 
 
 def test_required_quality_gate_overfetches_before_applying_the_result_limit(monkeypatch):
@@ -431,7 +434,8 @@ def test_golden_constraint_judgments_improve_precision_without_losing_eligible_c
         for candidate in candidates:
             candidate["summary"] = request["query"]
         kept, _ = filter_results(deepcopy(candidates), request)
-        assert all(item["public_data"]["lead_tier"] == "to_review" for item in kept if item["title"] not in labels)
+        assert all(item["public_data"]["lead_tier"] == "to_review" or item["public_data"].get("whatsapp_probable")
+                   and item["public_data"]["lead_tier"] == "probable" for item in kept if item["title"] not in labels)
         kept = [item for item in kept if item["public_data"]["lead_tier"] == "confirmed"]
         titles = {item["title"] for item in kept}
         assert titles == labels
