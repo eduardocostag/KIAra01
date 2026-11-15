@@ -146,3 +146,13 @@ def test_page_text_drops_scripts_and_keeps_title():
     page = chat_links.page_text("<html><head><title>Loja &amp; Cia</title><script>var x=1</script></head><body><nav>Menu</nav>"
                                 "<p>Entregamos em toda a região metropolitana de Porto Alegre.</p><style>p{}</style></body></html>")
     assert page["title"] == "Loja & Cia" and "var x" not in page["text"] and "região metropolitana" in page["text"]
+
+
+def test_retried_question_brings_back_its_kept_text_and_photo(monkeypatch):
+    api, seen = build(monkeypatch, {"claude/claude-sonnet-5-5": ["De novo: R$ 18.000."]})
+    jpeg = _b64(b"\xff\xd8\xff\xe0" + b"1" * 50)
+    got = events(api, {"messages": [{"role": "user", "content": "Quanto custa?", "file_context": "[proposta.docx, documento Word]\nValor R$ 18.000",
+                                     "attachments": [{"name": "f.jpg", "mime": "image/jpeg", "data_base64": jpeg}]}]})
+    last = seen["conversations"][-1][1][-1]["content"]
+    assert "Valor R$ 18.000" in last[0]["text"] and last[1]["image_url"]["url"].endswith(jpeg)
+    assert got[-1]["file_context"].startswith("[proposta.docx")

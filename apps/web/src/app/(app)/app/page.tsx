@@ -2,13 +2,15 @@ import Link from "next/link";
 import { ArrowRight, CheckCheck, Inbox, MessageCircle, Search, Settings2, ShieldCheck, Workflow } from "lucide-react";
 import { OrbitScene } from "@/components/brand/orbit-scene";
 import { LaunchBadge } from "@/components/early-access/launch-badge";
+import { WelcomeTour, WelcomeTourLink } from "@/components/app-shell/welcome-tour";
 import { kiaraApi } from "@/lib/api/server-client";
 import { requireWorkspace } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export default async function ModuleSelectorPage() {
   // The layout already enforces sign-in. WhatsApp, Chat and Automation are early access (administrator only).
-  const isSystemAdmin = await requireWorkspace().then((workspace) => workspace.isSystemAdmin).catch(() => false);
+  const workspace = await requireWorkspace().catch(() => null);
+  const isSystemAdmin = workspace?.isSystemAdmin ?? false;
   const modules = [
     { href: "/app/leads", label: "KIARA Leads", description: "Pesquisa, CRM e Pipeline.", icon: Search, operational: true },
     { href: "/app/whatsapp", label: "KIARA WhatsApp", description: "Conexão, análise e automação.", icon: MessageCircle, operational: isSystemAdmin },
@@ -42,7 +44,8 @@ export default async function ModuleSelectorPage() {
         })}
       </nav>
       <div className="relative z-10 w-full max-w-5xl text-center">
-        <h1 className="fx-rise kiara-gradient-text mb-12 text-4xl font-bold tracking-tight">Selecione o módulo de operação</h1>
+        <h1 className="fx-rise kiara-gradient-text mb-3 text-4xl font-bold tracking-tight">Selecione o módulo de operação</h1>
+        <p className="fx-rise mb-9 text-sm text-muted-foreground">Primeira vez aqui? <WelcomeTourLink className="text-primary underline-offset-4 hover:underline" /></p>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {modules.map(({ href, label, description, icon: Icon, operational }, index) => (
             <Link key={href} href={href} data-tilt="12" style={{ "--i": index + 1 } as React.CSSProperties} className={cn(
@@ -64,6 +67,7 @@ export default async function ModuleSelectorPage() {
           ))}
         </div>
       </div>
+      {workspace ? <WelcomeTour userId={workspace.userId} fullAccess={isSystemAdmin} /> : null}
     </div>
   );
 }

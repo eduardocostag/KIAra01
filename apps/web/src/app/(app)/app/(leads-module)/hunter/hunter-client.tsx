@@ -76,6 +76,15 @@ export function HunterClient() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
   useEffect(() => {
+    // A ready example (?q=…&local=…), e.g. from the welcome tour, fills the form; the person still presses Buscar.
+    const params = new URLSearchParams(window.location.search)
+    const example = params.get("q")?.slice(0, 300)
+    if (!example) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuery(example); setLocation(params.get("local")?.slice(0, 160) ?? "")
+    document.getElementById("hunter-query")?.focus()
+  }, [])
+  useEffect(() => {
     // A search left running (closed tab, reload) is resumed when the page opens again.
     const running = jobs.find((job) => job.status === "running")
     if (!running || inFlight.current || loading) return

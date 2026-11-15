@@ -18,18 +18,52 @@ const temperatureStyles = {
   cold: { label: "Frio", icon: Snowflake, className: "bg-sky-400/15 text-sky-300" },
 } as const
 
-/** Confidence tier and temperature computed by the API; reasons appear on hover and to screen readers. */
-function LeadBadges({ data }: { data: HunterResult["public_data"] }) {
+/** Confidence tier computed by the API. */
+function TierBadge({ data }: { data: HunterResult["public_data"] }) {
   const tier = data?.lead_tier ? tierStyles[data.lead_tier] : null
-  const temperature = data?.temperature ? temperatureStyles[data.temperature] : null
-  if (!tier && !temperature) return null
-  const reasons = (data?.temperature_reasons ?? []).join(" · ")
-  const Icon = temperature?.icon
-  return <span className="inline-flex flex-wrap items-center gap-1.5">
-    {temperature && Icon ? <span title={reasons || undefined} aria-label={`Lead ${temperature.label.toLowerCase()}${reasons ? `: ${reasons}` : ""}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${temperature.className}`}><Icon className="size-3" aria-hidden="true" />{temperature.label}</span> : null}
-    {tier ? <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${tier.className}`}>{tier.label}</span> : null}
-  </span>
+  return tier ? <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${tier.className}`}>{tier.label}</span> : null
 }
+
+const ringColors = { hot: "#fb7185", warm: "#fbbf24", cold: "#38bdf8" } as const
+
+/** The 0–100 lead score as a ring colored by temperature; the reasons are listed beside it. */
+function ScoreRing({ data }: { data: HunterResult["public_data"] }) {
+  const score = typeof data?.lead_score === "number" ? Math.round(Math.max(0, Math.min(100, data.lead_score))) : null
+  const temperature = data?.temperature ? temperatureStyles[data.temperature] : null
+  if (score === null) return null
+  const color = ringColors[data?.temperature ?? "cold"]
+  const Icon = temperature?.icon
+  const circumference = 2 * Math.PI * 21
+  return <div className="flex shrink-0 flex-col items-center gap-1" role="img" aria-label={`Nota ${score} de 100${temperature ? `, lead ${temperature.label.toLowerCase()}` : ""}`}>
+    <span className="relative grid size-14 place-items-center">
+      <svg viewBox="0 0 48 48" className="absolute inset-0 -rotate-90" aria-hidden="true">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeWidth="4" className="text-muted/60" />
+        <circle cx="24" cy="24" r="21" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - score / 100)} className="transition-[stroke-dashoffset] duration-700" />
+      </svg>
+      <span className="text-base font-semibold tabular-nums">{score}</span>
+    </span>
+    {temperature && Icon ? <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${temperature.className}`}><Icon className="size-2.5" aria-hidden="true" />{temperature.label}</span> : null}
+  </div>
+}
+
+/** Short tags for what makes the lead worth calling (or what still needs checking). */
+function reasonTags(data: HunterResult["public_data"], hasWhatsapp: boolean, website: string | null) {
+  const tags: { text: string; tone: "good" | "warn" | "plain" }[] = []
+  if (data?.website_status === "not_listed" && !website) tags.push({ text: "Sem site", tone: "good" })
+  if (hasWhatsapp) tags.push({ text: "WhatsApp", tone: "good" })
+  else if (data?.whatsapp_probable) tags.push({ text: "WhatsApp provável", tone: "plain" })
+  for (const signal of data?.website_quality_signals ?? []) tags.push({ text: signal, tone: "good" })
+  for (const reason of data?.temperature_reasons ?? []) {
+    // The short tags above and the rating line already say these; the reason would only repeat them.
+    if (/whatsapp/i.test(reason) && (hasWhatsapp || data?.whatsapp_probable)) continue
+    if (/sem site/i.test(reason) && tags.some((tag) => tag.text === "Sem site")) continue
+    if (/avalia|nota \d/i.test(reason) && data?.rating != null) continue
+    tags.push({ text: reason, tone: /ainda não|confira/i.test(reason) ? "warn" : "plain" })
+  }
+  const seen = new Set<string>()
+  return tags.filter((tag) => { const key = tag.text.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true }).slice(0, 6)
+}
+const toneClass = { good: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300", warn: "border-amber-400/30 bg-amber-400/10 text-amber-300", plain: "border-border bg-muted/40 text-muted-foreground" } as const
 
 const statusLabels: Record<string, string> = { completed: "Concluída", running: "Em andamento", pending_confirmation: "Não iniciada", failed: "Não concluída", cancelled: "Cancelada" }
 
@@ -104,34 +138,40 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
   }
 
   const temperatureClass = data?.temperature === "hot" ? "fx-hot" : data?.temperature === "warm" ? "fx-hot fx-warm" : data?.temperature === "cold" ? "fx-hot fx-cold" : ""
-  return <li id={`lead-${result.id}`} style={{ "--i": index } as CSSProperties} className={`fx-rise fx-spot flex scroll-mt-24 flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start ${temperatureClass}`}>
-    <div className="min-w-0 flex-1 space-y-1">
-      <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
-        <span className="min-w-0 break-words">{name}</span>
-        <LeadBadges data={data} />
-        <span className="text-xs font-normal text-muted-foreground">{sourceLabels[result.source]}</span>
-        <span className={`inline-flex items-center gap-1 text-xs font-normal ${verified ? "text-emerald-400" : "text-muted-foreground"}`}>{verified ? <BadgeCheck className="size-3.5" aria-hidden="true" /> : null}{hunterEvidenceLabel(result.source, data)}</span>
-      </h3>
-      <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-        {phone ? <span className="inline-flex items-center gap-1.5"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{phone}</span> : null}
-        {whatsapp ? <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-emerald-400 hover:underline"><MessageCircle className="size-3.5" aria-hidden="true" />WhatsApp</a> : null}
-        {email ? <a href={`mailto:${encodeURIComponent(email)}`} className="inline-flex items-center gap-1.5 hover:underline"><Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />{email}</a> : null}
-        {website ? <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:underline"><Globe2 className="size-3.5 text-muted-foreground" aria-hidden="true" />Site</a> : null}
-        {result.source === "google_maps" && data?.rating != null ? <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Star className="size-3.5" aria-hidden="true" />{data.rating.toFixed(1)} ({data.user_rating_count ?? 0})</span> : null}
-        {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}
+  const tags = reasonTags(data, Boolean(whatsapp), website)
+  return <li id={`lead-${result.id}`} style={{ "--i": index } as CSSProperties} className={`fx-rise fx-spot flex scroll-mt-24 flex-col gap-4 px-5 py-4 transition-colors hover:bg-muted/20 sm:flex-row sm:items-start ${temperatureClass}`}>
+    <div className="flex min-w-0 flex-1 gap-4">
+      <ScoreRing data={data} />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+          <span className="min-w-0 break-words text-[15px]">{name}</span>
+          <TierBadge data={data} />
+        </h3>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <span>{sourceLabels[result.source]}</span>
+          <span className={`inline-flex items-center gap-1 ${verified ? "text-emerald-400" : ""}`}>{verified ? <BadgeCheck className="size-3.5" aria-hidden="true" /> : null}{hunterEvidenceLabel(result.source, data)}</span>
+          {result.source === "google_maps" && data?.rating != null ? <span className="inline-flex items-center gap-1"><Star className="size-3 fill-amber-400 text-amber-400" aria-hidden="true" />{data.rating.toFixed(1).replace(".", ",")} ({data.user_rating_count ?? 0})</span> : null}
+        </p>
+        <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 hover:underline"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{phone}</a> : null}
+          {email ? <a href={`mailto:${encodeURIComponent(email)}`} className="inline-flex items-center gap-1.5 hover:underline"><Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />{email}</a> : null}
+          {website ? <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:underline"><Globe2 className="size-3.5 text-muted-foreground" aria-hidden="true" />Site</a> : null}
+          {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}
+        </div>
+        {tags.length ? <ul className="flex flex-wrap gap-1.5" aria-label="Por que este lead">{tags.map((tag) => <li key={tag.text} className={`rounded-full border px-2 py-0.5 text-[11px] ${toneClass[tag.tone]}`}>{tag.text}</li>)}</ul> : null}
+        {summary ? <p className="line-clamp-2 text-xs text-muted-foreground">{summary}</p> : null}
+        {result.source === "web" && data?.name_status === "source_title" ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Nome extraído do título da fonte</summary><p className="mt-1 break-words">{data.source_title || result.title}</p><p>O nome comercial não foi confirmado separadamente.</p></details> : null}
+        {publication && !added ? <p className="text-xs text-amber-400">É uma publicação, não um perfil de negócio.</p>
+          : missing.length && !added ? <p className="text-xs text-amber-400">Falta confirmar: {missing.join(", ")}. Confira a fonte antes de abordar.</p> : null}
+        {data?.also_found_on?.length ? <p className="text-xs text-muted-foreground">Também encontrado em {data.also_found_on.length} outra(s) fonte(s); os contatos foram reunidos.</p> : null}
+        {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
       </div>
-      {summary ? <p className="line-clamp-2 text-xs text-muted-foreground">{summary}</p> : null}
-      {result.source === "web" && data?.name_status === "source_title" ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Nome extraído do título da fonte</summary><p className="mt-1 break-words">{data.source_title || result.title}</p><p>O nome comercial não foi confirmado separadamente.</p></details> : null}
-      {data?.temperature_reasons?.length ? <p className="text-xs text-muted-foreground">{data.temperature_reasons.join(" · ")}</p> : null}
-      {publication && !added ? <p className="text-xs text-amber-400">É uma publicação, não um perfil de negócio.</p>
-        : missing.length && !added ? <p className="text-xs text-amber-400">Falta confirmar: {missing.join(", ")}. Confira a fonte antes de abordar.</p> : null}
-      {data?.also_found_on?.length ? <p className="text-xs text-muted-foreground">Também encontrado em {data.also_found_on.length} outra(s) fonte(s); os contatos foram reunidos.</p> : null}
-      {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
     </div>
-    <div className="flex shrink-0 items-center gap-2">
-      <span ref={addRef} className="relative inline-flex"><Button type="button" size="sm" variant={added ? "ghost" : "outline"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "Adicionado" : "Adicionar"}</Button></span>
-      <Button asChild size="icon" variant="ghost" className="size-8"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`} title="Abrir fonte"><ExternalLink /></a></Button>
+    <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-stretch">
+      <span ref={addRef} className="relative inline-flex"><Button type="button" size="sm" className="w-full" variant={added ? "ghost" : "default"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "No funil" : "Adicionar ao funil"}</Button></span>
+      {whatsapp ? <Button asChild size="sm" variant="outline" className="border-emerald-400/40 text-emerald-300 hover:bg-emerald-400/10 hover:text-emerald-200"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" />WhatsApp</a></Button> : null}
+      <Button asChild size="sm" variant="ghost" className="text-muted-foreground"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`}><ExternalLink aria-hidden="true" />Fonte</a></Button>
     </div>
   </li>
 }

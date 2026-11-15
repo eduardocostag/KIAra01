@@ -31,6 +31,7 @@ export type HunterPublicData = {
   phone?: string | null
   email?: string | null
   whatsapp_url?: string | null
+  whatsapp_probable?: boolean
   website_quality_score?: number | null
   website_quality_signals?: string[]
   match_reasons?: string[]

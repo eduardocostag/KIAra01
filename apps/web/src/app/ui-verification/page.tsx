@@ -6,6 +6,8 @@ import { notFound } from "next/navigation"
 import { ComingSoon } from "@/components/early-access/coming-soon"
 import { LaunchBadge } from "@/components/early-access/launch-badge"
 import { ChatWorkspace } from "@/components/chat/chat-workspace"
+import { WelcomeTour } from "@/components/app-shell/welcome-tour"
+import { PageSkeleton } from "@/components/app-shell/page-skeleton"
 import { AutomationWorkspace } from "@/components/automation/automation-workspace"
 import { HunterClient } from "@/app/(app)/app/(leads-module)/hunter/hunter-client"
 import { previewConversations, previewEntries } from "./leads-fixtures"
@@ -26,6 +28,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const { workspace, view } = await searchParams
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace isAdmin />
+  if (workspace === "welcome") return <div className="min-h-dvh"><WelcomeTour userId={`preview-${view ?? "x"}`} fullAccess={view !== "client"} /></div>
+  if (workspace === "skeleton") return <AppShell previewModule="/app/leads"><PageSkeleton variant={(view as "list" | "board" | "detail" | "inbox" | "cards") ?? "list"} /></AppShell>
   if (workspace === "automation-flow") return <AutomationWorkspace />
   if (workspace === "fx") return <FxPreview view={view} />
   if (workspace === "approvals") return <AppShell><ApprovalCenter preview={previewApprovals} /></AppShell>
