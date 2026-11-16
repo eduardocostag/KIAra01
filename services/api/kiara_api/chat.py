@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from . import chat_links, chat_search, chat_video
 from .chat_files import Attachment, AttachmentError, append_text, history_content, total_size, user_content
 from .chat_image import IMAGE_STYLE, MARKER, generate_image, image_available
+from . import memory as kiara_memory
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
@@ -404,9 +405,11 @@ def _with_note(conversation: list[dict], note: str) -> list[dict]:
     return [{"role": "system", "content": conversation[0]["content"] + "\n\n" + note}, *conversation[1:]]
 
 
-def create_chat_router(provider_factory=None, image_generator=None, streamer=None, usage=None, knowledge=None) -> APIRouter:
+def create_chat_router(provider_factory=None, image_generator=None, streamer=None, usage=None, knowledge=None,
+                       memory=None) -> APIRouter:
     """`usage` counts images, videos and web searches against the client's plan; `knowledge` loads what the
-    client taught Kiara about their business (both optional: without a database the chat works as before)."""
+    client taught Kiara about their business; `memory` (MemoryRepository) keeps what she learned in earlier chats.
+    All optional: without a database the chat works as before."""
     router = APIRouter(prefix="/v1/chat", tags=["chat"])
     make_image = image_generator or generate_image
 
@@ -415,13 +418,32 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
             await usage.consume(context, metric)
 
     async def business(context: RequestContext) -> str:
-        if knowledge is None:
-            return ""
-        try:
-            from .knowledge import prompt_block
-            return prompt_block(await knowledge(context.organization_id, 8000))
-        except Exception:  # noqa: BLE001 - the chat never fails because of the knowledge base
-            return ""
+        block = ""
+        if knowledge is not None:
+            try:
+                from .knowledge import prompt_block
+                block = prompt_block(await knowledge(context.organization_id, 8000))
+            except Exception:  # noqa: BLE001 - the chat never fails because of the knowledge base
+                block = ""
+        if memory is not None:
+            try:
+                block += kiara_memory.MEMORY_STYLE + kiara_memory.prompt_block(await memory.facts(context.organization_id))
+            except Exception:  # noqa: BLE001 - nor because of the memory
+                pass
+        return block
+
+    async def learn(text: str, context: RequestContext) -> str:
+        """Store the [[LEMBRAR]] facts, apply [[ESQUECER]] and return the answer without the markers."""
+        text, remember, forget = kiara_memory.take_markers(text)
+        if memory is not None and (remember or forget) and context.role in {"owner", "admin", "operator"}:
+            try:
+                if forget:
+                    await memory.forget(context.organization_id, forget)
+                if remember:
+                    await memory.remember(context.organization_id, remember)
+            except Exception:  # noqa: BLE001 - a memory failure never loses the answer
+                pass
+        return text
 
     def build_conversation(body: ChatRequest, extra: str = "") -> list[dict]:
         system = site_context() + extra + (f"\nContexto da tela fornecido pelo usuário: {body.context}" if body.context.strip() else "")
@@ -465,8 +487,9 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         return {"file_context": context} if context else {}
 
     async def finish(text: str, body: ChatRequest, context: RequestContext) -> tuple[str, dict]:
-        """Turn the model's markers into real images and video jobs."""
+        """Turn the model's markers into real images and video jobs (and store what she should remember)."""
         result: dict = {}
+        text = await learn(text, context)
         for marker, metric in ((MARKER, "images"), (chat_video.MARKER, "videos")):
             if marker.search(text) and not body.voice:
                 try:

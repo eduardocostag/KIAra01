@@ -36,6 +36,8 @@ SYNC_DEADLINE_SECONDS = 45
 SYNC_PARALLEL = 1          # one chat at a time
 SYNC_PAUSE_SECONDS = (0.4, 1.2)   # random pause between chats, never a fixed robot rhythm
 SYNC_WARMUP_SECONDS = 300  # let WhatsApp Web finish its own first load (and reload) after linking
+SYNC_TRANSCRIPTIONS = 3    # new voice notes turned into text per run (Whisper on the server's CPU)
+AUDIO_KINDS = {"audio", "ptt"}
 _PHONE_CHAT = re.compile(r"^([1-9][0-9]{7,14})@c\.us$")
 # WhatsApp now identifies most contacts by a linked id (@lid) instead of the phone; OpenWA resolves it.
 _LID_CHAT = re.compile(r"^[0-9]{5,20}@lid$")
@@ -89,6 +91,21 @@ class GatewayOpenWAClient(OpenWAClient):
         data = await self._request("GET", f"/api/sessions/{identifier}/contacts/{quote(chat_id, safe='')}/phone")
         phone = "".join(character for character in str((data or {}).get("phone") or "") if character.isdigit()) if isinstance(data, dict) else ""
         return phone if _PHONE.match(phone) else ""
+
+    def _media_sync(self, path: str, limit: int) -> tuple[bytes, str] | None:
+        request = urllib.request.Request(self.base_url + path, method="GET", headers={"Authorization": f"Bearer {self._token}"})
+        try:
+            with _opener.open(request, timeout=self._timeout) as response:
+                raw = response.read(limit + 1)
+                mime = response.headers.get("Content-Type", "").split(";")[0].strip()
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            return None
+        return None if not raw or len(raw) > limit else (raw, mime)
+
+    async def media(self, identifier: str, chat_id: str, message_id: str, *, limit: int) -> tuple[bytes, str] | None:
+        """A message's media as OpenWA stored it when it arrived (no extra work for the WhatsApp Web page)."""
+        path = f"/api/sessions/{identifier}/messages/{quote(chat_id, safe='')}/{quote(message_id, safe='')}/media"
+        return await asyncio.to_thread(self._media_sync, path, limit)
 
     async def live_history(self, identifier: str, chat_id: str, *, limit: int) -> list[dict]:
         """Recent messages read live from WhatsApp (OpenWA's own DB only has what arrived after linking)."""
@@ -268,6 +285,7 @@ class WhatsAppServerService:
             known = await known_chats(connection, organization_id)
         people = [chat for chat in people if _changed(chat, known)][:SYNC_CHATS]
         gate = asyncio.Semaphore(SYNC_PARALLEL)
+        budget = SYNC_TRANSCRIPTIONS
 
         async def read(chat):
             async with gate:
@@ -297,6 +315,8 @@ class WhatsAppServerService:
             name = str(chat.get("name") or "")[:160]
             async with self.postgres._transaction(organization_id) as connection:
                 last = await last_message_at(connection, organization_id, phone)
+            budget = await self._transcribe_new(client, session["id"], chat["id"], rows, messages, last, deadline, budget)
+            async with self.postgres._transaction(organization_id) as connection:
                 for message in messages:
                     if last and message["occurred_at"] < last:
                         continue  # already in the inbox; the exact duplicate is also rejected by the insert
@@ -306,6 +326,27 @@ class WhatsAppServerService:
                 await remember_chat(connection, organization_id, phone, chat["id"])
             conversations += 1
         return {**_public(session), "conversations": conversations, "messages": imported, "skipped": skipped}
+
+    async def _transcribe_new(self, client, session_id: str, chat_id: str, rows: list[dict], messages: list[dict],
+                              last: datetime | None, deadline: float, budget: int) -> int:
+        """New incoming voice notes become '[áudio] what was said'; old ones and failures keep the '[áudio]' label."""
+        from .transcription import MAX_AUDIO_BYTES, transcribe
+        kinds = {str(row.get("waMessageId") or row.get("id")): str(row.get("type") or "").lower() for row in rows}
+        for message in messages:
+            if budget <= 0 or deadline - time.monotonic() < 20:
+                break
+            if (message["direction"] != "inbound" or message["text"] != "[áudio]" or kinds.get(message["external_id"]) not in AUDIO_KINDS
+                    or (last and message["occurred_at"] < last)):
+                continue
+            budget -= 1
+            try:
+                media = await client.media(session_id, chat_id, message["external_id"], limit=MAX_AUDIO_BYTES)
+                words = await transcribe(media[0], media[1] or "audio/ogg", timeout=max(5.0, min(40.0, deadline - time.monotonic() - 10))) if media else ""
+            except Exception:  # noqa: BLE001 - the sync never fails because of one audio
+                words = ""
+            if words:
+                message["text"] = f"[áudio] {words}"
+        return budget
 
 
 # ---- Safe sending through the linked number (manual replies from the inbox) --------------------------------

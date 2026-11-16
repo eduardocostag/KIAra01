@@ -135,6 +135,10 @@ e chama geradores externos, do melhor para o mais simples. Quando um falha ou fi
    conta, mas a cota anônima do Hugging Face é pequena (por IP, por dia).
 4. **Sempre disponível:** a imagem da Kiara com movimento de câmera, feita com ffmpeg aqui mesmo.
 
+A primeira imagem (usada pelo Wan, pelo LTX e pelo movimento de câmera) vem dos modelos de imagem da Kiara pelo gateway.
+Se eles estiverem sem cota, entram as opções gratuitas: FLUX.1 schnell num Space do Hugging Face (com `HF_TOKEN`) e,
+por último, o endpoint público de imagens do Pollinations (sem conta).
+
 O gateway expõe só `POST /video/jobs`, `GET /video/jobs/{id}` e `GET /video/jobs/{id}/file`, com o token do gateway.
 Os vídeos saem em H.264 de até 3 MB e são apagados depois de 72 h. Segredos em `/opt/kiara/video/.env` (root, 0600).
 
@@ -155,3 +159,17 @@ por isso o servidor roda o próprio Chromium (`/opt/kiara/maps-browser`, só em 
   (Browserbase, se houver minutos, e depois trechos indexados).
 - Depois de 10 minutos parado, o Chromium é reiniciado limpo na próxima busca.
 - A API na Vercel usa este navegador sozinha quando o gateway está configurado. Para desligar: `KIARA_MAPS_BROWSER=off`.
+
+## Transcrição de áudio (kiara-stt)
+
+Contêiner `kiara-stt` (`/opt/kiara/stt`, só em `127.0.0.1:8893`): Whisper de pesos abertos na CPU, servido pelo speaches
+com API compatível com OpenAI. Transcreve os áudios do WhatsApp na sincronização da caixa de entrada (até 3 por rodada),
+para a pessoa ler e o SDR responder. Nada vai para serviço pago. O modelo padrão é `Systran/faster-whisper-small`
+(cerca de 600 MB de memória; um áudio de 10 s leva poucos segundos). O gateway expõe só
+`POST /stt/v1/audio/transcriptions` (até 10 MB), com o token do gateway.
+
+```sh
+sudo mkdir -p /opt/kiara/stt/hf-cache && sudo chown 1000:1000 /opt/kiara/stt/hf-cache
+sudo sh -c 'cd /opt/kiara/stt && docker compose up -d'
+curl -X POST http://127.0.0.1:8893/v1/models/Systran/faster-whisper-small   # baixa o modelo uma vez
+```

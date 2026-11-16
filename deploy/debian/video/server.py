@@ -37,6 +37,7 @@ POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "bytedance/seedance-1-pro-f
 IMAGE_MODELS = [m.strip() for m in os.getenv("KIARA_IMAGE_MODELS", "antigravity/gemini-3.1-flash-image,codex/gpt-image-2").split(",") if m.strip()]
 WAN_SPACE = os.getenv("WAN_SPACE", "zerogpu-aoti/wan2-2-fp8da-aoti-faster")
 LTX_SPACE = os.getenv("LTX_SPACE", "Lightricks/ltx-video-distilled")
+FLUX_SPACE = os.getenv("FLUX_SPACE", "black-forest-labs/FLUX.1-schnell")
 KEEP_HOURS = 72
 MAX_QUEUE = 12
 MAX_BYTES = 3_000_000  # base64 in JSON must stay under Vercel's 4.5 MB response limit
@@ -113,8 +114,8 @@ def normalize(source: Path, target: Path, portrait: bool) -> None:
     raise RuntimeError("video_too_large")
 
 
-def kiara_image(prompt: str, folder: Path) -> Path | None:
-    """A picture from Kiara's own image models (through the gateway), used as the first frame."""
+def gateway_image(prompt: str, folder: Path) -> Path | None:
+    """A picture from Kiara's own image models (through the gateway)."""
     for model in IMAGE_MODELS:
         try:
             body = json.dumps({"model": model, "prompt": prompt[:3000], "n": 1, "size": "1024x1024"}).encode()
@@ -130,6 +131,43 @@ def kiara_image(prompt: str, folder: Path) -> Path | None:
         except Exception:  # noqa: BLE001 - next image model
             continue
     return None
+
+
+def flux_image(prompt: str, folder: Path, portrait: bool) -> Path | None:
+    """Free first frame: FLUX.1 schnell on a Hugging Face ZeroGPU Space (uses the HF token's free GPU time)."""
+    if not HF_TOKEN:
+        return None
+    try:
+        width, height = (576, 1024) if portrait else (1024, 576)
+        result = _client(FLUX_SPACE, folder).predict(prompt=prompt[:1500], seed=0, randomize_seed=True, width=width,
+                                                     height=height, num_inference_steps=4, api_name="/infer")
+        first = result[0] if isinstance(result, (list, tuple)) else result
+        path = Path(first.get("path") if isinstance(first, dict) else first)
+        return path if path.is_file() and path.stat().st_size > 1000 else None
+    except Exception:  # noqa: BLE001 - next source
+        return None
+
+
+def pollinations_image(prompt: str, folder: Path, portrait: bool) -> Path | None:
+    """Free first frame without any account: Pollinations' public image endpoint (rate limited per IP)."""
+    try:
+        width, height = (576, 1024) if portrait else (1024, 576)
+        query = urllib.parse.urlencode({"width": width, "height": height, "nologo": "true", "model": "flux"})
+        url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:800], safe="") + "?" + query
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "kiara-video"}), timeout=120) as response:
+            if not response.headers.get("Content-Type", "").startswith("image/"):
+                return None
+            raw = response.read(15_000_000)
+        path = folder / ("free.png" if raw[:4] == b"\x89PNG" else "free.jpg")
+        path.write_bytes(raw)
+        return path if len(raw) > 1000 else None
+    except Exception:  # noqa: BLE001 - no free image now
+        return None
+
+
+def kiara_image(prompt: str, folder: Path, portrait: bool = False) -> Path | None:
+    """The first frame: Kiara's image models, then free FLUX on Hugging Face, then Pollinations' free endpoint."""
+    return gateway_image(prompt, folder) or flux_image(prompt, folder, portrait) or pollinations_image(prompt, folder, portrait)
 
 
 def video_from(result) -> Path:
@@ -216,7 +254,7 @@ def process(job: dict) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     try:
         update(job, status="running", progress=0.1, message="Criando a primeira imagem")
-        image = kiara_image(job["image_prompt"], folder)
+        image = kiara_image(job["image_prompt"], folder, job["portrait"])
         for index, (name, engine, label) in enumerate(ENGINES):
             update(job, progress=0.2 + 0.15 * index, message=label)
             try:

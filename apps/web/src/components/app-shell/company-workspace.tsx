@@ -8,6 +8,7 @@ import { prepareAttachment, CHAT_ATTACHMENT_ACCEPT } from "@/lib/chat-client"
 import { growth, type KnowledgeItem, type Preset } from "@/lib/api/growth"
 import { salesRequest, type SalesProfile } from "@/lib/api/sales"
 import { cn } from "@/lib/utils"
+import { MemoryPanel } from "./memory-panel"
 
 const field = "h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary/50"
 const KIND_ICON = { text: FileText, file: Upload, site: Globe2 }
@@ -115,6 +116,8 @@ export function CompanyWorkspace() {
       </li> })}</ul> : <p className="flex items-center gap-2 text-sm text-muted-foreground"><BookOpen className="size-4" aria-hidden="true" />Ainda vazio. Comece pelas perguntas que seus clientes mais fazem.</p>}
       {viewing ? <div className="rounded-xl border bg-muted/30 p-3"><div className="mb-2 flex items-center"><p className="flex-1 text-sm font-medium">{viewing.title}</p><button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setViewing(null)}>Fechar</button></div><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5">{viewing.content}</pre></div> : null}
     </Section>
+
+    <MemoryPanel />
 
     {profile ? <Section id="routine" title="Rotina automática" description="O que a Kiara faz sozinha por você todos os dias.">
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget)

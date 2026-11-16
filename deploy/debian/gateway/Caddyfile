@@ -2,7 +2,7 @@
 #
 # - Every route except /healthz requires `Authorization: Bearer $KIARA_GATEWAY_TOKEN`.
 # - The real OmniRoute and OpenWA keys are injected here and never leave the server.
-# - Only the inference API (/v1), the WhatsApp API (/api), Kokoro speech, video jobs and the Maps browser pass;
+# - Only the inference API (/v1), the WhatsApp API (/api), Kokoro speech, speech to text, video jobs and the Maps browser pass;
 #   dashboards, Ollama and Redis do not.
 {
 	admin off
@@ -82,6 +82,24 @@ http://:8088 {
 			}
 			uri strip_prefix /video
 			reverse_proxy 127.0.0.1:8891 {
+				header_up Host {upstream_hostport}
+				header_up -Authorization
+			}
+		}
+	}
+
+	# Speech to text (kiara-stt, Whisper on the CPU): only transcriptions pass, at most 10 MB per audio.
+	handle /stt/v1/audio/transcriptions {
+		route {
+			@denied not header Authorization "Bearer {$KIARA_GATEWAY_TOKEN}"
+			respond @denied "unauthorized" 401
+			@notpost not method POST
+			respond @notpost "method not allowed" 405
+			request_body {
+				max_size 10MB
+			}
+			uri strip_prefix /stt
+			reverse_proxy 127.0.0.1:8893 {
 				header_up Host {upstream_hostport}
 				header_up -Authorization
 			}

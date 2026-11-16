@@ -221,3 +221,24 @@ def test_team_invite_accept_maps_the_member_into_the_owner_workspace(seeded):
     assert [m["role"] for m in overview["members"]] == ["owner", "operator"] and overview["seats"] == {"used": 2, "limit": 3}
     run(team.remove(ctx(org), member))
     assert run(team.seat_for(member)) is None
+
+
+def test_memory_remembers_dedupes_forgets_and_isolates_workspaces(seeded):
+    from kiara_api.adapters.postgres import PostgresRepository
+    from kiara_api.memory import MAX_FACTS, MemoryRepository
+
+    org = str(seeded["org"]) if isinstance(seeded, dict) else str(seeded[0])
+    other = str(uuid4())
+    repository = MemoryRepository(PostgresRepository(URL))
+    assert run(repository.remember(org, ["Ana é dona da Lume", "ana é dona da lume ", "A senha do banco é 123", "Prefere respostas curtas"])) == 3
+    assert sorted(run(repository.facts(org))) == ["Ana é dona da Lume", "Prefere respostas curtas"]
+    assert run(repository.facts(other)) == []                              # another workspace sees nothing
+    assert run(repository.forget(org, ["respostas"])) == 1
+    assert run(repository.facts(org)) == ["Ana é dona da Lume"]
+    run(repository.remember(org, [f"Fato número {n}" for n in range(MAX_FACTS + 5)]))
+    assert len(run(repository.facts(org))) == MAX_FACTS
+    item = run(repository.list(org))[0]
+    run(repository.delete(org, item["id"]))
+    assert item["fact"] not in run(repository.facts(org))
+    with pytest.raises(Exception):
+        run(repository.delete(other, run(repository.list(org))[0]["id"]))   # cannot delete another workspace's memory

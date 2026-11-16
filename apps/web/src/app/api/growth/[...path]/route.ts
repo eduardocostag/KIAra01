@@ -1,7 +1,7 @@
 import { kiaraApi } from "@/lib/api/server-client"
 
 // One bridge for the growth features; only these API areas are reachable through it.
-const ALLOWED = [/^knowledge(\/[\w-]{1,80})?$/, /^team(\/(invites|members)\/[\w@.-]{1,200}|\/invites|\/accept)?$/, /^billing\/plan$/, /^sales\/(draft|presets(\/[a-z]{1,30})?)$/]
+const ALLOWED = [/^knowledge(\/[\w-]{1,80})?$/, /^memory(\/[\w-]{1,80})?$/, /^team(\/(invites|members)\/[\w@.-]{1,200}|\/invites|\/accept)?$/, /^billing\/plan$/, /^sales\/(draft|presets(\/[a-z]{1,30})?)$/]
 
 async function forward(request: Request, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join("/")
