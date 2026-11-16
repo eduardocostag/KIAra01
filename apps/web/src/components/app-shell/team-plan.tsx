@@ -89,7 +89,7 @@ export function PlanWorkspace() {
       <h3 id={plan.id === "pro" ? "plans" : undefined} className="text-base font-semibold">{plan.label}</h3>
       <p className="mt-1 text-2xl font-semibold">{money(plan.price_cents)}<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
       <ul className="mt-3 flex-1 space-y-1 text-sm text-muted-foreground">
-        <li>{plan.limits.leads.toLocaleString("pt-BR")} leads por mês</li><li>{plan.limits.ai_messages.toLocaleString("pt-BR")} mensagens escritas pela Kiara</li>
+        <li>Leads ilimitados</li><li>{plan.limits.ai_messages.toLocaleString("pt-BR")} mensagens escritas pela Kiara</li>
         <li>{plan.limits.images.toLocaleString("pt-BR")} imagens e {plan.limits.videos} vídeos</li><li>{plan.limits.seats} {plan.limits.seats === 1 ? "pessoa" : "pessoas"} na equipe</li></ul>
       <Button className="mt-4" variant={plan.id === data.plan ? "outline" : "default"} disabled={plan.id === data.plan} asChild={plan.id !== data.plan}>
         {plan.id === data.plan ? <span>Plano atual</span> : <a href={`https://wa.me/${(process.env.NEXT_PUBLIC_KIARA_SALES_WHATSAPP ?? "").replace(/\D/g, "")}?text=${encodeURIComponent(`Quero assinar o plano ${plan.label} da Kiara.`)}`} target="_blank" rel="noopener noreferrer">Quero este plano</a>}

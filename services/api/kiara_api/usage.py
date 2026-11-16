@@ -20,11 +20,12 @@ from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
 PLANS: dict[str, dict[str, Any]] = {
-    "trial": {"label": "Teste grátis", "price_cents": 0, "limits": {"leads": 200, "images": 20, "videos": 3, "web_searches": 100, "ai_messages": 300, "seats": 1}},
-    "starter": {"label": "Essencial", "price_cents": 19700, "limits": {"leads": 600, "images": 60, "videos": 6, "web_searches": 400, "ai_messages": 1500, "seats": 1}},
-    "pro": {"label": "Profissional", "price_cents": 49700, "limits": {"leads": 2500, "images": 250, "videos": 25, "web_searches": 2000, "ai_messages": 6000, "seats": 3}},
-    "business": {"label": "Empresa", "price_cents": 129700, "limits": {"leads": 10000, "images": 1000, "videos": 100, "web_searches": 10000, "ai_messages": 30000, "seats": 10}},
+    "trial": {"label": "Teste grátis", "price_cents": 0, "limits": {"images": 20, "videos": 3, "web_searches": 100, "ai_messages": 300, "seats": 1}},
+    "starter": {"label": "Essencial", "price_cents": 19700, "limits": {"images": 60, "videos": 6, "web_searches": 400, "ai_messages": 1500, "seats": 1}},
+    "pro": {"label": "Profissional", "price_cents": 49700, "limits": {"images": 250, "videos": 25, "web_searches": 2000, "ai_messages": 6000, "seats": 3}},
+    "business": {"label": "Empresa", "price_cents": 129700, "limits": {"images": 1000, "videos": 100, "web_searches": 10000, "ai_messages": 30000, "seats": 10}},
 }
+# Leads have no limit on any plan (decision 2026-11-16): searches are still counted, never blocked.
 METRIC_LABELS = {"leads": "leads pesquisados", "images": "imagens", "videos": "vídeos", "web_searches": "pesquisas na internet",
                  "ai_messages": "mensagens escritas pela Kiara", "seats": "pessoas na equipe"}
 

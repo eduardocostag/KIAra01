@@ -140,6 +140,8 @@ def test_plan_limits_count_per_month_and_refuse_without_spending(seeded):
     videos = next(item for item in overview["usage"] if item["metric"] == "videos")
     assert videos == {"metric": "videos", "label": "vídeos", "used": 3, "limit": 3} and overview["plan"] == "trial"
     run(service.consume(ctx(org, email="admin@kiara.local"), "videos"))   # the system administrator is not limited
+    run(service.consume(ctx(org), "leads", 50_000))                        # leads have no limit on any plan
+    assert "leads" not in {item["metric"] for item in run(service.overview(ctx(org)))["usage"]}
 
 
 def test_first_message_uses_lead_facts_profile_and_knowledge(seeded):
