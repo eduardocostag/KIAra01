@@ -7,6 +7,8 @@ import { ComingSoon } from "@/components/early-access/coming-soon"
 import { LaunchBadge } from "@/components/early-access/launch-badge"
 import { ChatWorkspace } from "@/components/chat/chat-workspace"
 import ModuleSelectorPage from "@/app/(app)/app/page"
+import { LeadsDashboard } from "@/components/app-shell/leads-dashboard"
+import { LeadDetail } from "@/components/app-shell/lead-detail"
 import { WelcomeTour } from "@/components/app-shell/welcome-tour"
 import { PageSkeleton } from "@/components/app-shell/page-skeleton"
 import { TodayQueue } from "@/components/app-shell/today-queue"
@@ -19,6 +21,10 @@ import { previewConversations, previewEntries } from "./leads-fixtures"
 import { ApprovalCenter, type ActionRequest } from "@/components/approvals/approval-center"
 import { LeadCompanyPanel } from "@/components/app-shell/lead-company-panel"
 import "../(app)/app/(leads-module)/leads/[leadId]/lead-detail.css"
+// Same stylesheets as the real app layout, so previews match production.
+import "@/components/fx/effects.css"
+import "../(app)/app/reference-surfaces.css"
+import "../(app)/app/orbit-dashboard.css"
 import { FxPreview } from "./fx-preview"
 
 const previewApprovals: ActionRequest[] = [
@@ -33,6 +39,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const { workspace, view } = await searchParams
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace isAdmin />
+  if (workspace === "leads") return <AppShell previewModule="/app/leads"><LeadsDashboard pipeline={{ entries: previewEntries, available: true }} /></AppShell>
+  if (workspace === "lead") return <AppShell previewModule="/app/leads"><LeadDetail entry={previewEntries[0]} /></AppShell>
+  if (workspace === "pipeline") return <AppShell previewModule="/app/leads"><div className="space-y-4"><InboxHub entries={previewEntries} prospectError="" initialView="contacts" initialContactId="" /></div></AppShell>
   if (workspace === "modules") return <ModuleSelectorPage />
   if (workspace === "fila") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-6xl"><TodayQueue entries={previewEntries} /></div></AppShell>
   if (workspace === "empresa") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><CompanyWorkspace /></div></AppShell>

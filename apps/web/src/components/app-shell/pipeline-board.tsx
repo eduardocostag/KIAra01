@@ -1,11 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useSyncExternalStore } from "react"
 import { ArrowRight, AtSign, Check, Loader2, MapPin, MessageCircle, Phone, RefreshCw, Search, TriangleAlert, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { PipelineFunnel } from "./pipeline-funnel"
 import { burst } from "@/components/fx/fx"
 import { temperatureLabels } from "@/lib/api/inbox-contract"
@@ -40,6 +41,9 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
   initialSelectedId?: string
 }) {
   const [selectedId, setSelectedId] = useState(initialSelectedId || entries[0]?.id || "")
+  // Phones: the contact opens in a sheet from the bottom instead of below the whole list.
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => true)
+  const [sheetOpen, setSheetOpen] = useState(Boolean(initialSelectedId))
   const [query, setQuery] = useState("")
   const [stageFilter, setStageFilter] = useState<PipelineStage | "active">(() => {
     const requested = entries.find((entry) => entry.id === initialSelectedId)
@@ -136,7 +140,7 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
           {filtered.map((entry, index) => {
             const name = leadDisplayName(entry.consumer)
             const active = entry.id === selected?.id
-            return <li key={entry.id} className="fx-rise fx-spot" style={{ "--i": index } as React.CSSProperties}><button type="button" aria-current={active ? "true" : undefined} onClick={() => { setSelectedId(entry.id); setNotice("") }} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/40", active && "bg-primary/10")}>
+            return <li key={entry.id} className="fx-rise fx-spot" style={{ "--i": index } as React.CSSProperties}><button type="button" aria-current={active ? "true" : undefined} onClick={() => { setSelectedId(entry.id); setNotice(""); setSheetOpen(true) }} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/40", active && "bg-primary/10")}>
               <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{initials(name)}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-2"><span className="truncate text-sm font-medium">{name}</span>{entry.consumer.fit ? <FitChip fit={entry.consumer.fit} /> : null}</span>
@@ -147,10 +151,25 @@ export function PipelineBoard({ entries, onEntriesChange, initialSelectedId = ""
           })}
         </ul> : <p className="p-8 text-center text-sm text-muted-foreground">Nenhum contato nesta etapa{query ? " com essa busca" : ""}.</p>}
       </section>
-      {selected ? <ContactPanel key={`${selected.id}-${selected.version}`} entry={selected} saving={saving} notice={notice} onSave={save} /> : null}
+      {selected && wide ? <ContactPanel key={`${selected.id}-${selected.version}`} entry={selected} saving={saving} notice={notice} onSave={save} /> : null}
     </div>
+    {!wide ? <Sheet open={Boolean(selected) && sheetOpen} onOpenChange={setSheetOpen}>
+      <SheetContent side="bottom" onOpenAutoFocus={(event) => event.preventDefault()} className="kiara-contact-sheet max-h-[90dvh] gap-0 overflow-y-auto rounded-t-3xl border-white/10 p-0 pb-[env(safe-area-inset-bottom)]">
+        <span aria-hidden="true" className="mx-auto mt-2.5 h-1.5 w-11 shrink-0 rounded-full bg-white/20" />
+        <SheetTitle className="sr-only">{selected ? leadDisplayName(selected.consumer) : "Contato"}</SheetTitle>
+        <SheetDescription className="sr-only">Ficha do contato: etapa, próxima ação e anotações.</SheetDescription>
+        {selected ? <ContactPanel key={`${selected.id}-${selected.version}`} entry={selected} saving={saving} notice={notice} onSave={save} /> : null}
+      </SheetContent>
+    </Sheet> : null}
   </div>
 }
+
+function subscribeWide(listener: () => void) {
+  const query = window.matchMedia("(min-width: 1024px)")
+  query.addEventListener("change", listener)
+  return () => query.removeEventListener("change", listener)
+}
+function isWide() { return window.matchMedia("(min-width: 1024px)").matches }
 
 const fitChipStyles = { A: "bg-emerald-400/15 text-emerald-300", B: "bg-sky-400/15 text-sky-300", C: "bg-amber-400/15 text-amber-300", D: "bg-muted text-muted-foreground" } as const
 

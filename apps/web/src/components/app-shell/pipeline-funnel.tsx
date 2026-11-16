@@ -23,8 +23,8 @@ export function PipelineFunnel({ counts, active, onPick }: { counts: Record<Pipe
   const center = WIDTH / 2
 
   return <figure className="fx-rise overflow-hidden rounded-xl border bg-card p-4" aria-label="Funil do pipeline">
-    <div className="flex flex-col items-center gap-4 sm:flex-row">
-      <svg viewBox={`0 0 ${WIDTH} ${height}`} className="w-full max-w-[300px] shrink [transform:perspective(700px)_rotateX(14deg)]" role="group" aria-label="Etapas do funil">
+    <div className="flex flex-row items-center gap-3 sm:gap-4">
+      <svg viewBox={`0 0 ${WIDTH} ${height}`} className="w-[44%] max-w-[300px] shrink-0 [transform:perspective(700px)_rotateX(14deg)] sm:w-full sm:shrink" role="group" aria-label="Etapas do funil">
         <defs>
           {rings.map((ring) => <linearGradient key={ring.id} id={`funnel-${ring.id}`} x1="0" x2="1">
             <stop offset="0" stopColor={ring.color} stopOpacity=".08" />
@@ -49,7 +49,7 @@ export function PipelineFunnel({ counts, active, onPick }: { counts: Record<Pipe
         {/* Leads falling through the funnel. */}
         {[0, 1, 2, 3, 4, 5].map((index) => <circle key={index} r={2.4} fill={rings[index % rings.length]?.color ?? "#a78bfa"} className="kiara-funnel-drop" style={{ "--x": `${center + Math.sin(index * 2.1) * 18}px`, "--h": `${height - 26}px`, animationDelay: `${index * .55}s` } as CSSProperties} />)}
       </svg>
-      <ul className="grid w-full min-w-0 grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:w-auto sm:min-w-44 sm:flex-1 sm:grid-cols-1">
+      <ul className="grid min-w-0 flex-1 grid-cols-1 gap-y-1 text-[13px] sm:min-w-44 sm:gap-y-1.5 sm:text-sm">
         {rings.map((ring) => <li key={ring.id}><button type="button" onClick={() => onPick(ring.id)} aria-pressed={active === ring.id} className="flex w-full items-center gap-2 rounded-md px-1 text-left hover:text-foreground">
           <span className="size-2 shrink-0 rounded-full" style={{ background: ring.color, boxShadow: `0 0 10px ${ring.color}` }} aria-hidden="true" />
           <span className="text-muted-foreground">{ring.label}</span>

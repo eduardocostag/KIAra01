@@ -955,3 +955,5 @@
   .auth-mobile-hero::before { position: absolute; top: -2.5rem; left: 50%; z-index: -1; width: 20rem; height: 14rem; border-radius: 50%; background: radial-gradient(closest-side, rgb(124 77 255 / .42), transparent); content: ""; transform: translateX(-50%); filter: blur(10px); }
   .auth-mobile-hero .auth-hero-orb.kiara-orb-lg { width: 5.5rem; height: 5.5rem; }
 }
+/* Contact sheet on phones: the panel sits flat inside the sheet. */
+.kiara-contact-sheet > aside { border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; }

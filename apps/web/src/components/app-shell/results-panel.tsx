@@ -105,12 +105,12 @@ export function ResultsPanel() {
         </li>
       })}</ol>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         {[{ label: "Conversas no WhatsApp", value: current.conversations, before: data.previous.conversations, icon: MessageCircle },
           { label: "Leads no funil", value: current.added, before: data.previous.added, icon: Handshake },
           { label: "Taxa de resposta", value: current.approached ? Math.round((current.replied / current.approached) * 100) : 0, before: data.previous.approached ? Math.round((data.previous.replied / data.previous.approached) * 100) : 0, icon: Reply, percent: true }]
-          .map(({ label, value, before, icon: Icon, percent }) => <div key={label} className="rounded-xl border bg-card/60 p-3">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="size-3.5" aria-hidden="true" />{label}</p>
+          .map(({ label, value, before, icon: Icon, percent }) => <div key={label} className="min-w-0 rounded-xl border bg-card/60 p-2.5 sm:p-3">
+            <p className="flex items-start gap-1.5 text-[11px] leading-tight text-muted-foreground sm:items-center sm:text-xs"><Icon className="mt-px size-3.5 shrink-0 sm:mt-0" aria-hidden="true" />{label}</p>
             <p className="mt-1 text-xl font-semibold tabular-nums">{percent ? `${value}%` : number(value)}</p>
             <Trend now={value} before={before} />
           </div>)}

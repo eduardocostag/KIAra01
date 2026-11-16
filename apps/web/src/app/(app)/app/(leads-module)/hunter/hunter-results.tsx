@@ -35,7 +35,7 @@ function ScoreRing({ data }: { data: HunterResult["public_data"] }) {
   const Icon = temperature?.icon
   const circumference = 2 * Math.PI * 21
   return <div className="flex shrink-0 flex-col items-center gap-1" role="img" aria-label={`Nota ${score} de 100${temperature ? `, lead ${temperature.label.toLowerCase()}` : ""}`}>
-    <span className="relative grid size-14 place-items-center">
+    <span className="relative grid size-12 place-items-center sm:size-14">
       <svg viewBox="0 0 48 48" className="absolute inset-0 -rotate-90" aria-hidden="true">
         <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeWidth="4" className="text-muted/60" />
         <circle cx="24" cy="24" r="21" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - score / 100)} className="transition-[stroke-dashoffset] duration-700" />
@@ -139,8 +139,8 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
 
   const temperatureClass = data?.temperature === "hot" ? "fx-hot" : data?.temperature === "warm" ? "fx-hot fx-warm" : data?.temperature === "cold" ? "fx-hot fx-cold" : ""
   const tags = reasonTags(data, Boolean(whatsapp), website)
-  return <li id={`lead-${result.id}`} style={{ "--i": index } as CSSProperties} className={`fx-rise fx-spot flex scroll-mt-24 flex-col gap-4 px-5 py-4 transition-colors hover:bg-muted/20 sm:flex-row sm:items-start ${temperatureClass}`}>
-    <div className="flex min-w-0 flex-1 gap-4">
+  return <li id={`lead-${result.id}`} style={{ "--i": index } as CSSProperties} className={`fx-rise fx-spot flex scroll-mt-24 flex-col gap-3 px-4 py-4 transition-colors sm:gap-4 sm:px-5 hover:bg-muted/20 sm:flex-row sm:items-start ${temperatureClass}`}>
+    <div className="flex min-w-0 flex-1 gap-3 sm:gap-4">
       <ScoreRing data={data} />
       <div className="min-w-0 flex-1 space-y-1.5">
         <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
@@ -168,10 +168,10 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
         {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
       </div>
     </div>
-    <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-stretch">
-      <span ref={addRef} className="relative inline-flex"><Button type="button" size="sm" className="w-full" variant={added ? "ghost" : "default"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "No funil" : "Adicionar ao funil"}</Button></span>
-      {whatsapp ? <Button asChild size="sm" variant="outline" className="border-emerald-400/40 text-emerald-300 hover:bg-emerald-400/10 hover:text-emerald-200"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" />WhatsApp</a></Button> : null}
-      <Button asChild size="sm" variant="ghost" className="text-muted-foreground"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`}><ExternalLink aria-hidden="true" />Fonte</a></Button>
+    <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 sm:flex sm:flex-col sm:items-stretch">
+      <span ref={addRef} className="relative flex min-w-0"><Button type="button" size="sm" className="h-9 w-full sm:h-8" variant={added ? "ghost" : "default"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "No funil" : "Adicionar ao funil"}</Button></span>
+      {whatsapp ? <Button asChild size="sm" variant="outline" className="h-9 border-emerald-400/40 sm:h-8 text-emerald-300 hover:bg-emerald-400/10 hover:text-emerald-200"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" />WhatsApp</a></Button> : null}
+      <Button asChild size="sm" variant="ghost" className="h-9 px-2 text-muted-foreground sm:h-8 sm:px-3"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`}><ExternalLink aria-hidden="true" />Fonte</a></Button>
     </div>
   </li>
 }
@@ -190,8 +190,8 @@ export function HunterResults({ jobs, selected, loading, onRefresh, onClear, onS
     tierCount("to_review") ? `${tierCount("to_review")} a conferir` : "", hot ? `${hot} quentes` : ""].filter(Boolean).join(" · ")
 
   return <section aria-labelledby="hunter-results-title" className="overflow-hidden rounded-xl border bg-card">
-    <header className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center">
-      <div className="min-w-0 flex-1">
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3.5 sm:px-5 sm:py-4">
+      <div className="min-w-0 flex-1 basis-48">
         <h2 id="hunter-results-title" className="font-semibold">{selected.status === "completed" ? `${selected.results.length} resultado${selected.results.length === 1 ? "" : "s"}` : statusLabels[selected.status]}</h2>
         <p className="truncate text-sm text-muted-foreground">{selected.query}{selected.location ? ` · ${selected.location}` : ""}{selected.status === "completed" && selected.results.length ? ` · ${breakdown || `${withContact} com telefone`}` : ""}</p>
       </div>
