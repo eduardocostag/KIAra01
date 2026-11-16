@@ -28,8 +28,9 @@ export default async function ModuleSelectorPage() {
   ];
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="absolute inset-0 z-0 opacity-25">
+    <div className="relative flex min-h-screen flex-col items-center justify-center px-4 pb-10 pt-20 sm:p-8">
+      <div className="absolute inset-x-0 top-0 z-0 h-72 bg-[radial-gradient(60%_100%_at_50%_0%,rgb(124_77_255/.35),transparent)] sm:hidden" aria-hidden="true" />
+      <div className="absolute inset-0 z-0 hidden opacity-25 sm:block">
         <OrbitScene />
       </div>
       <nav aria-label="Conta e administração" className="absolute right-4 top-4 z-20 flex gap-2 sm:right-8 sm:top-6">
@@ -44,24 +45,25 @@ export default async function ModuleSelectorPage() {
         })}
       </nav>
       <div className="relative z-10 w-full max-w-5xl text-center">
-        <h1 className="fx-rise kiara-gradient-text mb-3 text-4xl font-bold tracking-tight">Selecione o módulo de operação</h1>
+        <p className="fx-rise mb-3 text-[11px] font-semibold uppercase tracking-[.18em] text-primary sm:hidden">Kiara Intelligence</p><h1 className="fx-rise kiara-gradient-text mb-3 text-balance text-[2rem] font-bold leading-[1.05] tracking-tight sm:text-4xl">Selecione o módulo de operação</h1>
         <p className="fx-rise mb-9 text-sm text-muted-foreground">Primeira vez aqui? <WelcomeTourLink className="text-primary underline-offset-4 hover:underline" /></p>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:gap-6 md:grid-cols-2 lg:grid-cols-4">
           {modules.map(({ href, label, description, icon: Icon, operational }, index) => (
             <Link key={href} href={href} data-tilt="12" style={{ "--i": index + 1 } as React.CSSProperties} className={cn(
-              "fx-rise fx-tilt fx-spot group relative flex flex-col items-center rounded-3xl border border-white/10 bg-black/40 p-8 backdrop-blur-xl hover:border-primary/50 hover:bg-black/60",
+              "fx-rise fx-tilt fx-spot group relative grid grid-cols-[auto_1fr_auto] items-center gap-x-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-left backdrop-blur-xl hover:border-primary/50 hover:bg-black/60 sm:flex sm:flex-col sm:rounded-3xl sm:p-8 sm:text-center",
+              operational && "kiara-module-live",
               !operational && "opacity-80 hover:opacity-100"
             )}>
-              <div className="fx-pop kiara-halo-hover mb-6 rounded-2xl bg-white/5 p-4 text-primary transition-colors group-hover:bg-primary/20">
-                <Icon className="size-10" />
+              <div className="fx-pop kiara-halo-hover row-span-2 rounded-2xl bg-white/5 p-3 text-primary transition-colors group-hover:bg-primary/20 sm:mb-6 sm:p-4">
+                <Icon className="size-7 sm:size-10" />
               </div>
-              <h2 className="mb-2 text-xl font-semibold">{label}</h2>
-              <p className="mb-8 text-sm text-muted-foreground">{description}</p>
+              <h2 className="text-base font-semibold sm:mb-2 sm:text-xl">{label}</h2>
+              <p className="col-start-2 text-[13px] text-muted-foreground sm:mb-8 sm:text-sm">{description}</p>
 
-              {!operational && <LaunchBadge />}
+              {!operational && <span className="col-start-2 mt-2 sm:mt-0"><LaunchBadge /></span>}
 
-              <span className="mt-auto inline-flex min-h-10 w-full items-center justify-center rounded-lg text-sm font-medium group-hover:bg-primary group-hover:text-primary-foreground">
-                {operational ? "Acessar" : "Ver novidade"} <ArrowRight className="ml-2 size-4" />
+              <span className="col-start-3 row-span-2 row-start-1 mt-auto inline-flex size-10 items-center justify-center rounded-full bg-white/5 text-sm font-medium group-hover:bg-primary group-hover:text-primary-foreground sm:min-h-10 sm:w-full sm:rounded-lg sm:bg-transparent">
+                <span className="sr-only sm:not-sr-only">{operational ? "Acessar" : "Ver novidade"}</span> <ArrowRight className="size-4 sm:ml-2" />
               </span>
             </Link>
           ))}

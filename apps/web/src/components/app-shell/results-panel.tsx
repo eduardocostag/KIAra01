@@ -65,8 +65,8 @@ export function ResultsPanel() {
 
   return <section aria-labelledby="results-title" className="kiara-soft-panel space-y-5 rounded-2xl border p-5 sm:p-6">
     <div className="flex flex-wrap items-center gap-3">
-      <div className="min-w-0 flex-1"><h2 id="results-title" className="text-lg font-semibold">Resultados da Kiara</h2><p className="text-sm text-muted-foreground">O que a Kiara gerou para o seu negócio no período.</p></div>
-      <div role="radiogroup" aria-label="Período" className="inline-flex rounded-full border p-0.5">{PERIODS.map((period) => <button key={period.days} type="button" role="radio" aria-checked={days === period.days} onClick={() => setDays(period.days)} className={cn("rounded-full px-3 py-1 text-xs transition-colors", days === period.days ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{period.label}</button>)}</div>
+      <div className="min-w-[14rem] flex-1"><h2 id="results-title" className="text-lg font-semibold">Resultados da Kiara</h2><p className="text-sm text-muted-foreground">O que a Kiara gerou para o seu negócio no período.</p></div>
+      <div role="radiogroup" aria-label="Período" className="inline-flex w-full rounded-full border p-0.5 sm:w-auto">{PERIODS.map((period) => <button key={period.days} type="button" role="radio" aria-checked={days === period.days} onClick={() => setDays(period.days)} className={cn("flex-1 rounded-full px-3 py-1.5 text-xs transition-colors sm:flex-none sm:py-1", days === period.days ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{period.label}</button>)}</div>
     </div>
 
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

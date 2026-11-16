@@ -6,6 +6,7 @@ import { notFound } from "next/navigation"
 import { ComingSoon } from "@/components/early-access/coming-soon"
 import { LaunchBadge } from "@/components/early-access/launch-badge"
 import { ChatWorkspace } from "@/components/chat/chat-workspace"
+import ModuleSelectorPage from "@/app/(app)/app/page"
 import { WelcomeTour } from "@/components/app-shell/welcome-tour"
 import { PageSkeleton } from "@/components/app-shell/page-skeleton"
 import { TodayQueue } from "@/components/app-shell/today-queue"
@@ -32,6 +33,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const { workspace, view } = await searchParams
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace isAdmin />
+  if (workspace === "modules") return <ModuleSelectorPage />
   if (workspace === "fila") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-6xl"><TodayQueue entries={previewEntries} /></div></AppShell>
   if (workspace === "empresa") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><CompanyWorkspace /></div></AppShell>
   if (workspace === "equipe") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><TeamWorkspace /></div></AppShell>

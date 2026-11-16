@@ -53,8 +53,8 @@ export function TeamWorkspace() {
       </ul>
       {data.can_manage ? <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget)
         void run(async () => { const result = await growth<{ token: string }>("team/invites", { method: "POST", body: JSON.stringify({ email: form.get("email"), role: form.get("role") }) }); setLink(`${window.location.origin}/app/convite?token=${encodeURIComponent(result.token)}`); setCopied(false) }) }}>
-        <label className="grid flex-1 gap-1 text-sm">E-mail da pessoa<input name="email" type="email" required className={cn(field, "w-full")} placeholder="vendedor@empresa.com" /></label>
-        <label className="grid gap-1 text-sm">Papel<select name="role" defaultValue="operator" className={field}><option value="operator">Vendedor</option><option value="admin">Administrador</option><option value="viewer">Somente leitura</option></select></label>
+        <label className="grid flex-1 basis-full gap-1 text-sm sm:basis-56">E-mail da pessoa<input name="email" type="email" required className={cn(field, "w-full")} placeholder="vendedor@empresa.com" /></label>
+        <label className="grid flex-1 gap-1 text-sm sm:flex-none">Papel<select name="role" defaultValue="operator" className={cn(field, "w-full")}><option value="operator">Vendedor</option><option value="admin">Administrador</option><option value="viewer">Somente leitura</option></select></label>
         <Button type="submit" disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : <UserPlus />}Convidar</Button>
       </form> : null}
       {link ? <div className="space-y-2 rounded-xl border border-primary/40 bg-primary/10 p-3 text-sm">

@@ -104,3 +104,41 @@ export function Reveal({ children, className, delay = 0 }: { children: ReactNode
   }, [])
   return <div ref={ref} className={cn(styles.reveal, className)} style={{ transitionDelay: `${delay}ms` } as CSSProperties}>{children}</div>
 }
+
+/** Mobile: horizontal swipe rail with snap and position dots. From md up it is a plain two-column grid. */
+export function SwipeRail({ children, labels }: { children: ReactNode[]; labels: string[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [active, setActive] = useState(0)
+  useEffect(() => {
+    const rail = ref.current
+    if (!rail || !("IntersectionObserver" in window)) return
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) if (entry.isIntersecting) setActive(Number((entry.target as HTMLElement).dataset.index))
+    }, { root: rail, threshold: .6 })
+    rail.querySelectorAll<HTMLElement>("[data-index]").forEach((slide) => observer.observe(slide))
+    return () => observer.disconnect()
+  }, [])
+  function go(index: number) {
+    const slide = ref.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)
+    slide?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "nearest", inline: "center" })
+  }
+  return <div>
+    <div ref={ref} className={styles.rail}>{children.map((child, index) => <div key={labels[index]} data-index={index} className={styles.railSlide}>{child}</div>)}</div>
+    <div className={styles.railDots} role="group" aria-label="Escolher módulo">{labels.map((label, index) => <button key={label} type="button" onClick={() => go(index)} aria-label={label} aria-current={index === active ? "true" : undefined} className={cn(styles.railDot, index === active && styles.railDotActive)} />)}</div>
+  </div>
+}
+
+/** Mobile: a call-to-action bar that slides up after the hero leaves the screen and hides near the final CTA. */
+export function MobileStickyCta({ children }: { children: ReactNode }) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    function update() {
+      const end = document.getElementById("cta-final")?.getBoundingClientRect().top ?? Infinity
+      setVisible(window.scrollY > window.innerHeight * .85 && end > window.innerHeight * .9)
+    }
+    update()
+    window.addEventListener("scroll", update, { passive: true })
+    return () => window.removeEventListener("scroll", update)
+  }, [])
+  return <div className={cn(styles.stickyCta, visible && styles.stickyCtaVisible)} aria-hidden={!visible} inert={!visible}>{children}</div>
+}

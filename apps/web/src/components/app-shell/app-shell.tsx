@@ -22,6 +22,7 @@ import {
   Building2,
   Users as Team,
   Gem,
+  Ellipsis,
 } from "lucide-react";
 import { KiaraBrand } from "@/components/brand/kiara-brand";
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,45 @@ function Navigation({
   );
 }
 
+const TAB_LABELS: Record<string, string> = { "Visão geral": "Início", "Buscar leads": "Buscar", "Fila de hoje": "Hoje", "Análise da conversa": "Análise", "Automação e contatos": "Automação", "Caixa de entrada": "Entrada", "Inbox Unificado": "Inbox", "Logs do Sistema": "Logs" };
+
+/** Mobile only: the module's first four sections as an app-style tab bar, plus "Mais" for the rest. */
+function MobileTabBar({ modulePrefix, onMore }: { modulePrefix: string; onMore: () => void }) {
+  const pathname = usePathname();
+  const hash = useSyncExternalStore(subscribeHash, currentHash, emptyHash);
+  const items = navConfigs[modulePrefix as keyof typeof navConfigs] || [];
+  const primary = items.slice(0, 4);
+  const moreActive = items.slice(4).some(({ href }) => isModuleNavActive(pathname, hash, href));
+  if (!items.length) return null;
+  return (
+    <nav aria-label="Atalhos do módulo" className="kiara-tabbar md:hidden">
+      {primary.map(({ href, label, icon: Icon }) => {
+        const active = isModuleNavActive(pathname, hash, href);
+        const TabLink = href.includes("#") ? "a" : Link;
+        return (
+          <TabLink key={href} href={href} aria-current={active ? "page" : undefined} className={cn("kiara-tab", active && "is-active")}>
+            <span className="kiara-tab-icon"><Icon className="size-[19px]" strokeWidth={active ? 2.3 : 1.9} aria-hidden="true" /></span>
+            <span className="kiara-tab-label">{TAB_LABELS[label] ?? label}</span>
+          </TabLink>
+        );
+      })}
+      {items.length > 4 ? (
+        <button type="button" onClick={onMore} className={cn("kiara-tab", moreActive && "is-active")} aria-label="Mais opções do módulo">
+          <span className="kiara-tab-icon"><Ellipsis className="size-[19px]" aria-hidden="true" /></span>
+          <span className="kiara-tab-label">Mais</span>
+        </button>
+      ) : null}
+    </nav>
+  );
+}
+
+function useCurrentLabel(modulePrefix: string | null) {
+  const pathname = usePathname();
+  const hash = useSyncExternalStore(subscribeHash, currentHash, emptyHash);
+  const items = modulePrefix ? navConfigs[modulePrefix as keyof typeof navConfigs] || [] : [];
+  return items.find(({ href }) => isModuleNavActive(pathname, hash, href))?.label ?? "Kiara";
+}
+
 export function AppShell({
   children,
   previewModule,
@@ -140,6 +180,7 @@ export function AppShell({
   const isModuleActive = !!modulePrefix && pathname !== '/app';
   const isWhatsApp = modulePrefix === "/app/whatsapp";
   const isChat = modulePrefix === "/app/chat";
+  const currentLabel = useCurrentLabel(modulePrefix);
 
   // Conversation and automation modules render their own full-height shell (ImmersiveShell).
   if (isWhatsApp || isChat || modulePrefix === "/app/automation") {
@@ -181,16 +222,20 @@ export function AppShell({
       )}
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon"
-            className={cn("fixed left-4 top-4 z-40 size-11 rounded-xl bg-background/90 shadow-lg backdrop-blur-xl md:hidden", !isModuleActive && "hidden")}
-            aria-label="Abrir menu"
-          >
-            <Menu />
-          </Button>
-        </SheetTrigger>
+        {isModuleActive ? (
+          <header className="kiara-mobile-bar md:hidden">
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-10 rounded-xl" aria-label="Abrir menu">
+                <Menu />
+              </Button>
+            </SheetTrigger>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-primary/90">{modulePrefix === "/app/leads" ? "Kiara Leads" : "Kiara"}</p>
+              <p className="truncate text-[15px] font-semibold leading-tight">{currentLabel}</p>
+            </div>
+            <Link href="/app" aria-label="Trocar módulo" className="kiara-mobile-orb"><span className="kiara-orb kiara-orb-sm" aria-hidden="true" /></Link>
+          </header>
+        ) : null}
         <SheetContent
           side="left"
           className={cn("flex w-72 flex-col border-sidebar-border bg-sidebar p-5 text-sidebar-foreground", isWhatsApp && "kiara-whatsapp-shell")}
@@ -215,13 +260,14 @@ export function AppShell({
           </div>
         </SheetContent>
       </Sheet>
+      {isModuleActive ? <MobileTabBar modulePrefix={modulePrefix!} onMore={() => setMenuOpen(true)} /> : null}
       <div className={cn("min-w-0", isModuleActive && "md:pl-[202px]")}>
         <main
           id="conteudo"
           tabIndex={-1}
           className={cn(
             "relative mx-auto min-h-screen w-full min-w-0 max-w-[1540px] outline-none sm:p-7",
-            isModuleActive ? "p-4 pt-20 md:pt-7 lg:p-8" : pathname === "/app" ? "p-0 sm:p-0" : "px-4 pb-12 pt-24 sm:px-8 sm:pt-28"
+            isModuleActive ? "kiara-mobile-main p-4 pt-[76px] md:pt-7 lg:p-8" : pathname === "/app" ? "p-0 sm:p-0" : "px-4 pb-12 pt-24 sm:px-8 sm:pt-28"
           )}
         >
           {children}

@@ -904,3 +904,54 @@
     border: 2px solid currentColor;
   }
 }
+
+/* ---------- Mobile polish: landing ---------- */
+.marketing-live-dot { display: none; }
+.marketing-shine { position: relative; overflow: hidden; isolation: isolate; }
+.marketing-shine::after { position: absolute; inset: 0; z-index: -1; background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / .28) 50%, transparent 70%); content: ""; transform: translateX(-120%); animation: marketing-shine 4.5s ease-in-out infinite 1.2s; pointer-events: none; }
+@keyframes marketing-shine { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+@keyframes marketing-live { 0%, 100% { box-shadow: 0 0 0 0 rgb(52 211 153 / .6); } 70% { box-shadow: 0 0 0 6px transparent; } }
+@media (max-width: 767px) {
+  .marketing-header nav { height: 60px; }
+  .marketing-hero-eyebrow { display: inline-flex; align-items: center; gap: .5rem; max-width: 100%; border: 1px solid rgb(167 139 250 / .3); border-radius: 999px; padding: .4rem .8rem; background: rgb(124 77 255 / .1); font-size: .62rem; letter-spacing: .12em; white-space: nowrap; box-shadow: 0 0 24px -6px rgb(124 77 255 / .55); }
+  .marketing-live-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: #34d399; animation: marketing-live 1.8s infinite; }
+  .marketing-hero-accent { background: linear-gradient(95deg, #d8c4ff 0%, #a78bfa 45%, #7dd3fc 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero-display { font-size: clamp(2.35rem, 10.6vw, 3.1rem); line-height: .98; }
+  .marketing-hero-art { opacity: .62; object-position: 70% 20%; }
+  .marketing-hero-shade { background: radial-gradient(120% 60% at 50% 18%, transparent, rgb(3 5 14 / .55) 55%), linear-gradient(180deg, rgb(3 5 14 / .3) 0%, rgb(3 5 14 / .78) 40%, rgb(3 5 14 / .9) 100%); }
+}
+@media (prefers-reduced-motion: reduce) { .marketing-shine::after, .marketing-live-dot { animation: none; } }
+
+/* ---------- Mobile polish: app shell ---------- */
+.kiara-mobile-bar { position: fixed; top: 0; right: 0; left: 0; z-index: 40; display: flex; align-items: center; gap: .6rem; padding: calc(.55rem + env(safe-area-inset-top)) .85rem .55rem .55rem; border-bottom: 1px solid rgb(255 255 255 / .07); background: linear-gradient(180deg, rgb(13 11 24 / .92), rgb(13 11 24 / .78)); backdrop-filter: blur(20px) saturate(1.4); }
+.kiara-mobile-bar::after { position: absolute; right: 12%; bottom: -1px; left: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgb(167 139 250 / .65), transparent); content: ""; }
+.kiara-mobile-orb { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 999px; }
+.kiara-mobile-orb .kiara-orb-sm { box-shadow: inset -7px -8px 14px rgb(38 8 111 / .45), inset 5px 5px 10px rgb(255 255 255 / .35), 0 0 18px rgb(123 72 255 / .55); }
+.kiara-tabbar { position: fixed; right: .6rem; bottom: calc(.6rem + env(safe-area-inset-bottom)); left: .6rem; z-index: 40; display: flex; gap: .15rem; padding: .35rem; border: 1px solid rgb(255 255 255 / .09); border-radius: 22px; background: linear-gradient(160deg, rgb(30 24 54 / .9), rgb(12 11 22 / .92)); box-shadow: 0 18px 44px -10px rgb(0 0 0 / .85), 0 0 34px -14px rgb(124 77 255 / .6), inset 0 1px rgb(255 255 255 / .07); backdrop-filter: blur(22px) saturate(1.4); }
+.kiara-tab { position: relative; display: flex; min-width: 0; min-height: 3.2rem; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; border-radius: 16px; color: rgb(255 255 255 / .55); -webkit-tap-highlight-color: transparent; transition: color .25s, background .25s, transform .15s; }
+.kiara-tab:active { transform: scale(.94); }
+.kiara-tab-label { max-width: 100%; overflow: hidden; font-size: .64rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.kiara-tab-icon { display: grid; width: 2.6rem; height: 1.75rem; place-items: center; border-radius: 999px; transition: background .3s, box-shadow .3s; }
+.kiara-tab.is-active { color: white; }
+.kiara-tab.is-active .kiara-tab-icon { background: linear-gradient(105deg, rgb(124 77 255 / .55), rgb(91 54 199 / .45)); box-shadow: 0 0 18px rgb(124 77 255 / .55), inset 0 1px rgb(255 255 255 / .18); }
+.kiara-tab.is-active .kiara-tab-icon svg { filter: drop-shadow(0 0 5px rgb(216 196 255 / .8)); }
+.kiara-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 767px) {
+  .kiara-mobile-main { padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)); }
+  .kiara-mobile-main .fx-rise { animation-duration: .5s; }
+  /* Sticky action rows inside screens sit above the tab bar. */
+  .kiara-mobile-sticky { position: sticky; bottom: calc(5.4rem + env(safe-area-inset-bottom)); z-index: 5; margin-inline: -1.25rem; padding: .75rem 1.25rem; border-top: 1px solid rgb(255 255 255 / .08); background: linear-gradient(180deg, rgb(16 14 28 / .7), rgb(16 14 28 / .96)); backdrop-filter: blur(14px); }
+}
+@media (min-width: 768px) { .kiara-tabbar, .kiara-mobile-bar { display: none; } }
+@media (max-width: 639px) {
+  .kiara-module-live { border-color: rgb(167 139 250 / .3); background: linear-gradient(120deg, rgb(91 54 199 / .28), rgb(0 0 0 / .45) 60%); box-shadow: 0 0 30px -12px rgb(124 77 255 / .7); }
+}
+@media (max-width: 767px) {
+  .kiara-immersive-header { position: relative; background: linear-gradient(180deg, rgb(13 11 24 / .95), rgb(13 11 24 / .8)); }
+  .kiara-immersive-header::after { position: absolute; right: 12%; bottom: -1px; left: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgb(167 139 250 / .55), transparent); content: ""; }
+}
+@media (max-width: 639px) {
+  .auth-mobile-hero { position: relative; }
+  .auth-mobile-hero::before { position: absolute; top: -2.5rem; left: 50%; z-index: -1; width: 20rem; height: 14rem; border-radius: 50%; background: radial-gradient(closest-side, rgb(124 77 255 / .42), transparent); content: ""; transform: translateX(-50%); filter: blur(10px); }
+  .auth-mobile-hero .auth-hero-orb.kiara-orb-lg { width: 5.5rem; height: 5.5rem; }
+}

@@ -98,12 +98,12 @@ export function TodayQueue({ entries }: { entries: PipelineEntry[] }) {
   const facts = [consumer.website_status === "not_listed" ? "Sem site" : null, consumer.rating ? `Nota ${consumer.rating.toFixed(1).replace(".", ",")} (${consumer.user_rating_count ?? 0})` : null,
     ...(consumer.fit?.reasons.slice(0, 3).map((reason) => reason.text) ?? [])].filter(Boolean) as string[]
 
-  return <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-    <aside aria-label="Fila de hoje" className="kiara-soft-panel h-fit rounded-2xl border p-3">
+  return <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-6">
+    <aside aria-label="Fila de hoje" className="kiara-soft-panel -mx-1 h-fit rounded-2xl border p-2 lg:mx-0 lg:p-3">
       <p className="px-2 pb-2 text-sm font-medium">{pending.length} pendente{pending.length === 1 ? "" : "s"} · {done.size} feito{done.size === 1 ? "" : "s"}</p>
-      <ol className="max-h-[60vh] space-y-1 overflow-y-auto">{pending.map((item, position) => <li key={item.entry.id}>
+      <ol className="flex snap-x gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] lg:block lg:max-h-[60vh] lg:space-y-1 lg:overflow-y-auto lg:pb-0">{pending.map((item, position) => <li key={item.entry.id} className="w-[11.5rem] shrink-0 snap-start lg:w-auto">
         <button type="button" onClick={() => setIndex(position)} aria-current={item === current ? "true" : undefined}
-          className={cn("w-full rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted/50", item === current && "bg-primary/15")}>
+          className={cn("w-full rounded-lg border border-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted/50", item === current && "border-primary/40 bg-primary/15 shadow-[0_0_18px_-6px_rgb(124_77_255/.7)]")}>
           <span className="block truncate font-medium">{leadDisplayName(item.entry.consumer)}</span>
           <span className="flex items-center gap-1 text-xs text-muted-foreground">{item.kind === "first_contact" ? <Sparkles className="size-3" /> : item.kind === "follow_up" ? <Clock3 className="size-3" /> : <Flame className="size-3" />}{KIND_LABEL[item.kind]}</span>
         </button>
@@ -133,11 +133,11 @@ export function TodayQueue({ entries }: { entries: PipelineEntry[] }) {
       </div>
 
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <div className="flex flex-wrap items-center gap-2 border-t pt-4">
-        {link ? <Button asChild size="lg" className="bg-emerald-500 text-white hover:bg-emerald-600"><a href={link} target="_blank" rel="noopener noreferrer" onClick={() => { setOpened(true); void record("opened").catch(() => undefined) }}><MessageCircle />Abrir no WhatsApp</a></Button>
-          : <Button type="button" size="lg" variant="outline" onClick={() => void navigator.clipboard.writeText(message).then(() => setOpened(true))}><Copy />Copiar mensagem</Button>}
+      <div className="kiara-mobile-sticky flex items-center gap-2 border-t pt-4">
+        {link ? <Button asChild size="lg" className="flex-1 bg-emerald-500 text-white shadow-[0_10px_30px_-10px_rgb(16_185_129/.8)] hover:bg-emerald-600 sm:flex-none"><a href={link} target="_blank" rel="noopener noreferrer" onClick={() => { setOpened(true); void record("opened").catch(() => undefined) }}><MessageCircle />Abrir no WhatsApp</a></Button>
+          : <Button type="button" size="lg" variant="outline" className="flex-1 sm:flex-none" onClick={() => void navigator.clipboard.writeText(message).then(() => setOpened(true))}><Copy />Copiar mensagem</Button>}
         <Button type="button" size="lg" variant={opened ? "default" : "outline"} disabled={saving} onClick={() => void markSent()}>{saving ? <Loader2 className="animate-spin" /> : <Check />}Enviei</Button>
-        <Button type="button" variant="ghost" className="ml-auto text-muted-foreground" onClick={() => setIndex((value) => (value + 1) % Math.max(1, pending.length))}><SkipForward />Pular</Button>
+        <Button type="button" variant="ghost" aria-label="Pular" className="px-2 text-muted-foreground sm:ml-auto" onClick={() => setIndex((value) => (value + 1) % Math.max(1, pending.length))}><SkipForward /><span className="hidden sm:inline">Pular</span></Button>
       </div>
       {!link ? <p className="text-xs text-muted-foreground">Este lead não tem WhatsApp público: copie a mensagem e use outro canal.</p> : null}
     </section>
