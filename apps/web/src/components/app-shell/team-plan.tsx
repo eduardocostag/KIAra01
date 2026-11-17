@@ -80,7 +80,7 @@ export function PlanWorkspace() {
     <section aria-labelledby="current-plan" className="kiara-soft-panel space-y-4 rounded-2xl border p-5 sm:p-6">
       <div className="flex flex-wrap items-center gap-3"><Gem className="size-6 text-primary" aria-hidden="true" /><div className="flex-1"><h2 id="current-plan" className="text-lg font-semibold">Plano {data.label}</h2>
         <p className="text-sm text-muted-foreground">{data.plan === "trial" && trialDays !== null ? `${trialDays} dia${trialDays === 1 ? "" : "s"} de teste restante${trialDays === 1 ? "" : "s"}` : data.status === "active" ? "Ativo" : "Pagamento pendente"} · uso deste mês</p></div></div>
-      <ul className="grid gap-3 sm:grid-cols-2">{data.usage.map((item) => { const percent = Math.min(100, Math.round((item.used / Math.max(1, item.limit)) * 100)); return <li key={item.metric} className="space-y-1.5">
+      <ul className="grid gap-3 sm:grid-cols-2">{data.usage.filter((item) => item.metric !== "seats").map((item) => { const percent = Math.min(100, Math.round((item.used / Math.max(1, item.limit)) * 100)); return <li key={item.metric} className="space-y-1.5">
         <div className="flex text-sm"><span className="flex-1 first-letter:uppercase">{item.label}</span><span className="tabular-nums text-muted-foreground">{item.used} de {item.limit}</span></div>
         <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={item.label} aria-valuenow={item.used} aria-valuemax={item.limit}><div className={cn("h-full rounded-full", percent >= 90 ? "bg-rose-400" : percent >= 70 ? "bg-amber-400" : "bg-primary")} style={{ width: `${percent}%` }} /></div>
       </li> })}</ul>
@@ -90,7 +90,7 @@ export function PlanWorkspace() {
       <p className="mt-1 text-2xl font-semibold">{money(plan.price_cents)}<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
       <ul className="mt-3 flex-1 space-y-1 text-sm text-muted-foreground">
         <li>Leads ilimitados</li><li>{plan.limits.ai_messages.toLocaleString("pt-BR")} mensagens escritas pela Kiara</li>
-        <li>{plan.limits.images.toLocaleString("pt-BR")} imagens e {plan.limits.videos} vídeos</li><li>{plan.limits.seats} {plan.limits.seats === 1 ? "pessoa" : "pessoas"} na equipe</li></ul>
+        <li>{plan.limits.images.toLocaleString("pt-BR")} imagens e {plan.limits.videos} vídeos</li></ul>
       <Button className="mt-4" variant={plan.id === data.plan ? "outline" : "default"} disabled={plan.id === data.plan} asChild={plan.id !== data.plan}>
         {plan.id === data.plan ? <span>Plano atual</span> : <a href={`https://wa.me/${(process.env.NEXT_PUBLIC_KIARA_SALES_WHATSAPP ?? "").replace(/\D/g, "")}?text=${encodeURIComponent(`Quero assinar o plano ${plan.label} da Kiara.`)}`} target="_blank" rel="noopener noreferrer">Quero este plano</a>}
       </Button>

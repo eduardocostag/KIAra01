@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ArrowDownRight, ArrowUpRight, CircleDollarSign, Handshake, MessageCircle, Reply, Search, Send, Trophy } from "lucide-react"
+import Link from "next/link"
+import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { salesRequest, type SalesProfile } from "@/lib/api/sales"
 import { cn } from "@/lib/utils"
@@ -15,11 +16,11 @@ const number = (value: number) => new Intl.NumberFormat("pt-BR").format(value)
 
 function Trend({ now, before }: { now: number; before: number }) {
   if (!before && !now) return null
-  if (!before) return <span className="text-xs text-emerald-400">novo</span>
+  if (!before) return <span className="rounded-full bg-emerald-400/10 px-1.5 py-0.5 text-[11px] text-emerald-300">novo</span>
   const change = Math.round(((now - before) / before) * 100)
-  if (!change) return <span className="text-xs text-muted-foreground">igual ao período anterior</span>
+  if (!change) return null
   const Icon = change > 0 ? ArrowUpRight : ArrowDownRight
-  return <span className={cn("inline-flex items-center gap-0.5 text-xs", change > 0 ? "text-emerald-400" : "text-rose-400")}><Icon className="size-3.5" aria-hidden="true" />{change > 0 ? "+" : ""}{change}%<span className="sr-only"> em relação ao período anterior</span></span>
+  return <span className={cn("inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] tabular-nums", change > 0 ? "bg-emerald-400/10 text-emerald-300" : "bg-rose-400/10 text-rose-300")}><Icon className="size-3.5" aria-hidden="true" />{change > 0 ? "+" : ""}{change}%<span className="sr-only"> em relação ao período anterior</span></span>
 }
 
 /** What Kiara produced in the period: one headline in money, the funnel of the period and a few tiles. */
@@ -54,67 +55,69 @@ export function ResultsPanel() {
 
   const current = data?.current
   const steps = current ? [
-    { label: "Leads encontrados", value: current.found, icon: Search },
-    { label: "Abordados", value: current.approached, icon: Send },
-    { label: "Responderam", value: current.replied, icon: Reply },
-    { label: "Oportunidades", value: current.opportunities, icon: Handshake },
-    { label: "Vendas", value: current.won, icon: Trophy },
+    { label: "Encontrados", value: current.found },
+    { label: "Abordados", value: current.approached },
+    { label: "Responderam", value: current.replied },
+    { label: "Oportunidades", value: current.opportunities },
+    { label: "Vendas", value: current.won },
   ] : []
   const top = Math.max(1, ...steps.map((step) => step.value))
-  const noMoney = data && !data.average_deal_cents && !data.current.generated_cents && !data.current.won_cents
+  const empty = Boolean(current && !steps.some((step) => step.value) && !current.generated_cents && !data?.open_cents && !current.conversations)
+  const noMoney = data && !empty && !data.average_deal_cents && !data.current.generated_cents && !data.current.won_cents
+  const replyRate = current?.approached ? Math.round((current.replied / current.approached) * 100) : 0
 
-  return <section aria-labelledby="results-title" className="kiara-soft-panel space-y-5 rounded-2xl border p-5 sm:p-6">
-    <div className="flex flex-wrap items-center gap-3">
-      <div className="min-w-[14rem] flex-1"><h2 id="results-title" className="text-lg font-semibold">Resultados da Kiara</h2><p className="text-sm text-muted-foreground">O que a Kiara gerou para o seu negócio no período.</p></div>
-      <div role="radiogroup" aria-label="Período" className="inline-flex w-full rounded-full border p-0.5 sm:w-auto">{PERIODS.map((period) => <button key={period.days} type="button" role="radio" aria-checked={days === period.days} onClick={() => setDays(period.days)} className={cn("flex-1 rounded-full px-3 py-1.5 text-xs transition-colors sm:flex-none sm:py-1", days === period.days ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{period.label}</button>)}</div>
-    </div>
+  return <section aria-labelledby="results-title" className="kiara-results kiara-soft-panel rounded-2xl border p-5 sm:p-7">
+    <header className="flex items-center gap-3">
+      <h2 id="results-title" className="flex-1 text-[13px] font-medium uppercase tracking-[.14em] text-muted-foreground">Resultados</h2>
+      <div role="radiogroup" aria-label="Período" className="flex items-center gap-1 text-xs">{PERIODS.map((period) => <button key={period.days} type="button" role="radio" aria-checked={days === period.days} onClick={() => setDays(period.days)}
+        className={cn("rounded-full px-2.5 py-1 transition-colors", days === period.days ? "bg-white/[.08] text-foreground" : "text-muted-foreground hover:text-foreground")}>{period.label.replace(" dias", "d")}</button>)}</div>
+    </header>
 
-    {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    {!data && !error ? <div role="status" aria-label="Carregando resultados" className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="fx-skeleton h-20 rounded-xl" />)}</div> : null}
+    {error ? <p role="alert" className="mt-4 text-sm text-destructive">{error}</p> : null}
+    {!data && !error ? <div role="status" aria-label="Carregando resultados" className="mt-6 space-y-4"><div className="fx-skeleton h-12 w-48 rounded-lg" /><div className="fx-skeleton h-16 rounded-xl" /></div> : null}
 
-    {data && current ? <>
-      <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
-        <div>
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><CircleDollarSign className="size-4 text-primary" aria-hidden="true" />Oportunidades geradas</p>
-          <p className="mt-1 text-4xl font-semibold tracking-tight tabular-nums">{money(current.generated_cents, true)}</p>
-          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Trend now={current.generated_cents} before={data.previous.generated_cents} /></p>
-        </div>
-        <div className="pb-1">
-          <p className="text-sm text-muted-foreground">Vendas fechadas</p>
-          <p className="text-2xl font-semibold tabular-nums">{money(current.won_cents, true)}</p>
-        </div>
-        <div className="pb-1">
-          <p className="text-sm text-muted-foreground">Em negociação agora</p>
-          <p className="text-2xl font-semibold tabular-nums">{money(data.open_cents, true)}</p>
-        </div>
+    {data && current && empty ? <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+      <div className="flex-1">
+        <p className="text-2xl font-semibold tracking-tight">Nada por aqui ainda</p>
+        <p className="mt-1 text-sm text-muted-foreground">Nos últimos {data.days} dias não houve buscas nem conversas. Quando a Kiara trabalhar, os resultados aparecem aqui.</p>
       </div>
-      {noMoney ? <form className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed p-3 text-sm" onSubmit={(event) => { event.preventDefault(); void saveAverage() }}>
+      <Button asChild variant="outline" className="rounded-full"><Link href="/app/hunter">Buscar leads<ArrowRight /></Link></Button>
+    </div> : null}
+
+    {data && current && !empty ? <>
+      <div className="mt-5 flex flex-wrap items-end gap-x-10 gap-y-4">
+        <div>
+          <p className="text-[44px] font-semibold leading-none tracking-[-.04em] tabular-nums sm:text-5xl">{money(current.generated_cents, true)}</p>
+          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">em oportunidades geradas <Trend now={current.generated_cents} before={data.previous.generated_cents} /></p>
+        </div>
+        <dl className="flex gap-8 pb-1 text-sm">
+          <div><dt className="text-muted-foreground">Vendas</dt><dd className="mt-0.5 text-lg font-medium tabular-nums">{money(current.won_cents, true)}</dd></div>
+          <div><dt className="text-muted-foreground">Em negociação</dt><dd className="mt-0.5 text-lg font-medium tabular-nums">{money(data.open_cents, true)}</dd></div>
+        </dl>
+      </div>
+
+      {noMoney ? <form className="mt-5 flex flex-wrap items-center gap-2 rounded-xl bg-white/[.03] p-3 text-sm" onSubmit={(event) => { event.preventDefault(); void saveAverage() }}>
         <label htmlFor="average-deal" className="flex-1 text-muted-foreground">Quanto vale, em média, uma venda sua? Assim a Kiara mostra o resultado em reais.</label>
         <span className="flex items-center rounded-md border bg-background px-2"><span className="text-muted-foreground">R$</span><input id="average-deal" inputMode="decimal" value={average} onChange={(event) => setAverage(event.target.value)} placeholder="1.500" className="h-9 w-28 bg-transparent px-2 outline-none" /></span>
         <Button type="submit" size="sm" disabled={saving}>Salvar</Button>
       </form> : null}
 
-      <ol className="space-y-2" aria-label={`Funil dos últimos ${data.days} dias`}>{steps.map((step, index) => {
+      <ol className="mt-7 grid grid-cols-3 gap-x-4 gap-y-5 border-t border-white/[.06] pt-6 sm:grid-cols-5 sm:gap-0" aria-label={`Funil dos últimos ${data.days} dias`}>{steps.map((step, index) => {
         const previous = index ? steps[index - 1].value : 0
         const rate = index && previous ? Math.round((step.value / previous) * 100) : null
-        const Icon = step.icon
-        return <li key={step.label} className="group grid grid-cols-[minmax(0,9.5rem)_1fr_auto] items-center gap-3 text-sm" title={`${step.label}: ${number(step.value)}${rate !== null ? ` (${rate}% da etapa anterior)` : ""}`}>
-          <span className="flex items-center gap-2 truncate text-muted-foreground"><Icon className="size-4 shrink-0" aria-hidden="true" />{step.label}</span>
-          <span className="h-6 overflow-hidden rounded-md bg-muted/40"><span className="block h-full rounded-r-[4px] bg-primary/80 transition-[width,background-color] duration-700 group-hover:bg-primary" style={{ width: `${Math.max(step.value ? 2 : 0, (step.value / top) * 100)}%` }} /></span>
-          <span className="w-24 text-right tabular-nums"><span className="font-semibold">{number(step.value)}</span>{rate !== null ? <span className="ml-1.5 text-xs text-muted-foreground">{rate}%</span> : null}</span>
+        return <li key={step.label} className="relative min-w-0 sm:px-4 sm:first:pl-0 sm:[&:not(:first-child)]:border-l sm:[&:not(:first-child)]:border-white/[.06]" title={rate !== null ? `${rate}% da etapa anterior` : undefined}>
+          <p className="truncate text-xs text-muted-foreground">{step.label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{number(step.value)}</p>
+          <span className="mt-2 block h-[3px] overflow-hidden rounded-full bg-white/[.06]"><span className="block h-full rounded-full bg-gradient-to-r from-violet-400 to-sky-400 transition-[width] duration-700" style={{ width: `${(step.value / top) * 100}%` }} /></span>
+          {rate !== null ? <p className="mt-1.5 text-[11px] tabular-nums text-muted-foreground">{rate}%<span className="hidden sm:inline"> da etapa anterior</span></p> : <p className="mt-1.5 text-[11px] text-transparent" aria-hidden="true">.</p>}
         </li>
       })}</ol>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {[{ label: "Conversas no WhatsApp", value: current.conversations, before: data.previous.conversations, icon: MessageCircle },
-          { label: "Leads no funil", value: current.added, before: data.previous.added, icon: Handshake },
-          { label: "Taxa de resposta", value: current.approached ? Math.round((current.replied / current.approached) * 100) : 0, before: data.previous.approached ? Math.round((data.previous.replied / data.previous.approached) * 100) : 0, icon: Reply, percent: true }]
-          .map(({ label, value, before, icon: Icon, percent }) => <div key={label} className="min-w-0 rounded-xl border bg-card/60 p-2.5 sm:p-3">
-            <p className="flex items-start gap-1.5 text-[11px] leading-tight text-muted-foreground sm:items-center sm:text-xs"><Icon className="mt-px size-3.5 shrink-0 sm:mt-0" aria-hidden="true" />{label}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">{percent ? `${value}%` : number(value)}</p>
-            <Trend now={value} before={before} />
-          </div>)}
-      </div>
+      <p className="mt-6 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+        <span><span className="font-medium text-foreground tabular-nums">{number(current.conversations)}</span> conversas no WhatsApp</span>
+        <span><span className="font-medium text-foreground tabular-nums">{number(current.added)}</span> leads no funil</span>
+        <span><span className="font-medium text-foreground tabular-nums">{replyRate}%</span> de resposta</span>
+      </p>
     </> : null}
   </section>
 }
