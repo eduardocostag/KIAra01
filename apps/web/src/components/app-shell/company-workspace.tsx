@@ -89,7 +89,7 @@ export function CompanyWorkspace() {
         <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{preset.offer}</span>
       </button>)}</div>
       {searches.length ? <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-muted-foreground">Buscas sugeridas:</span>{searches.map((query) => <Link key={query} href={`/app/hunter?${new URLSearchParams({ q: query })}`} className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs hover:border-primary/50"><Search className="size-3" aria-hidden="true" />{query}</Link>)}</div> : null}
-      <p className="text-xs text-muted-foreground">Oferta, tom de voz e modelos de mensagem ficam em <Link href="/app/settings" className="text-primary hover:underline">Configurações</Link>.</p>
+      <p className="text-xs text-muted-foreground">Oferta, tom de voz e modelos de mensagem ficam em <Link href="/app/settings" className="-my-1.5 inline-block py-1.5 text-primary hover:underline">Configurações</Link>.</p>
     </Section>
 
     <Section id="knowledge" title="O que a Kiara sabe sobre o seu negócio" description="Catálogo, preços, prazos, perguntas frequentes, políticas e o seu site. A Kiara usa isso no chat, nas respostas do WhatsApp e nas mensagens de abordagem.">
@@ -112,7 +112,7 @@ export function CompanyWorkspace() {
           <span className="line-clamp-1 text-xs text-muted-foreground">{item.preview}</span>
         </button>
         <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={item.enabled} onChange={(event) => void act(item.id, () => growth(`knowledge/${item.id}`, { method: "PATCH", body: JSON.stringify({ enabled: event.target.checked }) }), event.target.checked ? "Ativado." : "Desativado: a Kiara não usa mais este item.")} />Usar</label>
-        <button type="button" aria-label={`Excluir ${item.title}`} className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => void act(item.id, () => growth(`knowledge/${item.id}`, { method: "DELETE" }), "Excluído.")}><Trash2 className="size-4" /></button>
+        <button type="button" aria-label={`Excluir ${item.title}`} className="-m-1.5 shrink-0 p-1.5 text-muted-foreground hover:text-destructive" onClick={() => void act(item.id, () => growth(`knowledge/${item.id}`, { method: "DELETE" }), "Excluído.")}><Trash2 className="size-4" /></button>
       </li> })}</ul> : <p className="flex items-center gap-2 text-sm text-muted-foreground"><BookOpen className="size-4" aria-hidden="true" />Ainda vazio. Comece pelas perguntas que seus clientes mais fazem.</p>}
       {viewing ? <div className="rounded-xl border bg-muted/30 p-3"><div className="mb-2 flex items-center"><p className="flex-1 text-sm font-medium">{viewing.title}</p><button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setViewing(null)}>Fechar</button></div><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5">{viewing.content}</pre></div> : null}
     </Section>

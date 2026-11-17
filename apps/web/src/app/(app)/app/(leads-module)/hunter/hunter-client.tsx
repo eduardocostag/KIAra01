@@ -188,7 +188,7 @@ export function HunterClient() {
           <Input id="hunter-location" maxLength={160} value={location} onChange={(event) => setLocation(event.target.value)} className="h-11 text-base md:w-60 md:text-sm" placeholder="Cidade ou região" />
           <Button type="submit" className="h-11 px-6" disabled={!canSearch}>{busy ? <Loader2 className="animate-spin" /> : <Search />}Buscar</Button>
         </div>
-        <button type="button" aria-expanded={filtersOpen} aria-controls="hunter-filters" onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center gap-2 text-left text-sm text-muted-foreground hover:text-foreground">
+        <button type="button" aria-expanded={filtersOpen} aria-controls="hunter-filters" onClick={() => setFiltersOpen((open) => !open)} className="-my-1.5 flex min-h-8 w-full items-center gap-2 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground">
           <ChevronDown className={cn("size-4 shrink-0 transition-transform", filtersOpen && "rotate-180")} aria-hidden="true" />
           <span className="font-medium text-foreground">Filtros</span>
           <span className="truncate">{filterSummary}</span>

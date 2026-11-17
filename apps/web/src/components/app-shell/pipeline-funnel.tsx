@@ -50,12 +50,12 @@ export function PipelineFunnel({ counts, active, onPick }: { counts: Record<Pipe
         {[0, 1, 2, 3, 4, 5].map((index) => <circle key={index} r={2.4} fill={rings[index % rings.length]?.color ?? "#a78bfa"} className="kiara-funnel-drop" style={{ "--x": `${center + Math.sin(index * 2.1) * 18}px`, "--h": `${height - 26}px`, animationDelay: `${index * .55}s` } as CSSProperties} />)}
       </svg>
       <ul className="grid min-w-0 flex-1 grid-cols-1 gap-y-1 text-[13px] sm:min-w-44 sm:gap-y-1.5 sm:text-sm">
-        {rings.map((ring) => <li key={ring.id}><button type="button" onClick={() => onPick(ring.id)} aria-pressed={active === ring.id} className="flex w-full items-center gap-2 rounded-md px-1 text-left hover:text-foreground">
+        {rings.map((ring) => <li key={ring.id}><button type="button" onClick={() => onPick(ring.id)} aria-pressed={active === ring.id} className="flex min-h-7 w-full items-center gap-2 rounded-md px-1 text-left hover:text-foreground">
           <span className="size-2 shrink-0 rounded-full" style={{ background: ring.color, boxShadow: `0 0 10px ${ring.color}` }} aria-hidden="true" />
           <span className="text-muted-foreground">{ring.label}</span>
           <CountUp value={counts[ring.id]} className="ml-auto font-semibold tabular-nums" />
         </button></li>)}
-        <li><button type="button" onClick={() => onPick("lost")} aria-pressed={active === "lost"} className="flex w-full items-center gap-2 rounded-md px-1 text-left text-muted-foreground hover:text-foreground">
+        <li><button type="button" onClick={() => onPick("lost")} aria-pressed={active === "lost"} className="flex min-h-7 w-full items-center gap-2 rounded-md px-1 text-left text-muted-foreground hover:text-foreground">
           <span className="size-2 shrink-0 rounded-full" style={{ background: colors.lost }} aria-hidden="true" />Perdidos<CountUp value={counts.lost} className="ml-auto tabular-nums" />
         </button></li>
       </ul>

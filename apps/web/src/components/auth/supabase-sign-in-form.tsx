@@ -80,7 +80,7 @@ export function SupabaseSignInForm({ googleEnabled }: { googleEnabled: boolean }
         </div>
 
         <div className="grid gap-2">
-          <div className="flex items-center justify-between gap-4"><Label htmlFor="password">Senha</Label><Link href="/forgot-password" className="text-xs font-medium text-violet-300 transition hover:text-violet-200">Esqueci minha senha</Link></div>
+          <div className="flex items-center justify-between gap-4"><Label htmlFor="password">Senha</Label><Link href="/forgot-password" className="-my-1.5 inline-block py-1.5 text-xs font-medium text-violet-300 transition hover:text-violet-200">Esqueci minha senha</Link></div>
           <div className="relative">
             <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 size-4 text-white/40" aria-hidden="true" />
             <Input id="password" name="password" type="password" autoComplete="current-password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-12 border-white/10 bg-black/20 pl-10 text-white" placeholder="Sua senha" disabled={busy} />
@@ -92,7 +92,7 @@ export function SupabaseSignInForm({ googleEnabled }: { googleEnabled: boolean }
           {busy ? "Entrando…" : "Entrar"}
         </Button>
 
-        <p className="text-center text-sm text-white/52">Ainda não possui acesso? <Link href="/sign-up" className="font-semibold text-white transition hover:text-violet-300">Solicitar conta</Link></p>
+        <p className="text-center text-sm text-white/52">Ainda não possui acesso? <Link href="/sign-up" className="-my-1.5 inline-block py-1.5 font-semibold text-white transition hover:text-violet-300">Solicitar conta</Link></p>
       </div>
     </form>
   )

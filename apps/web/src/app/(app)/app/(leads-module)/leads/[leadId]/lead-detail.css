@@ -9,7 +9,7 @@
 .kiara-lead-breadcrumb { gap: .6rem; color: #9896a8; font-size: .8rem; }
 .kiara-lead-breadcrumb a:hover, .kiara-lead-back:hover, .kiara-lead-tabs a:hover { color: #c3adff; }
 .kiara-lead-topline { justify-content: space-between; gap: 1rem; margin-top: 2.1rem; }
-.kiara-lead-back { display: inline-flex; align-items: center; gap: .4rem; color: #c4c2d0; font-size: .8rem; font-weight: 600; }
+.kiara-lead-back { display: inline-flex; min-height: 2.25rem; align-items: center; gap: .4rem; color: #c4c2d0; font-size: .8rem; font-weight: 600; }
 .kiara-lead-top-actions { flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
 .kiara-lead-top-actions > div > a, .kiara-lead-source-link { border: 1px solid var(--lead-border); border-radius: 999px; }
 .kiara-lead-top-actions button { border-radius: 999px; background: linear-gradient(110deg, #886ef5, #b399ff); color: #121019; box-shadow: 0 6px 22px rgba(132, 90, 252, .2); }

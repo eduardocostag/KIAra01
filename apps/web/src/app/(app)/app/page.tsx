@@ -46,7 +46,7 @@ export default async function ModuleSelectorPage() {
       </nav>
       <div className="relative z-10 w-full max-w-5xl text-center">
         <p className="fx-rise mb-3 text-[11px] font-semibold uppercase tracking-[.18em] text-primary sm:hidden">Kiara Intelligence</p><h1 className="fx-rise kiara-gradient-text mb-3 text-balance text-[2rem] font-bold leading-[1.05] tracking-tight sm:text-4xl">Selecione o módulo de operação</h1>
-        <p className="fx-rise mb-9 text-sm text-muted-foreground">Primeira vez aqui? <WelcomeTourLink className="text-primary underline-offset-4 hover:underline" /></p>
+        <p className="fx-rise mb-9 text-sm text-muted-foreground">Primeira vez aqui? <WelcomeTourLink className="-my-1.5 inline-block py-1.5 text-primary underline-offset-4 hover:underline" /></p>
         <div className="grid grid-cols-1 gap-3 sm:gap-6 md:grid-cols-2 lg:grid-cols-4">
           {modules.map(({ href, label, description, icon: Icon, operational }, index) => (
             <Link key={href} href={href} data-tilt="12" style={{ "--i": index + 1 } as React.CSSProperties} className={cn(
@@ -60,7 +60,7 @@ export default async function ModuleSelectorPage() {
               <h2 className="text-base font-semibold sm:mb-2 sm:text-xl">{label}</h2>
               <p className="col-start-2 text-[13px] text-muted-foreground sm:mb-8 sm:text-sm">{description}</p>
 
-              {!operational && <span className="col-start-2 mt-2 sm:mt-0"><LaunchBadge /></span>}
+              {!operational && <span className="col-span-3 mt-3 flex justify-center sm:col-span-1 sm:mt-0 sm:block"><LaunchBadge /></span>}
 
               <span className="col-start-3 row-span-2 row-start-1 mt-auto inline-flex size-10 items-center justify-center rounded-full bg-white/5 text-sm font-medium group-hover:bg-primary group-hover:text-primary-foreground sm:min-h-10 sm:w-full sm:rounded-lg sm:bg-transparent">
                 <span className="sr-only sm:not-sr-only">{operational ? "Acessar" : "Ver novidade"}</span> <ArrowRight className="size-4 sm:ml-2" />

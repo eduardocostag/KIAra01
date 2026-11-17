@@ -154,9 +154,9 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
         </p>
         <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 hover:underline"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{phone}</a> : null}
-          {email ? <a href={`mailto:${encodeURIComponent(email)}`} className="inline-flex items-center gap-1.5 hover:underline"><Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />{email}</a> : null}
-          {website ? <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:underline"><Globe2 className="size-3.5 text-muted-foreground" aria-hidden="true" />Site</a> : null}
+          {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{phone}</a> : null}
+          {email ? <a href={`mailto:${encodeURIComponent(email)}`} className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />{email}</a> : null}
+          {website ? <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Globe2 className="size-3.5 text-muted-foreground" aria-hidden="true" />Site</a> : null}
           {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}
         </div>
         {tags.length ? <ul className="flex flex-wrap gap-1.5" aria-label="Por que este lead">{tags.map((tag) => <li key={tag.text} className={`rounded-full border px-2 py-0.5 text-[11px] ${toneClass[tag.tone]}`}>{tag.text}</li>)}</ul> : null}
@@ -169,7 +169,7 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
       </div>
     </div>
     <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 sm:flex sm:flex-col sm:items-stretch">
-      <span ref={addRef} className="relative flex min-w-0"><Button type="button" size="sm" className="h-9 w-full sm:h-8" variant={added ? "ghost" : "default"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "No funil" : "Adicionar ao funil"}</Button></span>
+      <span ref={addRef} className="relative flex min-w-0"><Button type="button" size="sm" className="h-9 w-full sm:h-8" variant={added ? "ghost" : "default"} disabled={adding || added || blocked} onClick={() => void addLead()}>{adding ? <Loader2 className="animate-spin" /> : added ? <Check /> : <Plus />}{added ? "No funil" : <>Adicionar<span className="hidden sm:inline"> ao funil</span></>}</Button></span>
       {whatsapp ? <Button asChild size="sm" variant="outline" className="h-9 border-emerald-400/40 sm:h-8 text-emerald-300 hover:bg-emerald-400/10 hover:text-emerald-200"><a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" />WhatsApp</a></Button> : null}
       <Button asChild size="sm" variant="ghost" className="h-9 px-2 text-muted-foreground sm:h-8 sm:px-3"><a href={result.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir a fonte de ${name}`}><ExternalLink aria-hidden="true" />Fonte</a></Button>
     </div>

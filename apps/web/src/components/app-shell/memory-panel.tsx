@@ -38,7 +38,7 @@ export function MemoryPanel() {
     {!data ? <div className="fx-skeleton h-16 rounded-xl" aria-label="Carregando" />
       : data.items.length ? <ul className="divide-y rounded-xl border">{data.items.map((item) => <li key={item.id} className="flex items-start gap-3 p-3">
         <span className="min-w-0 flex-1 text-sm">{item.fact}<span className="mt-0.5 block text-[11px] text-muted-foreground">{item.source === "manual" ? "Você escreveu" : item.source === "learned" ? "Aprendido com as suas buscas" : "Aprendido no chat"} · {new Date(item.updated_at).toLocaleDateString("pt-BR")}</span></span>
-        <button type="button" aria-label={`Esquecer: ${item.fact}`} disabled={busy === item.id} className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void run(item.id, () => growth(`memory/${item.id}`, { method: "DELETE" }), "Esquecido.")}><Trash2 className="size-4" /></button>
+        <button type="button" aria-label={`Esquecer: ${item.fact}`} disabled={busy === item.id} className="-m-1.5 shrink-0 p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void run(item.id, () => growth(`memory/${item.id}`, { method: "DELETE" }), "Esquecido.")}><Trash2 className="size-4" /></button>
       </li>)}</ul>
         : <p className="text-sm text-muted-foreground">Ainda nada. Converse com a Kiara: ela aprende seu nome, como funciona o seu negócio e como você gosta das respostas.</p>}
     {data?.items.length ? <p className="text-[11px] text-muted-foreground">{data.items.length} de {data.limit} lembranças. Senhas, códigos e números de cartão nunca são guardados.</p> : null}

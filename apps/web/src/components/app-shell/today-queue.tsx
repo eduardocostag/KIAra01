@@ -116,7 +116,7 @@ export function TodayQueue({ entries }: { entries: PipelineEntry[] }) {
         <h2 id="queue-lead" className="text-2xl font-medium tracking-tight"><Link href={`/app/leads/${encodeURIComponent(consumer.id)}`} className="hover:underline">{leadDisplayName(consumer)}</Link></h2>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {consumer.address ? <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" aria-hidden="true" />{consumer.address}</span> : null}
-          {consumer.phone ? <a href={`tel:${consumer.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1 hover:text-foreground"><Phone className="size-3.5" aria-hidden="true" />{consumer.phone}</a> : null}
+          {consumer.phone ? <a href={`tel:${consumer.phone.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-8 items-center gap-1 hover:text-foreground"><Phone className="size-3.5" aria-hidden="true" />{consumer.phone}</a> : null}
           {consumer.rating ? <span className="inline-flex items-center gap-1"><Star className="size-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />{consumer.rating.toFixed(1).replace(".", ",")}</span> : null}
         </div>
         {facts.length ? <ul className="flex flex-wrap gap-1.5">{facts.map((fact) => <li key={fact} className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-300">{fact}</li>)}</ul> : null}

@@ -32,7 +32,7 @@ export default function SignUpPage() {
         </a>
 
         <div className="mt-5 flex items-center justify-center gap-2 text-xs text-white/42"><ShieldCheck className="size-4" aria-hidden="true" />Seus dados de acesso continuam protegidos.</div>
-        <p className="mt-7 text-center text-sm text-white/52">Já possui uma conta? <Link href="/sign-in" className="font-semibold text-white transition hover:text-violet-300">Entrar</Link></p>
+        <p className="mt-7 text-center text-sm text-white/52">Já possui uma conta? <Link href="/sign-in" className="-my-1.5 inline-block py-1.5 font-semibold text-white transition hover:text-violet-300">Entrar</Link></p>
       </div>
     </div>
   </PremiumAuthShell>

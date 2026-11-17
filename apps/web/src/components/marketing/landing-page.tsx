@@ -121,7 +121,7 @@ export function LandingPage() {
         <Button asChild className="marketing-shine h-11 shrink-0 rounded-xl px-4"><Link href="/sign-up">Criar conta <ArrowRight aria-hidden="true" /></Link></Button>
       </MobileStickyCta>
 
-      <footer className="border-t border-white/8"><div className="mx-auto flex max-w-[1320px] items-center gap-4 px-5 pb-24 pt-6 md:py-6 text-xs text-white/35 sm:px-8"><KiaraBrand inverse /><Link href="/sign-in" className="ml-auto hover:text-white">Entrar</Link></div></footer>
+      <footer className="border-t border-white/8"><div className="mx-auto flex max-w-[1320px] items-center gap-4 px-5 pb-24 pt-6 md:py-6 text-xs text-white/35 sm:px-8"><KiaraBrand inverse /><Link href="/sign-in" className="-my-2 ml-auto px-2 py-2 hover:text-white">Entrar</Link></div></footer>
     </div>
   )
 }
