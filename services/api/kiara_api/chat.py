@@ -122,6 +122,12 @@ class ChatMessage(BaseModel):
     attachments: list[Attachment] = Field(default_factory=list, max_length=4)
 
 
+def _recent_question(body: "ChatRequest") -> str:
+    """The last two things the person wrote: picks which taught skills reach this answer."""
+    asked = [message.content for message in body.messages if message.role == "user"][-2:]
+    return " ".join(asked)[-1500:]
+
+
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     messages: list[ChatMessage] = Field(min_length=1, max_length=24)
@@ -417,7 +423,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         if usage is not None:
             await usage.consume(context, metric)
 
-    async def business(context: RequestContext) -> str:
+    async def business(context: RequestContext, query: str = "") -> str:
         block = ""
         if knowledge is not None:
             try:
@@ -432,7 +438,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 pass
         if patterns is not None:
             try:
-                block += await patterns()
+                block += await patterns(query)
             except Exception:  # noqa: BLE001 - nor because of the general patterns
                 pass
         return block
@@ -571,7 +577,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada. Use a conexão local ou configure o provedor no servidor.")
         await charge(context, "ai_messages")
-        conversation, file_context = build_conversation(body, await business(context))
+        conversation, file_context = build_conversation(body, await business(context, _recent_question(body)))
         conversation, link_context = await with_links(conversation, body)
         text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
         sources: list = []
@@ -600,7 +606,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada.")
         await charge(context, "ai_messages")
-        conversation, file_context = build_conversation(body, await business(context))
+        conversation, file_context = build_conversation(body, await business(context, _recent_question(body)))
         admin = _is_system_admin(context)
         urls = chat_links.find_urls(body.messages[-1].content)
 

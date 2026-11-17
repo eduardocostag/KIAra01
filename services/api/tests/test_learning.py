@@ -71,4 +71,17 @@ def test_guides_respect_the_prompt_budget_and_show_in_the_vault():
     items = [{"path": f"Ensinar a Kiara/N{i}.md", "title": f"N{i}", "body": "x" * learning.GUIDE_CHARS} for i in range(10)]
     assert len(learning.guides_block(items)) < learning.GUIDES_TOTAL + 400
     notes = learning.vault_notes([], workspaces=1, guides=items[:2])
-    assert "- N0 (" in notes["Kiara/O que a Kiara leu.md"] and "Ensinar a Kiara" in notes["Kiara/Como a Kiara aprende.md"]
+    assert "- Sempre: N0 (" in notes["Kiara/O que a Kiara leu.md"] and "Ensinar a Kiara" in notes["Kiara/Como a Kiara aprende.md"]
+
+
+def test_skills_from_subfolders_reach_only_the_conversations_about_them():
+    guides = [
+        {"path": "Ensinar a Kiara/Tom de voz.md", "title": "Tom de voz", "body": "Seja direta e gentil."},
+        {"path": "Ensinar a Kiara/Helpdesk/Wi-Fi instável.md", "title": "Wi-Fi instável", "body": "1. Medir sinal perto do roteador"},
+        {"path": "Ensinar a Kiara/Helpdesk/Impressora não imprime.md", "title": "Impressora não imprime", "body": "1. Ver fila de impressão"},
+    ]
+    about_wifi = learning.guides_block(guides, "meu wifi está instável e cai toda hora")
+    assert "Seja direta" in about_wifi and "Medir sinal" in about_wifi and "fila de impressão" not in about_wifi
+    unrelated = learning.guides_block(guides, "quanto custa o plano?")
+    assert "Seja direta" in unrelated and "Medir sinal" not in unrelated
+    assert "Helpdesk: Impressora não imprime, Wi-Fi instável" in unrelated      # titles are always known

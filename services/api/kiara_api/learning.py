@@ -13,7 +13,8 @@ advanced (contacted, qualified, opportunity, won). From that:
 GET /v1/learning/internal/vault returns the Obsidian notes (Markdown with [[links]]) the worker writes on Debian.
 PUT /v1/learning/internal/guides receives the notes the Kiara team writes in the vault folder "Ensinar a Kiara"
 (the whole folder each time: notes that disappeared are removed). The chat reads them as general guidance for
-every workspace, after that workspace's own memory.
+every workspace, after that workspace's own memory. Notes directly in the folder go to every conversation; notes
+in subfolders are skills: their titles are always listed and the full text goes only to conversations about them.
 Chat history stays in each person's browser; what Kiara learns from chats comes from [[LEMBRAR]] (memory.py).
 """
 from __future__ import annotations
@@ -40,9 +41,13 @@ LESSONS = 5
 ADVANCED = ("contacted", "qualified", "opportunity", "won")
 _UUID = r"^[0-9a-fA-F-]{36}$"
 GUIDES_DIR = "Ensinar a Kiara"
-MAX_GUIDES = 30
+MAX_GUIDES = 150
 GUIDE_CHARS = 3000          # per note, after cleaning
 GUIDES_TOTAL = 12000        # all notes together in one chat prompt
+SKILLS_PER_CHAT = 4         # skill notes (subfolders) chosen by relevance to the conversation
+_STOPWORDS = frozenset("""para como mais porque quando onde qual quais sobre esta este isso essa esse estou voce voces
+pode posso fazer tenho temos minha meu meus minhas seus suas uma umas uns dos das nos nas com sem que kiara favor
+agora aqui ainda tambem muito pouco tudo todo toda todos todas preciso quero queria""".split())
 _GUIDE_PATH = re.compile(r"^Ensinar a Kiara/[^/][^\\]{0,150}\.md$")
 # Lines with what looks like a real secret value are dropped (a note may still talk about passwords in general).
 _SECRET_VALUE = re.compile(r"\b(?:\d[ .-]?){13,19}\b|\bsk-[A-Za-z0-9_-]{8,}|\bhf_[A-Za-z0-9]{8,}|\bgh[pousr]_[A-Za-z0-9]{8,}|"
@@ -165,18 +170,58 @@ def guide_items(files: dict[str, str]) -> list[dict[str, str]]:
     return items
 
 
-def guides_block(guides: list[dict[str, Any]]) -> str:
+def _words(text: str) -> set[str]:
+    """Content words cut to a 6-letter stem, so "suspeito" meets "suspeitas" and "instavel" meets "instabilidade"."""
+    text = re.sub(r"\bwi[\s-]?fi\b", "wifi", text or "", flags=re.IGNORECASE)
+    return {word[:6] for word in _plain(text).split() if len(word) >= 4 and word not in _STOPWORDS}
+
+
+def _skill_area(guide: dict[str, Any]) -> str:
+    parts = guide["path"].split("/")
+    return parts[1] if len(parts) > 2 else ""
+
+
+def relevant_skills(guides: list[dict[str, Any]], query: str, limit: int = SKILLS_PER_CHAT) -> list[dict[str, Any]]:
+    """Skill notes that match the conversation: title words weigh more than body words."""
+    words = _words(query)
+    if not words:
+        return []
+    scored = []
+    for guide in guides:
+        if not _skill_area(guide):
+            continue
+        title = _words(guide["title"] + " " + _skill_area(guide))
+        score = 3 * len(words & title) + len(words & _words(guide["body"]))
+        if score >= 2:
+            scored.append((score, guide["path"], guide))
+    return [guide for _, _, guide in sorted(scored, key=lambda item: (-item[0], item[1]))[:limit]]
+
+
+def guides_block(guides: list[dict[str, Any]], query: str = "") -> str:
     if not guides:
         return ""
+    core = [guide for guide in guides if not _skill_area(guide)]
+    chosen = core + relevant_skills(guides, query)
     parts, used = [], 0
-    for guide in guides:
+    for guide in chosen:
         part = f"### {guide['title']}\n{guide['body']}"
         if used + len(part) > GUIDES_TOTAL:
-            break
+            continue
         parts.append(part)
         used += len(part)
-    return ("\n\nOrientações do time da Kiara (valem para todas as empresas; siga quando fizer sentido, com naturalidade, sem dizer "
-            "que vieram de notas; a memória e os dados da empresa da pessoa têm prioridade):\n" + "\n\n".join(parts) + "\n")
+    areas: dict[str, list[str]] = defaultdict(list)
+    for guide in guides:
+        if _skill_area(guide):
+            areas[_skill_area(guide)].append(guide["title"])
+    index = "; ".join(f"{area}: {', '.join(sorted(titles))}" for area, titles in sorted(areas.items()))[:2500]
+    block = ""
+    if parts:
+        block += ("\n\nOrientações do time da Kiara (valem para todas as empresas; siga quando fizer sentido, com naturalidade, sem dizer "
+                  "que vieram de notas; a memória e os dados da empresa da pessoa têm prioridade):\n" + "\n\n".join(parts) + "\n")
+    if index:
+        block += ("\nAssuntos em que o time da Kiara já te ensinou um procedimento (quando a pessoa pedir ajuda com um deles, guie passo a "
+                  "passo; o texto completo aparece acima quando a conversa é sobre ele): " + index + "\n")
+    return block
 
 
 def vault_notes(patterns: list[dict[str, Any]], workspaces: int, now: datetime | None = None,
@@ -214,10 +259,11 @@ def vault_notes(patterns: list[dict[str, Any]], workspaces: int, now: datetime |
         "A Kiara lê essas notas em toda conversa do chat, de todas as empresas. Não coloque dados de clientes nem senhas. "
         "Notas que começam com _ são rascunhos e ela ignora.\n"
         "- A pasta *Kiara* é reescrita sozinha pelo servidor: não edite as notas dela.\n\n[[Padrões gerais]] · [[O que a Kiara leu]]\n")
-    read = "\n".join(f"- {guide['title']} ({len(guide['body'])} caracteres)" for guide in guides or []) or f"- Nenhuma nota ainda. Escreva a primeira na pasta *{GUIDES_DIR}*."
+    read = "\n".join(f"- {_skill_area(guide) + ' › ' if _skill_area(guide) else 'Sempre: '}{guide['title']} ({len(guide['body'])} caracteres)"
+                     for guide in guides or []) or f"- Nenhuma nota ainda. Escreva a primeira na pasta *{GUIDES_DIR}*."
     notes["Kiara/O que a Kiara leu.md"] = (
         f"---\ntags: [kiara]\natualizado: {stamp}\n---\n# O que a Kiara leu\n\nNotas da pasta *{GUIDES_DIR}* que a Kiara está usando no chat "
-        f"(até {MAX_GUIDES} notas; o total entra até {GUIDES_TOTAL} caracteres por conversa).\n\n{read}\n\nVeja também [[Como a Kiara aprende]].\n")
+        f"(até {MAX_GUIDES} notas). As notas soltas na pasta entram em toda conversa; as de subpastas são habilidades: a Kiara conhece todos os títulos e lê o texto completo só quando a conversa é sobre aquele assunto (até {SKILLS_PER_CHAT} por vez).\n\n{read}\n\nVeja também [[Como a Kiara aprende]].\n")
     return notes
 
 
@@ -299,11 +345,11 @@ class LearningService:
                 await connection.execute("INSERT INTO kiara_guides(path,title,body) VALUES(%(path)s,%(title)s,%(body)s)", item)
         return {"received": len(files), "saved": len(items)}
 
-    async def chat_block(self) -> str:
-        """General patterns plus the team's guidance, for every workspace's chat."""
+    async def chat_block(self, query: str = "") -> str:
+        """General patterns plus the team's guidance (skills chosen by the conversation), for every workspace's chat."""
         block = prompt_block(await self.patterns())
         try:
-            block += guides_block(await self.guides())
+            block += guides_block(await self.guides(), query)
         except Exception:  # noqa: BLE001 - patterns still reach the chat if the guides table is missing
             pass
         return block
