@@ -18,7 +18,8 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 Context = Annotated[RequestContext, Depends(authenticated_context)]
-from .usage import PLANS, SYSTEM_ADMIN_EMAIL, subscription
+from .admins import is_system_admin
+from .usage import PLANS, subscription
 
 Role = Literal["admin", "operator", "viewer"]
 ROLE_LABELS = {"owner": "Dono", "admin": "Administrador", "operator": "Vendedor", "viewer": "Somente leitura"}
@@ -116,7 +117,7 @@ class TeamService:
     async def invite(self, context: RequestContext, body: InviteCreate) -> dict[str, Any]:
         self._manager(context)
         overview = await self.overview(context)
-        unlimited = (context.email or "").strip().lower() == SYSTEM_ADMIN_EMAIL
+        unlimited = is_system_admin(context.email)
         if overview["seats"]["used"] >= overview["seats"]["limit"] and not unlimited:
             raise ApiError(402, "plan_limit_reached", f"Seu plano permite {overview['seats']['limit']} pessoa(s) na equipe. Mude de plano para convidar mais.")
         token = secrets.token_urlsafe(32)

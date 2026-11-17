@@ -31,6 +31,7 @@ from .channel_webhooks import credentials_for_webhook
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
+from .admins import is_system_admin
 from .integrations import IntegrationRepository
 from .server_gateway import _opener
 from .unified_inbox import ingest_message
@@ -143,7 +144,7 @@ class WhatsAppCloudService:
                   # Public values the browser needs to open Meta's window; the app secret never leaves the server.
                   "app_id": settings["app_id"] if not missing else "", "config_id": settings["config_id"] if not missing else "",
                   "graph_version": settings["graph_version"]}
-        if missing and (context.email or "").strip().lower() == "admin@kiara.local":
+        if missing and is_system_admin(context.email):
             result["missing_settings"] = missing
         return result
 

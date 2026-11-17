@@ -3,6 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export type WorkspaceRole = "admin" | "member";
 export const SYSTEM_ADMIN_EMAIL = "admin@kiara.local";
+/** Every system administrator (full access); keep in sync with services/api/kiara_api/admins.py. */
+export const SYSTEM_ADMIN_EMAILS: readonly string[] = ["admin@kiara.local", "eduardocgonsalves@hotmail.com"];
+export function isSystemAdminEmail(email: string | null | undefined): boolean {
+  return Boolean(email) && SYSTEM_ADMIN_EMAILS.includes(email!.trim().toLowerCase());
+}
 export type WorkspaceContext = Readonly<{
   userId: string;
   workspaceId: string;
@@ -20,7 +25,7 @@ export async function requireWorkspace(): Promise<WorkspaceContext> {
   const userId = typeof data?.claims?.sub === "string" ? data.claims.sub : null
   if (error || !userId) throw new AuthenticationRequiredError("Authentication required")
   const email = typeof data?.claims?.email === "string" ? data.claims.email.trim().toLowerCase() : null
-  const isSystemAdmin = email === SYSTEM_ADMIN_EMAIL
+  const isSystemAdmin = isSystemAdminEmail(email)
   return { userId, workspaceId: userId, role: isSystemAdmin ? "admin" : "member", email, isSystemAdmin }
 }
 

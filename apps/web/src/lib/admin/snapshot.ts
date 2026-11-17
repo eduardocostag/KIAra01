@@ -1,6 +1,6 @@
 import "server-only"
 
-import { SYSTEM_ADMIN_EMAIL } from "@/lib/auth"
+import { isSystemAdminEmail } from "@/lib/auth"
 import { kiaraApi } from "@/lib/api/server-client"
 import { createAdminClient, hasSupabaseAdminConfig } from "@/lib/supabase/admin"
 import type { AdminAuditEvent, AdminService, AdminSnapshot, AdminUser } from "./types"
@@ -52,7 +52,7 @@ async function loadUsers(notices: string[]): Promise<AdminUser[]> {
         provider: user.app_metadata?.provider === "google" ? "Google" : "E-mail e senha",
         createdAt: user.created_at,
         lastSignInAt: user.last_sign_in_at ?? null,
-        isAdmin: user.email?.trim().toLowerCase() === SYSTEM_ADMIN_EMAIL,
+        isAdmin: isSystemAdminEmail(user.email),
       }
     })
   } catch (error) {

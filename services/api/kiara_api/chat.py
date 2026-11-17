@@ -26,6 +26,7 @@ from . import chat_links, chat_search, chat_video
 from .chat_files import Attachment, AttachmentError, append_text, history_content, total_size, user_content
 from .chat_image import IMAGE_STYLE, MARKER, generate_image, image_available
 from . import memory as kiara_memory
+from .admins import is_system_admin
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
@@ -264,7 +265,7 @@ def _configuration() -> tuple[str, str, str]:
 
 
 def _is_system_admin(context: RequestContext) -> bool:
-    return (context.email or "").strip().lower() == "admin@kiara.local"
+    return is_system_admin(context.email)
 
 
 def _authorize(context: RequestContext) -> None:

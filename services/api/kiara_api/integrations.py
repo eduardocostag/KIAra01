@@ -22,10 +22,11 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
+from .admins import is_system_admin  # noqa: E402
 
 
 async def system_admin_context(context: Annotated[RequestContext, Depends(authenticated_context)]) -> RequestContext:
-    if (context.email or "").strip().lower() != SYSTEM_ADMIN_EMAIL:
+    if not is_system_admin(context.email):
         raise ApiError(403, "system_admin_required", "Acesso às integrações exclusivo do administrador geral.")
     return context
 
@@ -237,7 +238,7 @@ def create_integration_router(repository: IntegrationRepository) -> APIRouter:
             raise ApiError(403, "insufficient_permission", "Somente administradores podem gerenciar integrações.")
 
     def ensure_system_admin(context: RequestContext) -> None:
-        if context.email != SYSTEM_ADMIN_EMAIL:
+        if not is_system_admin(context.email):
             raise ApiError(403, "system_admin_required", "Somente o administrador geral pode configurar esta integração global.")
 
     @router.get("")

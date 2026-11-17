@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..admins import is_system_admin
+
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -29,6 +31,6 @@ async def authenticated_context(request: Request) -> RequestContext:
 async def system_administrator_context(
     context: Annotated[RequestContext, Depends(authenticated_context)],
 ) -> RequestContext:
-    if (context.email or "").strip().lower() != "admin@kiara.local":
+    if not is_system_admin(context.email):
         raise ApiError(403, "system_admin_required", "Acesso exclusivo do administrador durante o acesso antecipado.")
     return context

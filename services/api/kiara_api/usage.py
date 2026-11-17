@@ -19,6 +19,7 @@ from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 SYSTEM_ADMIN_EMAIL = "admin@kiara.local"
+from .admins import is_system_admin  # noqa: E402
 PLANS: dict[str, dict[str, Any]] = {
     "trial": {"label": "Teste grátis", "price_cents": 0, "limits": {"images": 20, "videos": 3, "web_searches": 100, "ai_messages": 300, "seats": 1}},
     "starter": {"label": "Essencial", "price_cents": 19700, "limits": {"images": 60, "videos": 6, "web_searches": 400, "ai_messages": 1500, "seats": 1}},
@@ -77,7 +78,7 @@ class UsageService:
     async def consume(self, context: RequestContext, metric: str, amount: int = 1) -> None:
         if self._postgres is None or amount <= 0:
             return
-        unlimited = (context.email or "").strip().lower() == SYSTEM_ADMIN_EMAIL
+        unlimited = is_system_admin(context.email)
         # The counter is committed only when the limit holds: a refused action does not spend the quota.
         async with self._postgres._transaction(context.organization_id) as connection:
             await consume(connection, _uuid("organization", context.organization_id), metric, amount, unlimited=unlimited)

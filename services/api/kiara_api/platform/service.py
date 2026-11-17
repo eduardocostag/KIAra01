@@ -10,8 +10,9 @@ from .registry import module_descriptors, module_exists, skill_modules
 from .skills_catalog import SKILLS_CATALOG
 from .brain.orchestrator import KiaraBrain
 from .executors.factory import ExecutorFactory
+from ..admins import system_admin_emails
 
-PLATFORM_ADMIN_EMAILS = frozenset({"admin@kiara.local"})
+PLATFORM_ADMIN_EMAILS = system_admin_emails()
 
 
 class PlatformService:
