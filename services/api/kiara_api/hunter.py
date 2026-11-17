@@ -2136,7 +2136,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     return {"results": results, "validation": validation, "warnings": warnings, "error": error}
 
 
-def create_hunter_router(repository: HunterRepository, usage=None) -> APIRouter:
+def create_hunter_router(repository: HunterRepository, usage=None, learning=None) -> APIRouter:
     router = APIRouter(prefix="/v1/hunter", tags=["hunter"])
 
     async def run_leased_search(context: RequestContext, search_id: str) -> dict[str, Any]:
@@ -2265,6 +2265,8 @@ def create_hunter_router(repository: HunterRepository, usage=None) -> APIRouter:
             current = await repository.get(context, search_id)
             if current.get("status") == "pending_confirmation":
                 await usage.consume(context, "leads", int(current.get("result_limit") or 30))
+        if learning is not None:  # the workspace joins the learning registry (lessons from its searches)
+            await learning.touch(context.organization_id)
         return await repository.claim_confirmation(context, search_id)
 
     @router.post("/searches/{search_id}/process")

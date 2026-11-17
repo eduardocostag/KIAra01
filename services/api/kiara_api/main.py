@@ -56,6 +56,7 @@ from .sales import SalesRepository, create_sales_router
 from .results import ResultsRepository, create_results_router
 from .knowledge import KnowledgeRepository, create_knowledge_router
 from .memory import MemoryRepository, create_memory_router
+from .learning import LearningService, create_learning_router
 from .outreach_ai import OutreachAI, create_outreach_router
 from .team import TeamService, create_team_router
 from .usage import UsageService, create_usage_router
@@ -426,9 +427,11 @@ def create_app(
     usage_service = UsageService(growth_db) if growth_db else None
     knowledge_repository = KnowledgeRepository(growth_db) if growth_db else None
     memory_repository = MemoryRepository(growth_db) if growth_db else None
+    learning_service = LearningService(growth_db) if growth_db else None
     app.state.team = TeamService(growth_db) if growth_db else None
     app.include_router(create_chat_router(usage=usage_service, knowledge=knowledge_repository.context if knowledge_repository else None,
-                                       memory=memory_repository))
+                                       memory=memory_repository,
+                                       patterns=learning_service.patterns if learning_service else None))
     app.include_router(create_server_gateway_router())
     app.include_router(create_db_admin_router(PostgresRepository(config.database_url) if config.database_url else None))
     app.include_router(create_whatsapp_server_router(WhatsAppServerService(PostgresRepository(config.database_url) if config.database_url else None)))
@@ -441,9 +444,10 @@ def create_app(
     app.include_router(create_automation_router(AutomationRepository(PostgresRepository(config.database_url) if config.database_url else None)))
     if config.database_url:
         app.include_router(create_unified_inbox_router(UnifiedInboxRepository(PostgresRepository(config.database_url), IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key) if config.integration_encryption_key else None)))
-        app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url)), usage=usage_service))
+        app.include_router(create_hunter_router(HunterRepository(PostgresRepository(config.database_url)), usage=usage_service, learning=learning_service))
         app.include_router(create_knowledge_router(knowledge_repository))
         app.include_router(create_memory_router(memory_repository))
+        app.include_router(create_learning_router(learning_service))
         app.include_router(create_outreach_router(OutreachAI(growth_db, usage=usage_service)))
         app.include_router(create_team_router(app.state.team))
         app.include_router(create_usage_router(usage_service))

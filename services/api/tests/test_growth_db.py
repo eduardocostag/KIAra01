@@ -244,3 +244,54 @@ def test_memory_remembers_dedupes_forgets_and_isolates_workspaces(seeded):
     assert item["fact"] not in run(repository.facts(org))
     with pytest.raises(Exception):
         run(repository.delete(other, run(repository.list(org))[0]["id"]))   # cannot delete another workspace's memory
+
+
+APP_URL = os.getenv("KIARA_PG_APP_URL", "")   # same database, as the restricted server role (RLS applies)
+
+
+@pytest.mark.skipif(not APP_URL or "55432" not in APP_URL, reason="needs the restricted test role")
+def test_learning_tick_teaches_each_workspace_and_shares_only_counts():
+    import psycopg
+
+    from kiara_api.adapters.postgres import PostgresRepository
+    from kiara_api.learning import LearningService
+    from kiara_api.memory import MemoryRepository
+
+    orgs = []
+    with psycopg.connect(URL, autocommit=True) as db:
+        for name, (added_stage, results) in {"A": ("opportunity", 12), "B": ("contacted", 8)}.items():
+            org, user = uuid4(), uuid4()
+            db.execute("INSERT INTO organizations(id,slug,name) VALUES(%s,%s,%s)", (org, f"l-{org}", name))
+            db.execute("INSERT INTO users(id,identity_provider,external_subject) VALUES(%s,'test',%s)", (user, str(user)))
+            search = db.execute("""INSERT INTO hunter_searches(organization_id,requested_by,query,market,sources,result_limit,status,location)
+                                   VALUES(%s,%s,'Dentistas sem site em Porto Alegre','b2b',ARRAY['google_maps'],20,'completed','Porto Alegre - RS') RETURNING id""",
+                                (org, user)).fetchone()[0]
+            consumer = db.execute("INSERT INTO consumers(organization_id,display_name) VALUES(%s,'Clínica Secreta') RETURNING id", (org,)).fetchone()[0]
+            entry = db.execute("INSERT INTO pipeline_entries(organization_id,consumer_id,stage) VALUES(%s,%s,%s) RETURNING id",
+                               (org, consumer, added_stage)).fetchone()[0]
+            for i in range(results):
+                data = {"whatsapp_url": "https://wa.me/1" if i % 2 else "", "website_status": "not_listed"}
+                if i == 0:
+                    data["pipeline_entry_id"] = str(entry)
+                db.execute("INSERT INTO hunter_results(organization_id,search_id,source,title,url,public_data) VALUES(%s,%s,'google_maps',%s,%s,%s)",
+                           (org, search, f"Clínica {i}", f"https://maps.example/{org}/{i}", psycopg.types.json.Jsonb(data)))
+            orgs.append(str(org))
+
+    app = PostgresRepository(APP_URL)
+    service = LearningService(app)
+    for org in orgs:
+        run(service.touch(org))
+    summary = run(service.tick())
+    assert summary["learned"] >= 2 and summary["shared_patterns"] >= 1
+    facts_a = run(MemoryRepository(app).list(orgs[0]))
+    learned = [item["fact"] for item in facts_a if item["source"] == "learned"]
+    assert learned and "Dentistas sem site" in learned[0] and "1 avançaram" in learned[0]
+    assert all("Clínica" not in fact for fact in learned)
+    patterns = run(service.patterns())
+    dentists = next(item for item in patterns if item["niche"] == "dentistas sem site" and item["city"] == "porto alegre")
+    assert dentists["workspaces"] >= 2 and dentists["results"] >= 20 and dentists["added"] >= 2
+    vault = run(service.vault())["files"]
+    assert "Kiara/Nichos/Dentistas Sem Site.md" in vault
+    assert not any("Clínica" in text or orgs[0] in text for text in vault.values())
+    run(service.tick())                                            # a second run replaces, never duplicates, the lessons
+    assert len([i for i in run(MemoryRepository(app).list(orgs[0])) if i["source"] == "learned"]) == len(learned)

@@ -405,7 +405,7 @@ def _with_note(conversation: list[dict], note: str) -> list[dict]:
 
 
 def create_chat_router(provider_factory=None, image_generator=None, streamer=None, usage=None, knowledge=None,
-                       memory=None) -> APIRouter:
+                       memory=None, patterns=None) -> APIRouter:
     """`usage` counts images, videos and web searches against the client's plan; `knowledge` loads what the
     client taught Kiara about their business; `memory` (MemoryRepository) keeps what she learned in earlier chats.
     All optional: without a database the chat works as before."""
@@ -428,6 +428,12 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
             try:
                 block += kiara_memory.MEMORY_STYLE + kiara_memory.prompt_block(await memory.facts(context.organization_id))
             except Exception:  # noqa: BLE001 - nor because of the memory
+                pass
+        if patterns is not None:
+            try:
+                from .learning import prompt_block as patterns_block
+                block += patterns_block(await patterns())
+            except Exception:  # noqa: BLE001 - nor because of the general patterns
                 pass
         return block
 
