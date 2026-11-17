@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, ChevronsRight, Copy, Download, FileDown, FileSpreadsheet, FileText, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings2, Share2, Sparkles, Square, Trash2, Upload, Video, Volume2, Workflow, X } from "lucide-react"
+import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, ChevronsRight, Copy, Download, FileDown, FileSpreadsheet, ExternalLink, FileText, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings2, Share2, Sparkles, Square, Trash2, Upload, Video, Volume2, Workflow, X } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { blobBase64, CHAT_ATTACHMENT_ACCEPT, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, prepareAttachment, streamChat, StreamUnavailableError, validateChatAudio, type ChatArtifact, type ChatAttachment, type ChatImage, type ChatSource, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
+import { blobBase64, CHAT_ATTACHMENT_ACCEPT, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, prepareAttachment, streamChat, StreamUnavailableError, validateChatAudio, type ChatAction, type ChatArtifact, type ChatAttachment, type ChatImage, type ChatSource, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { downloadWord, looksUnfinished, printAnswer, whatsappText } from "@/lib/chat-export"
 import { parseBlocks, plainText, type Inline } from "@/lib/chat-markdown"
 import { cn } from "@/lib/utils"
@@ -41,7 +41,7 @@ function KiaraText({ text }: { text: string }) {
 
 type SentFile = { name: string; kind: ChatAttachment["kind"]; preview?: string }
 type Message = ChatMessage & { id: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage
-  sources?: ChatSource[]; files?: SentFile[]; streaming?: boolean; status?: string; interrupted?: boolean }
+  sources?: ChatSource[]; actions?: ChatAction[]; files?: SentFile[]; streaming?: boolean; status?: string; interrupted?: boolean }
 type SentPhoto = NonNullable<ChatMessage["attachments"]>[number]
 
 /** A file chosen for the next message (with remove) or already sent (in the bubble); click to see it. */
@@ -222,6 +222,14 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
 }
 
 const noop = () => () => {}
+
+/** Opens the first site of a new answer by itself (like the old desktop Kiara). Browsers may block a tab opened
+ *  after the answer arrives; the button under the message always works. App links (vscode:, obsidian:) wait for a tap. */
+function openFirst(actions?: ChatAction[]) {
+  const first = actions?.[0]
+  if (!first || !first.url.startsWith("https://")) return
+  try { window.open(first.url, "_blank", "noopener,noreferrer") } catch { /* Blocked: the button stays. */ }
+}
 
 /** `isAdmin` shows the technical layer (model, connection, resources); everyone else only sees Kiara. */
 export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?: string; isAdmin?: boolean }) {
@@ -415,8 +423,9 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
       const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
       if (controller.signal.aborted) return
       remember(reply.file_context)
+      openFirst(reply.actions)
       if (continueId) patchMessage(conversationId, continueId, { content: show(reply.text), interrupted: false, streaming: false }, true)
-      else appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, video: reply.video, image, sources: reply.sources })
+      else appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, video: reply.video, image, sources: reply.sources, actions: reply.actions })
     }
 
     // The answer appears while it is written; the classic request stays as the fallback.
@@ -432,7 +441,8 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
         }, controller.signal)
         const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
         remember(reply.file_context)
-        patchMessage(conversationId, replyId, { content: show(reply.text), image, video: reply.video, ...(reply.sources ? { sources: reply.sources } : {}), streaming: false, status: undefined }, true)
+        openFirst(reply.actions)
+        patchMessage(conversationId, replyId, { content: show(reply.text), image, video: reply.video, ...(reply.sources ? { sources: reply.sources } : {}), ...(reply.actions ? { actions: reply.actions } : {}), streaming: false, status: undefined }, true)
       } catch (reason) {
         if (reason instanceof StreamUnavailableError && !shown) {
           if (continueId) patchMessage(conversationId, replyId, { streaming: false, status: undefined })
@@ -487,7 +497,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
       const body = action === "build" ? { prompt: content, kind: mode } : mode === "video" ? { action: "start", prompt: content } : { prompt: content }
       const reply = parseChatReply(await chatRequest(transport, action, body, controller.signal))
       const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
-      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video, image, sources: reply.sources })
+      if (!controller.signal.aborted) appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, artifact: reply.artifact, plan: reply.plan, video: reply.video, image, sources: reply.sources, actions: reply.actions })
     } catch (reason) {
       if (controller.signal.aborted) setNotice("Geração interrompida. A solicitação pode já ter sido recebida pelo serviço.")
       else { setError(reason instanceof Error ? reason.message : "Não foi possível concluir a resposta."); setDraft(content) }
@@ -753,6 +763,8 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
                 {message.artifact && <Artifact artifact={message.artifact} />}
                 {message.video && <VideoJob key={message.video.id} initial={message.video} transport={transport} />}
                 {message.plan && <section className="mt-3 rounded-2xl border p-4"><p className="flex items-center gap-2 text-sm font-medium"><Workflow className="size-4 text-primary" aria-hidden="true" />Plano para revisão</p><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{message.plan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol><p className="mt-3 text-xs text-muted-foreground">Ainda não executado. Ações na máquina dependem de um executor autorizado.</p></section>}
+                {message.actions?.length ? <div className="mt-2.5 flex flex-wrap gap-2">{message.actions.map((action) => <a key={action.url} href={action.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3.5 text-sm font-medium text-foreground transition hover:bg-primary/20"><ExternalLink className="size-3.5 text-primary" />Abrir {action.label}</a>)}</div> : null}
                 {message.sources?.length ? <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"><span>Fontes:</span>{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" title={source.title} className="rounded-full border px-2 py-0.5 hover:bg-muted hover:text-foreground">{source.site}</a>)}</div> : null}
                 {message.interrupted && !message.streaming ? <p className="mt-2 text-xs text-muted-foreground">Resposta interrompida.</p> : null}
                 {!message.streaming && message.content ? <div className="mt-1 flex flex-wrap items-center gap-0.5 text-muted-foreground">

@@ -13,7 +13,9 @@ export type ChatSource = { title: string; url: string; site: string }
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 export type ChatAttachment = { name: string; mime: "image/jpeg" | "image/png" | "image/webp" | "application/pdf" | typeof DOCX | typeof XLSX | "text/csv" | "text/plain"; data_base64: string; kind: "image" | "pdf" | "document" | "sheet"; preview?: string }
-export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage; sources?: ChatSource[]; file_context?: string }
+/** A site or app Kiara opens for the person ("abra o youtube"). Only https and a few app links are accepted. */
+export type ChatAction = { label: string; url: string }
+export type ChatReply = { text: string; provider?: string; model?: string; artifact?: ChatArtifact; plan?: ChatPlan; video?: ChatVideoJob; image?: ChatImage; sources?: ChatSource[]; actions?: ChatAction[]; file_context?: string }
 export const CHAT_AUDIO_MAX_BYTES = 5 * 1024 * 1024
 const audioTypes = new Set(["audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac"])
 
@@ -58,8 +60,20 @@ export function parseChatReply(value: unknown): ChatReply {
   if (data.video != null) reply.video = parseVideoJob(data.video)
   if (data.image != null) reply.image = parseChatImage(data.image)
   if (Array.isArray(data.sources)) reply.sources = parseSources(data.sources)
+  if (Array.isArray(data.actions)) reply.actions = parseActions(data.actions)
   if (typeof data.file_context === "string" && data.file_context.trim()) reply.file_context = data.file_context.slice(0, 20_000)
   return reply
+}
+
+const ACTION_URL = /^(https:\/\/|vscode:\/\/|obsidian:\/\/|microsoft-edge:https:\/\/)/
+
+export function parseActions(values: unknown[]): ChatAction[] {
+  return values.flatMap((value) => {
+    if (!value || typeof value !== "object") return []
+    const item = value as Record<string, unknown>
+    return typeof item.url === "string" && typeof item.label === "string" && ACTION_URL.test(item.url) && item.url.length <= 600
+      ? [{ url: item.url, label: item.label.slice(0, 60) }] : []
+  }).slice(0, 3)
 }
 
 function parseSources(values: unknown[]): ChatSource[] {

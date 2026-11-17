@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import chat_links, chat_search, chat_video
+from . import chat_actions, chat_links, chat_search, chat_video
 from .chat_files import Attachment, AttachmentError, append_text, history_content, total_size, user_content
 from .chat_image import IMAGE_STYLE, MARKER, generate_image, image_available
 from . import memory as kiara_memory
@@ -462,6 +462,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         if body.voice:
             system += "\n" + VOICE_STYLE
         else:
+            system += chat_actions.ACTION_STYLE
             if image_available():
                 system += "\n" + IMAGE_STYLE
             if chat_video.video_available():
@@ -501,6 +502,10 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         """Turn the model's markers into real images and video jobs (and store what she should remember)."""
         result: dict = {}
         text = await learn(text, context)
+        text, actions = chat_actions.take_actions(text)
+        if actions and not body.voice:
+            result["actions"] = actions
+            text = text or "Abrindo para você."
         for marker, metric in ((MARKER, "images"), (chat_video.MARKER, "videos")):
             if marker.search(text) and not body.voice:
                 try:
