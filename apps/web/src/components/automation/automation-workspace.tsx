@@ -47,13 +47,21 @@ function AdsCost({ kind, node }: { kind: NodeKind; node: FlowNode }) {
   </section>
 }
 
+/** Phone-sized screen: floating panels become bottom sheets. */
+function isNarrow() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+}
+
 export function AutomationWorkspace({ userId = "preview" }: { userId?: string }) {
   const storageKey = `kiara-automation:${userId}`
   const [flows, setFlows] = useState<Workflow[]>([])
   const [activeId, setActiveId] = useState("")
   const [view, setView] = useState<View>({ x: 40, y: 40, zoom: 1 })
   const [selectedId, setSelectedId] = useState("")
-  const [paletteOpen, setPaletteOpen] = useState(true)
+  // Phones start with the palette closed so the flow is visible; the palette only renders after the flows load.
+  const [paletteOpen, setPaletteOpen] = useState(() => typeof window === "undefined" || !isNarrow())
+  /** Block settings fully open, or reduced to a bar (phones open it as a bar so the flow stays visible). */
+  const [inspectorFull, setInspectorFull] = useState(true)
   const [search, setSearch] = useState("")
   const [statuses, setStatuses] = useState<Record<string, StepStatus>>({})
   const [steps, setSteps] = useState<Step[]>([])
@@ -168,12 +176,24 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   }
 
   /** Part of the canvas not covered by the floating palette and inspector. */
-  function visibleArea(inspectorOpen: boolean) {
+  function visibleArea(inspectorOpen: boolean, full = inspectorFull) {
     const area = areaRef.current?.getBoundingClientRect()
     if (!area) return null
     const wide = area.width > 900
     const left = paletteOpen && wide ? 290 : 24, right = area.width - (inspectorOpen && wide ? 370 : 24)
-    return { left, right, top: 24, bottom: area.height - 90 }
+    // On phones the inspector is a bottom sheet: full (about 62% of the height) or a bar.
+    const sheet = inspectorOpen && isNarrow() ? (full ? area.height * 0.62 + 16 : 84) : 0
+    return { left, right, top: paletteOpen && !wide ? 64 : 24, bottom: area.height - Math.max(90, sheet + 16) }
+  }
+
+  /** Selects a block. On phones the settings open as a bar and the block is moved above it. */
+  function select(id: string, node = flow?.nodes.find((item) => item.id === id)) {
+    setSelectedId(id)
+    if (!id || id === selectedId) return
+    const narrow = isNarrow()
+    setInspectorFull(!narrow)
+    if (narrow) setPaletteOpen(false)
+    if (node) reveal(node, !narrow)
   }
 
   function fit(target = flow) {
@@ -187,8 +207,8 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   }
 
   /** Pans just enough to bring a node out from under the floating panels. */
-  function reveal(node: FlowNode) {
-    const box = visibleArea(true)
+  function reveal(node: FlowNode, full = inspectorFull) {
+    const box = visibleArea(true, full)
     if (!box) return
     const left = node.x * view.zoom + view.x, top = node.y * view.zoom + view.y
     const right = left + NODE_WIDTH * view.zoom, bottom = top + NODE_HEIGHT * view.zoom
@@ -206,8 +226,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
     const auto = !at && selected && !kind?.trigger && !nodeKind(selected.type)?.branches ? [{ id: newId("e"), from: selected.id, to: node.id }] : []
     if (!at && selected) { node.x = selected.x + NODE_WIDTH + 70; node.y = selected.y }
     update({ ...flow, nodes: [...flow.nodes, node], edges: [...flow.edges, ...auto] })
-    setSelectedId(node.id)
-    reveal(node)
+    select(node.id, node)
   }
 
   function updateNode(changes: Partial<FlowNode>) {
@@ -296,7 +315,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         : <Button type="button" size="sm" onClick={() => void run()}><Play /><span className="hidden sm:inline">Testar aqui</span></Button>}
     </> : <span className="font-medium">Kiara Automation</span>}>
     {flow ? <div ref={areaRef} className="relative flex min-h-0 flex-1">
-      <FlowCanvas workflow={flow} onChange={update} view={view} onViewChange={setView} selectedId={selectedId} onSelect={setSelectedId} statuses={statuses} activeEdges={activeEdges} onDropNode={addNode} />
+      <FlowCanvas workflow={flow} onChange={update} view={view} onViewChange={setView} selectedId={selectedId} onSelect={select} statuses={statuses} activeEdges={activeEdges} onDropNode={addNode} />
 
       <div className="absolute left-3 top-3 z-10 w-64 max-w-[calc(100%-1.5rem)] overflow-hidden rounded-2xl border bg-card/90 shadow-xl backdrop-blur-xl">
         <button type="button" onClick={() => setPaletteOpen(!paletteOpen)} aria-expanded={paletteOpen} className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium"><Plus className="size-4 text-primary" />Adicionar bloco<ChevronDown className={cn("ml-auto size-4 transition-transform", paletteOpen && "rotate-180")} /></button>
@@ -316,7 +335,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         </div> : null}
       </div>
 
-      <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border bg-card/90 p-1 shadow-lg backdrop-blur-xl">
+      <div className={cn("absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border bg-card/90 p-1 shadow-lg backdrop-blur-xl transition-[bottom]", selected && (inspectorFull ? "max-md:hidden" : "max-md:bottom-[84px]"))}>
         <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Diminuir zoom" onClick={() => setView({ ...view, zoom: Math.max(0.3, view.zoom * 0.85) })}><ZoomOut /></Button>
         <span className="w-11 text-center text-xs tabular-nums text-muted-foreground">{Math.round(view.zoom * 100)}%</span>
         <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Aumentar zoom" onClick={() => setView({ ...view, zoom: Math.min(2, view.zoom * 1.15) })}><ZoomIn /></Button>
@@ -357,20 +376,24 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         {logOpen ? <ol className="max-h-64 space-y-2 overflow-y-auto border-t p-3">{steps.map((step, index) => {
           const kind = nodeKind(flow.nodes.find((node) => node.id === step.nodeId)?.type ?? "")
           return <li key={`${step.nodeId}-${index}`} className="rounded-lg bg-muted/30 p-2.5 text-sm">
-            <p className="flex items-center gap-2"><span className={cn("size-1.5 rounded-full", step.status === "done" ? "bg-emerald-400" : step.status === "blocked" ? "bg-amber-400" : "bg-destructive")} /><button type="button" className="font-medium hover:underline" onClick={() => setSelectedId(step.nodeId)}>{kind?.label ?? "Bloco"}</button><span className="text-xs text-muted-foreground">{statusLabels[step.status]}</span></p>
+            <p className="flex items-center gap-2"><span className={cn("size-1.5 rounded-full", step.status === "done" ? "bg-emerald-400" : step.status === "blocked" ? "bg-amber-400" : "bg-destructive")} /><button type="button" className="font-medium hover:underline" onClick={() => select(step.nodeId)}>{kind?.label ?? "Bloco"}</button><span className="text-xs text-muted-foreground">{statusLabels[step.status]}</span></p>
             {step.message ? <p className="mt-1 text-xs text-muted-foreground">{step.message}</p> : null}
             {step.output ? <p className="mt-1 line-clamp-6 whitespace-pre-wrap break-words text-xs">{step.output}</p> : null}
           </li>
         })}</ol> : null}
       </section> : null}
 
-      {selected && selectedKind ? <aside aria-label="Ajustes do bloco" className="absolute inset-y-3 right-3 z-20 flex w-[min(340px,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl">
-        <header className="flex items-start gap-3 border-b p-4" style={{ "--accent-color": categories[selectedKind.category].color } as CSSProperties}>
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ background: `color-mix(in oklab, ${categories[selectedKind.category].color} 18%, transparent)`, color: categories[selectedKind.category].color }}><NodeIcon name={selectedKind.icon} className="size-4" /></span>
-          <div className="min-w-0 flex-1"><h2 className="font-semibold">{selectedKind.label}</h2><p className="text-xs text-muted-foreground">{categories[selectedKind.category].label}</p></div>
-          <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Fechar ajustes" onClick={() => setSelectedId("")}><X /></Button>
+      {selected && selectedKind ? <aside aria-label="Ajustes do bloco" className={cn("kiara-inspector absolute inset-x-2 bottom-2 z-20 flex max-h-[62%] flex-col overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl md:inset-x-auto md:bottom-3 md:right-3 md:top-3 md:max-h-none md:w-[340px]", !inspectorFull && "md:bottom-auto")}>
+        <span aria-hidden="true" className="mx-auto mt-1.5 h-1 w-9 shrink-0 rounded-full bg-white/15 md:hidden" />
+        <header className={cn("flex items-center gap-2 px-3 pb-2.5 pt-1.5 md:gap-3 md:p-4", inspectorFull && "border-b")} style={{ "--accent-color": categories[selectedKind.category].color } as CSSProperties}>
+          <button type="button" onClick={() => { const full = !inspectorFull; setInspectorFull(full); if (full) reveal(selected, true) }} aria-expanded={inspectorFull} aria-controls="inspector-body" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ background: `color-mix(in oklab, ${categories[selectedKind.category].color} 18%, transparent)`, color: categories[selectedKind.category].color }}><NodeIcon name={selectedKind.icon} className="size-4" /></span>
+            <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{selectedKind.label}</span><span className="block truncate text-xs text-muted-foreground">{inspectorFull ? categories[selectedKind.category].label : "Toque para ajustar"}</span></span>
+            <ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", inspectorFull ? "max-md:rotate-0 md:rotate-180" : "max-md:rotate-180")} />
+          </button>
+          <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Fechar ajustes" onClick={() => setSelectedId("")}><X /></Button>
         </header>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        <div id="inspector-body" className={cn("min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4", !inspectorFull && "hidden")}>
           <p className="text-sm text-muted-foreground">{selectedKind.description}</p>
           {selectedKind.type === "code.js"
             ? <p className="flex items-center gap-2 rounded-lg bg-emerald-400/10 px-3 py-2 text-xs text-emerald-400"><Check className="size-3.5" />Funciona ao testar aqui. No servidor este bloco não roda.</p>
@@ -394,8 +417,8 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
           {selectedKind.ads ? <AdsCost kind={selectedKind} node={selected} /> : null}
           {selectedKind.fields.some((field) => String(selected.config[field.key] ?? "").includes("{{entrada}}") || field.placeholder?.includes("{{entrada}}")) ? <p className="text-xs text-muted-foreground">Dica: <code>{"{{entrada}}"}</code> é substituído pelo resultado do bloco anterior.</p> : null}
         </div>
-        <footer className="flex gap-2 border-t p-3">
-          <Button type="button" variant="outline" size="sm" onClick={() => { if (!flow) return; const copy = { ...selected, id: newId("n"), x: selected.x + 40, y: selected.y + 90 }; update({ ...flow, nodes: [...flow.nodes, copy] }); setSelectedId(copy.id) }}><Copy />Duplicar</Button>
+        <footer className={cn("flex gap-2 border-t p-3", !inspectorFull && "hidden")}>
+          <Button type="button" variant="outline" size="sm" onClick={() => { if (!flow) return; const copy = { ...selected, id: newId("n"), x: selected.x + 40, y: selected.y + 90 }; update({ ...flow, nodes: [...flow.nodes, copy] }); select(copy.id, copy) }}><Copy />Duplicar</Button>
           <Button type="button" variant="outline" size="sm" className="ml-auto text-destructive" onClick={deleteNode}><Trash2 />Excluir</Button>
         </footer>
       </aside> : null}
