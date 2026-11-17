@@ -43,6 +43,32 @@ def test_vault_has_obsidian_links_and_no_workspace_data():
     patterns = learning.aggregate([[row("Dentistas", "Porto Alegre", results=20, added=4, advanced=2)],
                                    [row("Dentistas", "Porto Alegre", results=20, added=1, advanced=1)]])
     notes = learning.vault_notes(patterns, workspaces=2)
-    assert set(notes) == {"Kiara/Padrões gerais.md", "Kiara/Como a Kiara aprende.md", "Kiara/Nichos/Dentistas.md"}
+    assert set(notes) == {"Kiara/Padrões gerais.md", "Kiara/Como a Kiara aprende.md", "Kiara/Nichos/Dentistas.md",
+                          "Kiara/O que a Kiara leu.md"}
     assert "[[Dentistas]]" in notes["Kiara/Padrões gerais.md"] and "[[Padrões gerais]]" in notes["Kiara/Nichos/Dentistas.md"]
     assert "| Porto Alegre | 2 | 40 | 5 | 3 | 0 |" in notes["Kiara/Nichos/Dentistas.md"]
+
+
+def test_team_notes_become_guidance_without_secrets_or_drafts():
+    files = {
+        "Ensinar a Kiara/Tom de voz.md": "---\ntags: [kiara]\n---\nSeja direta. Veja [[Preços|a tabela]].\nsenha: abc123\nNunca peça a senha do cliente.\n%%só para mim%%\n",
+        "Ensinar a Kiara/_rascunho.md": "ainda não",
+        "Ensinar a Kiara/../fora.md": "fora",
+        "Kiara/Padrões gerais.md": "gerado pelo servidor",
+        "Ensinar a Kiara/Cartão.md": "4111 1111 1111 1111",
+    }
+    items = learning.guide_items(files)
+    assert [item["title"] for item in items] == ["Tom de voz"]
+    body = items[0]["body"]
+    assert "a tabela" in body and "[[" not in body and "abc123" not in body and "só para mim" not in body
+    assert "Nunca peça a senha do cliente." in body          # talking about passwords is fine, a value is not
+    block = learning.guides_block(items)
+    assert "Orientações do time da Kiara" in block and "Tom de voz" in block
+    assert learning.guides_block([]) == ""
+
+
+def test_guides_respect_the_prompt_budget_and_show_in_the_vault():
+    items = [{"path": f"Ensinar a Kiara/N{i}.md", "title": f"N{i}", "body": "x" * learning.GUIDE_CHARS} for i in range(10)]
+    assert len(learning.guides_block(items)) < learning.GUIDES_TOTAL + 400
+    notes = learning.vault_notes([], workspaces=1, guides=items[:2])
+    assert "- N0 (" in notes["Kiara/O que a Kiara leu.md"] and "Ensinar a Kiara" in notes["Kiara/Como a Kiara aprende.md"]

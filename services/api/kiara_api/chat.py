@@ -432,8 +432,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 pass
         if patterns is not None:
             try:
-                from .learning import prompt_block as patterns_block
-                block += patterns_block(await patterns())
+                block += await patterns()
             except Exception:  # noqa: BLE001 - nor because of the general patterns
                 pass
         return block

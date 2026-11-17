@@ -11,11 +11,15 @@ advanced (contacted, qualified, opportunity, won). From that:
   Patterns from at least MIN_WORKSPACES workspaces are shown to everyone (chat and the Obsidian vault).
 
 GET /v1/learning/internal/vault returns the Obsidian notes (Markdown with [[links]]) the worker writes on Debian.
+PUT /v1/learning/internal/guides receives the notes the Kiara team writes in the vault folder "Ensinar a Kiara"
+(the whole folder each time: notes that disappeared are removed). The chat reads them as general guidance for
+every workspace, after that workspace's own memory.
 Chat history stays in each person's browser; what Kiara learns from chats comes from [[LEMBRAR]] (memory.py).
 """
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import re
 import unicodedata
@@ -35,6 +39,14 @@ MAX_WORKSPACES = 300        # per tick
 LESSONS = 5
 ADVANCED = ("contacted", "qualified", "opportunity", "won")
 _UUID = r"^[0-9a-fA-F-]{36}$"
+GUIDES_DIR = "Ensinar a Kiara"
+MAX_GUIDES = 30
+GUIDE_CHARS = 3000          # per note, after cleaning
+GUIDES_TOTAL = 12000        # all notes together in one chat prompt
+_GUIDE_PATH = re.compile(r"^Ensinar a Kiara/[^/][^\\]{0,150}\.md$")
+# Lines with what looks like a real secret value are dropped (a note may still talk about passwords in general).
+_SECRET_VALUE = re.compile(r"\b(?:\d[ .-]?){13,19}\b|\bsk-[A-Za-z0-9_-]{8,}|\bhf_[A-Za-z0-9]{8,}|\bgh[pousr]_[A-Za-z0-9]{8,}|"
+                           r"\b(?:senha|password|token|api[\s_-]?key)\s*[:=]\s*\S+", re.IGNORECASE)
 
 SEARCH_STATS = f"""
 SELECT s.query, coalesce(s.location, '') AS location, count(DISTINCT s.id) AS searches, count(r.id) AS results,
@@ -126,7 +138,49 @@ def prompt_block(patterns: list[dict[str, Any]]) -> str:
             "para sugerir nichos e regiões, sem citar outras empresas):\n" + "\n".join(f"- {line}" for line in lines) + "\n")
 
 
-def vault_notes(patterns: list[dict[str, Any]], workspaces: int, now: datetime | None = None) -> dict[str, str]:
+def clean_guide(text: str) -> str:
+    """Note text for the prompt: no front matter, comments, [[link]] brackets or secret-looking lines."""
+    text = text.replace("\r\n", "\n").lstrip("\ufeff")
+    if text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        text = text[end + 4:] if end != -1 else text
+    text = re.sub(r"<!--.*?-->|%%.*?%%", "", text, flags=re.DOTALL)
+    text = re.sub(r"!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", lambda match: match.group(2) or match.group(1), text)
+    lines = [line.rstrip() for line in text.split("\n") if not _SECRET_VALUE.search(line)]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()[:GUIDE_CHARS].strip()
+
+
+def guide_items(files: dict[str, str]) -> list[dict[str, str]]:
+    """Valid notes of the "Ensinar a Kiara" folder. Files starting with "_" are drafts and are skipped."""
+    items = []
+    for path in sorted(files):
+        name = path.rsplit("/", 1)[-1]
+        if ".." in path or not _GUIDE_PATH.match(path) or name.startswith(("_", ".")):
+            continue
+        body = clean_guide(str(files[path]))
+        if body:
+            items.append({"path": path, "title": name[:-3].strip()[:120] or "Nota", "body": body})
+        if len(items) == MAX_GUIDES:
+            break
+    return items
+
+
+def guides_block(guides: list[dict[str, Any]]) -> str:
+    if not guides:
+        return ""
+    parts, used = [], 0
+    for guide in guides:
+        part = f"### {guide['title']}\n{guide['body']}"
+        if used + len(part) > GUIDES_TOTAL:
+            break
+        parts.append(part)
+        used += len(part)
+    return ("\n\nOrientações do time da Kiara (valem para todas as empresas; siga quando fizer sentido, com naturalidade, sem dizer "
+            "que vieram de notas; a memória e os dados da empresa da pessoa têm prioridade):\n" + "\n\n".join(parts) + "\n")
+
+
+def vault_notes(patterns: list[dict[str, Any]], workspaces: int, now: datetime | None = None,
+                guides: list[dict[str, Any]] | None = None) -> dict[str, str]:
     """Obsidian notes (path -> Markdown). Only general patterns: no workspace data ever goes to the vault."""
     stamp = (now or datetime.now(UTC)).strftime("%d/%m/%Y %H:%M UTC")
     shared = [item for item in patterns if item["workspaces"] >= MIN_WORKSPACES]
@@ -155,7 +209,15 @@ def vault_notes(patterns: list[dict[str, Any]], workspaces: int, now: datetime |
         "o que não deu certo) e guarda até 5 lições na memória daquela empresa. Cada cliente vê as suas em *Minha empresa → O que a Kiara lembra*.\n"
         "- **No chat:** quando a pessoa conta algo que vale lembrar, a Kiara guarda na memória da empresa dela.\n"
         "- **Geral:** só números por nicho e cidade, sem nomes, telefones ou conversas. Um padrão só aparece quando vem de pelo menos "
-        f"{MIN_WORKSPACES} empresas.\n- Este cofre é atualizado sozinho pelo servidor da Kiara. Não edite: as notas são reescritas.\n\n[[Padrões gerais]]\n")
+        f"{MIN_WORKSPACES} empresas.\n"
+        f"- **Com você:** escreva notas na pasta *{GUIDES_DIR}* (como atender, o que oferecer, tom de voz, respostas para dúvidas comuns). "
+        "A Kiara lê essas notas em toda conversa do chat, de todas as empresas. Não coloque dados de clientes nem senhas. "
+        "Notas que começam com _ são rascunhos e ela ignora.\n"
+        "- A pasta *Kiara* é reescrita sozinha pelo servidor: não edite as notas dela.\n\n[[Padrões gerais]] · [[O que a Kiara leu]]\n")
+    read = "\n".join(f"- {guide['title']} ({len(guide['body'])} caracteres)" for guide in guides or []) or f"- Nenhuma nota ainda. Escreva a primeira na pasta *{GUIDES_DIR}*."
+    notes["Kiara/O que a Kiara leu.md"] = (
+        f"---\ntags: [kiara]\natualizado: {stamp}\n---\n# O que a Kiara leu\n\nNotas da pasta *{GUIDES_DIR}* que a Kiara está usando no chat "
+        f"(até {MAX_GUIDES} notas; o total entra até {GUIDES_TOTAL} caracteres por conversa).\n\n{read}\n\nVeja também [[Como a Kiara aprende]].\n")
     return notes
 
 
@@ -219,11 +281,42 @@ class LearningService:
         return {"workspaces": len(registry), "learned": len(per_workspace), "with_lessons": taught, "patterns": len(patterns),
                 "shared_patterns": sum(1 for item in patterns if item["workspaces"] >= MIN_WORKSPACES)}
 
+    async def guides(self) -> list[dict[str, Any]]:
+        if self.postgres is None:
+            return []
+        async with await self.postgres._connect() as connection:
+            rows = await (await connection.execute("SELECT path,title,body FROM kiara_guides ORDER BY path LIMIT %s", (MAX_GUIDES,))).fetchall()
+        return [dict(row) for row in rows]
+
+    async def save_guides(self, files: dict[str, str]) -> dict[str, Any]:
+        """Replaces every guide with the notes of the folder (a note removed in Obsidian stops being used)."""
+        if self.postgres is None:
+            raise ApiError(503, "learning_store_unavailable", "Banco de dados não configurado.")
+        items = guide_items(files)
+        async with await self.postgres._connect() as connection, connection.transaction():
+            await connection.execute("DELETE FROM kiara_guides")
+            for item in items:
+                await connection.execute("INSERT INTO kiara_guides(path,title,body) VALUES(%(path)s,%(title)s,%(body)s)", item)
+        return {"received": len(files), "saved": len(items)}
+
+    async def chat_block(self) -> str:
+        """General patterns plus the team's guidance, for every workspace's chat."""
+        block = prompt_block(await self.patterns())
+        try:
+            block += guides_block(await self.guides())
+        except Exception:  # noqa: BLE001 - patterns still reach the chat if the guides table is missing
+            pass
+        return block
+
     async def vault(self) -> dict[str, Any]:
         patterns = await self.patterns()
         async with await self.postgres._connect() as connection:
             row = await (await connection.execute("SELECT count(*) AS total FROM learning_workspaces")).fetchone()
-        return {"files": vault_notes(patterns, int(row["total"]))}
+        try:
+            guides = await self.guides()
+        except Exception:  # noqa: BLE001
+            guides = []
+        return {"files": vault_notes(patterns, int(row["total"]), guides=guides)}
 
 
 def _worker(request: Request) -> None:
@@ -245,6 +338,20 @@ def create_learning_router(service: LearningService) -> APIRouter:
     async def vault(request: Request) -> dict[str, Any]:
         _worker(request)
         return await service.vault()
+
+    @router.put("/internal/guides")
+    async def guides(request: Request) -> dict[str, Any]:
+        _worker(request)
+        raw = await request.body()
+        if len(raw) > 400_000:
+            raise ApiError(413, "guides_too_large", "Notas grandes demais.")
+        try:
+            files = json.loads(raw or b"{}").get("files")
+        except (ValueError, AttributeError):
+            files = None
+        if not isinstance(files, dict) or len(files) > 200 or not all(isinstance(k, str) and isinstance(v, str) for k, v in files.items()):
+            raise ApiError(422, "guides_invalid", "Envie {\"files\": {caminho: texto}}.")
+        return await service.save_guides(files)
 
     @router.get("/patterns")
     async def patterns(context: Annotated[RequestContext, Depends(authenticated_context)]) -> dict[str, Any]:

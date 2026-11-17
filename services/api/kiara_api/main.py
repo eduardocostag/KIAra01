@@ -431,7 +431,7 @@ def create_app(
     app.state.team = TeamService(growth_db) if growth_db else None
     app.include_router(create_chat_router(usage=usage_service, knowledge=knowledge_repository.context if knowledge_repository else None,
                                        memory=memory_repository,
-                                       patterns=learning_service.patterns if learning_service else None))
+                                       patterns=learning_service.chat_block if learning_service else None))
     app.include_router(create_server_gateway_router())
     app.include_router(create_db_admin_router(PostgresRepository(config.database_url) if config.database_url else None))
     app.include_router(create_whatsapp_server_router(WhatsAppServerService(PostgresRepository(config.database_url) if config.database_url else None)))
