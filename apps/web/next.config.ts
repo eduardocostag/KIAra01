@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          // No plugins, no <base> hijack, no forms posting elsewhere, never framed (clickjacking), HTTPS only.
+          { key: "Content-Security-Policy", value: "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests" },
+          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
         ],
       },
     ];

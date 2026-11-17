@@ -30,7 +30,7 @@ def test_unexpected_errors_return_json_with_a_traceable_request_id():
             "code": "internal_error",
             "message": (
                 "A API encontrou um erro interno ao concluir a operação. "
-                "Tipo: RuntimeError. A ocorrência foi registrada para diagnóstico."
+                "A ocorrência foi registrada para diagnóstico."
             ),
             "request_id": "settings-save-test",
             "details": {"error_type": "RuntimeError"},

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -148,7 +149,11 @@ def create_app(
         app.state.settings = config
         yield
 
-    app = FastAPI(title="Kiara Intelligence API", version="0.1.0", lifespan=lifespan)
+    # The interactive docs and the full API map stay off wherever the API is reachable from the internet.
+    internal = config.environment in {"development", "test"} and not os.getenv("VERCEL")
+    app = FastAPI(title="Kiara Intelligence API", version="0.1.0", lifespan=lifespan,
+                  docs_url="/docs" if internal else None, redoc_url="/redoc" if internal else None,
+                  openapi_url="/openapi.json" if internal else None)
     app.add_middleware(CorrelationMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -361,11 +366,12 @@ def create_app(
                     "code": "internal_error",
                     "message": (
                         "A API encontrou um erro interno ao concluir a operação. "
-                        f"Tipo: {type(exc).__name__}. A ocorrência foi registrada para diagnóstico."
+                        "A ocorrência foi registrada para diagnóstico."
                     ),
                     "request_id": correlation_id,
-                    "details": {"error_type": type(exc).__name__,
-                                **({"database_code": database_code} if database_code else {})},
+                    # Internal details only off the internet; the log keeps them for diagnosis.
+                    "details": ({"error_type": type(exc).__name__, **({"database_code": database_code} if database_code else {})}
+                                if internal else {}),
                 }
             },
             headers={"X-Correlation-ID": correlation_id},
