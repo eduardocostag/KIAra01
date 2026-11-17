@@ -27,10 +27,11 @@ def test_direct_api_cannot_bypass_admin_only_early_access(role, email):
         return JSONResponse({"code": error.code}, status_code=error.status_code)
 
     client = TestClient(app)
-    for path in ["/v1/chat/status", "/v1/whatsapp-web/config"]:
-        response = client.get(path)
-        assert response.status_code == 403
-        assert response.json()["code"] == "system_admin_required"
+    # WhatsApp stays administrator-only (early access); Kiara Chat is open to every workspace since 2026-11-17.
+    response = client.get("/v1/whatsapp-web/config")
+    assert response.status_code == 403
+    assert response.json()["code"] == "system_admin_required"
+    assert client.get("/v1/chat/status").status_code == 200
 
 
 def test_local_executor_rejects_other_owner_even_with_admin_user_metadata():

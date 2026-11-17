@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .adapters.postgres import PostgresRepository, _iso, _uuid
 from .http.context import RequestContext
-from .http.dependencies import authenticated_context, system_administrator_context
+from .http.dependencies import authenticated_context
 from .http.errors import ApiError
 
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
@@ -654,32 +654,38 @@ class AutomationRepository:
 
 # ---------------------------------------------------------------- routes
 
-# Kiara Automation is in early access: only the system administrator manages flows.
-Admin = Annotated[RequestContext, Depends(system_administrator_context)]
+# Kiara Automation is open to every workspace (since 2026-11-17): flows are per organization, every external
+# effect becomes an approval request, and read-only members can look but not change or run anything.
 Member = Annotated[RequestContext, Depends(authenticated_context)]
+
+
+def _editor(context: RequestContext) -> RequestContext:
+    if context.role not in {"owner", "admin", "operator"}:
+        raise ApiError(403, "automation_forbidden", "Seu perfil só pode ver as automações.")
+    return context
 
 
 def create_automation_router(repository: AutomationRepository) -> APIRouter:
     router = APIRouter(tags=["automation"])
 
     @router.get("/v1/automation/flows")
-    async def flows(context: Admin) -> dict[str, Any]:
+    async def flows(context: Member) -> dict[str, Any]:
         return {"items": await repository.list_flows(context.organization_id)}
 
     @router.put("/v1/automation/flows/{client_key}")
-    async def save(client_key: str, payload: FlowSave, context: Admin) -> dict[str, Any]:
-        return await repository.save_flow(context, client_key, payload)
+    async def save(client_key: str, payload: FlowSave, context: Member) -> dict[str, Any]:
+        return await repository.save_flow(_editor(context), client_key, payload)
 
     @router.delete("/v1/automation/flows/{client_key}", status_code=204)
-    async def delete(client_key: str, context: Admin) -> None:
-        await repository.delete_flow(context, client_key)
+    async def delete(client_key: str, context: Member) -> None:
+        await repository.delete_flow(_editor(context), client_key)
 
     @router.post("/v1/automation/flows/{client_key}/run", status_code=202)
-    async def run(client_key: str, context: Admin) -> dict[str, Any]:
-        return await repository.enqueue_manual(context, client_key)
+    async def run(client_key: str, context: Member) -> dict[str, Any]:
+        return await repository.enqueue_manual(_editor(context), client_key)
 
     @router.get("/v1/automation/runs")
-    async def runs(context: Admin, flow: Annotated[str | None, Query(max_length=80)] = None) -> dict[str, Any]:
+    async def runs(context: Member, flow: Annotated[str | None, Query(max_length=80)] = None) -> dict[str, Any]:
         return {"items": await repository.list_runs(context.organization_id, flow)}
 
     @router.post("/v1/automation/internal/tick")

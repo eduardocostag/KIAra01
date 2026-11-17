@@ -8,14 +8,14 @@ import { requireWorkspace } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export default async function ModuleSelectorPage() {
-  // The layout already enforces sign-in. WhatsApp, Chat and Automation are early access (administrator only).
+  // The layout already enforces sign-in. Only WhatsApp is still early access (administrator only).
   const workspace = await requireWorkspace().catch(() => null);
   const isSystemAdmin = workspace?.isSystemAdmin ?? false;
   const modules = [
     { href: "/app/leads", label: "KIARA Leads", description: "Pesquisa, CRM e Pipeline.", icon: Search, operational: true },
     { href: "/app/whatsapp", label: "KIARA WhatsApp", description: "Conexão, análise e automação.", icon: MessageCircle, operational: isSystemAdmin },
-    { href: "/app/chat", label: "KIARA Chat", description: "Conversa, voz e criação com IA.", icon: Inbox, operational: isSystemAdmin },
-    { href: "/app/automation", label: "KIARA Automation", description: "Fluxos, tarefas, agenda, redes e anúncios.", icon: Workflow, operational: isSystemAdmin },
+    { href: "/app/chat", label: "KIARA Chat", description: "Conversa, voz e criação com IA.", icon: Inbox, operational: true },
+    { href: "/app/automation", label: "KIARA Automation", description: "Fluxos, tarefas, agenda, redes e anúncios.", icon: Workflow, operational: true },
   ];
   // Pending items in the approval center; the page still renders if the API is unavailable.
   const pending = await kiaraApi("/v1/approvals?status=pending")
@@ -69,7 +69,7 @@ export default async function ModuleSelectorPage() {
           ))}
         </div>
       </div>
-      {workspace ? <WelcomeTour userId={workspace.userId} fullAccess={isSystemAdmin} /> : null}
+      {workspace ? <WelcomeTour userId={workspace.userId} fullAccess /> : null}
     </div>
   );
 }

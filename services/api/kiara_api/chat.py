@@ -268,8 +268,7 @@ def _is_system_admin(context: RequestContext) -> bool:
 
 
 def _authorize(context: RequestContext) -> None:
-    if (context.email or "").strip().lower() != "admin@kiara.local":
-        raise ApiError(403, "system_admin_required", "Acesso exclusivo do administrador durante o acesso antecipado.")
+    """Kiara Chat is open to every workspace (since 2026-11-17); read-only members cannot use it."""
     if context.role not in {"owner", "admin", "operator"}:
         raise ApiError(403, "chat_forbidden", "Seu perfil não pode usar o Kiara Chat.")
 
@@ -565,6 +564,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada. Use a conexão local ou configure o provedor no servidor.")
+        await charge(context, "ai_messages")
         conversation, file_context = build_conversation(body, await business(context))
         conversation, link_context = await with_links(conversation, body)
         text, model = await complete_conversation(conversation, fast=body.voice, provider_factory=provider_factory)
@@ -593,6 +593,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         _authorize(context)
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada.")
+        await charge(context, "ai_messages")
         conversation, file_context = build_conversation(body, await business(context))
         admin = _is_system_admin(context)
         urls = chat_links.find_urls(body.messages[-1].content)

@@ -93,3 +93,47 @@ def test_provider_failure_never_leaks_provider_error_or_fakes_success(monkeypatc
     result = api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Olá"}]})
     assert result.status_code == 502
     assert "test-secret-key" not in result.text
+
+
+def test_chat_is_open_to_every_workspace_and_counts_messages(monkeypatch):
+    """Since 2026-11-17 any owner/admin/operator uses the chat; each answer counts as one Kiara message."""
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+
+    from kiara_api import chat
+    from kiara_api.http.context import RequestContext
+    from kiara_api.http.dependencies import authenticated_context
+    from kiara_api.http.errors import ApiError
+
+    monkeypatch.setenv("KIARA_CHAT_API_BASE_URL", "https://llm.example/v1")
+    monkeypatch.setenv("KIARA_CHAT_MODEL", "m")
+    monkeypatch.setenv("KIARA_CHAT_API_KEY", "k")
+    charged = []
+
+    class Usage:
+        async def consume(self, context, metric, amount=1):
+            charged.append(metric)
+            if len(charged) > 1:
+                raise ApiError(402, "plan_limit_reached", "Você usou todo o limite do plano.")
+
+    class Provider:
+        def __init__(self, **kwargs):
+            pass
+
+        async def _complete(self, messages):
+            return "Olá!"
+
+    app = FastAPI()
+    app.include_router(chat.create_chat_router(Provider, usage=Usage()))
+
+    @app.exception_handler(ApiError)
+    async def error(_request, exc):
+        return JSONResponse({"error": {"code": exc.code}}, status_code=exc.status_code)
+
+    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "org", "m", "owner", "req", email="cliente@empresa.com")
+    api = TestClient(app)
+    first = api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Oi"}]})
+    assert first.status_code == 200 and first.json()["text"] == "Olá!" and first.json()["model"] == ""
+    assert api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Oi"}]}).status_code == 402
+    assert charged == ["ai_messages", "ai_messages"]
