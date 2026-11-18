@@ -78,7 +78,12 @@ VOICE_STYLE = (
     "(até umas 40 palavras), e a primeira frase já responde o principal, porque ela começa a ser falada antes "
     "do resto. Só se a pessoa pedir detalhes, explique mais, sem enrolar. "
     "A transcrição da fala pode ter erros: entenda a intenção pelo contexto da conversa. "
-    "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar."
+    "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar. "
+    "Fale como uma brasileira fala: português do Brasil com acentuação correta, preferindo a palavra em português "
+    "quando ela existe (acompanhamento em vez de follow-up, vídeos curtos em vez de reels, retorno em vez de ROI, "
+    "aplicativo, painel, contatos). Escreva valores, horários e quantidades do jeito que se fala: mil e quinhentos "
+    "reais, duas e meia da tarde, três vezes mais, cinquenta reais por mês; nada de barras, abreviações ou siglas "
+    "soletradas."
 )
 # OmniRoute (Debian gateway) model chains. Each step is a different account or provider, so when one runs out
 # of quota Kiara moves to a model of the same level instead of degrading. Measured 2026-11-14 via the gateway.
@@ -810,9 +815,11 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         if not speech_available():
             raise ApiError(503, "speech_not_configured", "A voz da Kiara não está disponível neste servidor.")
-        # Francisca first; the offline Kokoro voice on the Debian server when Microsoft's service fails.
+        # Francisca first, tried twice (a one-off hiccup must not switch voices mid-reply, which sounds like an
+        # accent); the offline Kokoro voice on the Debian server only when Microsoft's service is really down.
         audio, voice = b"", ""
         for name, available, synthesize in (("francisca", francisca_available, synthesize_speech),
+                                            ("francisca", francisca_available, synthesize_speech),
                                             ("dora", backup_voice_available, synthesize_backup_speech)):
             if not available():
                 continue

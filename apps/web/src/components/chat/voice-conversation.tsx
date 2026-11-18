@@ -429,7 +429,9 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
         const spoken = speakable(raw)
         if (!spoken) return
         const synthesize = backendsRef.current.synthesize
-        const pieces = speechChunks(spoken).map((part) => ({ part, audio: synthesize ? synthesize(part).catch(() => null) : Promise.resolve(null) }))
+        // One retry before the browser voice: a single failed request would otherwise switch voices mid-reply
+        // (the system voice sounds like an accent next to Kiara's).
+        const pieces = speechChunks(spoken).map((part) => ({ part, audio: synthesize ? synthesize(part).catch(() => synthesize(part)).catch(() => null) : Promise.resolve(null) }))
         chain = chain.then(async () => {
           for (const { part, audio } of pieces) {
             if (!current()) return
