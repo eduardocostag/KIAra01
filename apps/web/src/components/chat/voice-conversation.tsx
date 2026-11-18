@@ -322,9 +322,10 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       }
       finalText = finals
       interimText = interim
-      // The turn ends after ~1 s without new words.
+      // The turn ends after a pause: 0.6 s when the recognizer already closed the sentence (it reports words with
+      // its own delay), 1 s while a phrase is still open, so she answers fast without cutting anyone off.
       clearTimeout(silence)
-      silence = setTimeout(() => recognition.stop(), 1000)
+      silence = setTimeout(() => recognition.stop(), finals.trim() && !interim.trim() ? 600 : 1000)
     }
     let useRecorder = false
     recognition.onerror = (event) => {
