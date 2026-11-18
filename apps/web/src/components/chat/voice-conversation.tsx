@@ -87,6 +87,19 @@ export function primeVoiceAudio() {
   } catch { /* No browser voice. */ }
 }
 
+/** Touch phone or tablet: the audio rules differ (one audio route, microphone and loudspeaker compete). */
+function isPhone() {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches
+}
+
+/** Safari 16.4+: tells iOS whether this page is playing (loudspeaker, full volume) or recording. */
+function setAudioSession(type: "auto" | "playback" | "play-and-record") {
+  try {
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+    if (session) session.type = type
+  } catch { /* Not supported: nothing to do. */ }
+}
+
 /** The routed player only while the context runs (a suspended context would play it silently). */
 function voiceAudio(context: AudioContext | null): HTMLAudioElement {
   if (context?.state === "running" && routedAudio) return routedAudio
@@ -154,21 +167,13 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     // Per-run flag: a remount (e.g. React strict mode) must not inherit a stale microphone.
     let cancelled = false
     async function start() {
+      audioContextRef.current = sharedAudioContext()
+      // Phones with a speech recognizer: no extra open microphone. On the iPhone an open microphone sends Kiara's
+      // voice to the call earpiece (or almost mutes it), and on Android it competes with the recognizer.
+      if (isPhone() && recognitionConstructor()) { listen(); return }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-        if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return }
-        micStreamRef.current = stream
-        const context = sharedAudioContext()
-        audioContextRef.current = context
-        if (context) {
-          void context.resume().catch(() => {})
-          const analyser = context.createAnalyser()
-          analyser.fftSize = 1024
-          const source = context.createMediaStreamSource(stream)
-          source.connect(analyser)
-          micSourceRef.current = source
-          micAnalyserRef.current = analyser
-        }
+        await openMic()
+        if (cancelled) { closeMic(); return }
         listen()
       } catch {
         if (cancelled) return
@@ -186,9 +191,9 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       recognitionRef.current?.abort()
       if (recorderRef.current?.state === "recording") recorderRef.current.stop()
       stopSpeakingRef.current?.()
-      micStreamRef.current?.getTracks().forEach((track) => track.stop())
       // The shared audio context stays open for the next conversation (it was unlocked by a tap).
-      micSourceRef.current?.disconnect()
+      closeMic()
+      setAudioSession("auto")
     }
     // The conversation loop is wired once for the lifetime of the overlay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,12 +203,50 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     setError(message); go("error")
   }
 
+  /** Microphone for the level meter and the recorder (never kept open while Kiara speaks on a phone). */
+  async function openMic() {
+    if (micStreamRef.current) return
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+    micStreamRef.current = stream
+    const context = audioContextRef.current
+    if (context) {
+      void context.resume().catch(() => {})
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 1024
+      const source = context.createMediaStreamSource(stream)
+      source.connect(analyser)
+      micSourceRef.current = source
+      micAnalyserRef.current = analyser
+    }
+  }
+
+  function closeMic() {
+    micStreamRef.current?.getTracks().forEach((track) => track.stop())
+    micStreamRef.current = null
+    micSourceRef.current?.disconnect()
+    micSourceRef.current = null
+    micAnalyserRef.current = null
+  }
+
+  /** Right before Kiara speaks: on phones the microphone is released and the audio goes to the loudspeaker. */
+  function prepareToSpeak() {
+    if (!isPhone()) return
+    closeMic()
+    setAudioSession("playback")
+  }
+
   function listen() {
     if (!activeRef.current) return
     setError(""); go("listening")
+    if (isPhone()) setAudioSession("play-and-record")
     const Constructor = recognitionConstructor()
     if (Constructor) return listenWithBrowser(Constructor)
-    if (backendsRef.current.transcribe) return listenWithRecorder()
+    if (backendsRef.current.transcribe) {
+      if (micStreamRef.current) return listenWithRecorder()
+      openMic().then(() => { if (activeRef.current && phaseRef.current === "listening") listenWithRecorder() })
+        .catch(() => fail("Permita o acesso ao microfone para conversar por voz."))
+      return
+    }
     fail("Este navegador não reconhece fala. Use o Chrome ou ative a transcrição na conexão local da Kiara.")
   }
 
@@ -337,7 +380,7 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
         chain = chain.then(async () => {
           for (const { part, audio } of pieces) {
             if (!current()) return
-            if (phaseRef.current === "thinking") go("speaking")
+            if (phaseRef.current === "thinking") { prepareToSpeak(); go("speaking") }
             if (phaseRef.current !== "speaking") return
             const blob = await audio
             if (!current() || phaseRef.current !== "speaking") return
