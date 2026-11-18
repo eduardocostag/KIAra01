@@ -409,9 +409,9 @@ async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> Asyn
 
 
 async def _default_streamer(base: str, key: str, model: str, conversation: list[dict], max_tokens: int,
-                            timeout: float, extra: dict | None = None) -> AsyncIterator[str]:
+                            timeout: float) -> AsyncIterator[str]:
     """Token deltas from an OpenAI-compatible endpoint (server-sent events), over a kept-alive connection."""
-    payload = {"model": model, "messages": conversation, "stream": True, "max_tokens": max_tokens, **(extra or {})}
+    payload = {"model": model, "messages": conversation, "stream": True, "max_tokens": max_tokens}
     async for event in _sse_events(f"{base}/chat/completions", payload, key, timeout):
         choices = event.get("choices") or []
         delta = choices[0].get("delta") if choices and isinstance(choices[0], dict) else None
@@ -438,38 +438,57 @@ def _voice_direct() -> tuple[str, str, str] | None:
     return base, key, model
 
 
-# Gemini "thinks" silently before answering unless told not to: measured 2026-11-18 in production, half the voice
-# turns waited 5-6 s for the first word. Voice answers are short, so the direct voice model answers without it.
-# The first effort Google accepts is remembered; if it refuses all of them, the request goes as before.
-_REASONING_EFFORTS = ("none", "minimal")
-_reasoning_choice: dict[str, int] = {}
-
-
-async def _direct_streamer(base: str, key: str, model: str, conversation: list[dict], max_tokens: int,
-                           timeout: float) -> AsyncIterator[str]:
-    """The direct voice model, with its reasoning step switched off where the provider supports it."""
-    import httpx
-
-    efforts = _REASONING_EFFORTS if "generativelanguage.googleapis.com" in base else ()
-    index = _reasoning_choice.get(model, 0)
-    while True:
-        extra = {"reasoning_effort": efforts[index]} if index < len(efforts) else None
-        produced = False
-        try:
-            async for piece in _default_streamer(base, key, model, conversation, max_tokens, timeout, extra):
-                produced = True
-                yield piece
-            _reasoning_choice[model] = index
-            return
-        except httpx.HTTPStatusError as exc:
-            if produced or extra is None or exc.response.status_code != 400:
-                raise
-            index += 1  # this effort is not accepted by the model: try the next one (or none at all)
-            _reasoning_choice[model] = index
-
-
 class NoProviderError(RuntimeError):
     pass
+
+
+async def _first_words(iterator) -> str | None:
+    """The first non-empty piece of a model stream; None when it ends without one."""
+    while True:
+        try:
+            piece = await iterator.__anext__()
+        except StopAsyncIteration:
+            return None
+        if piece:
+            return piece
+
+
+async def _close(iterator) -> None:
+    closer = getattr(iterator, "aclose", None)
+    if closer:
+        try:
+            await closer()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _race(contenders: list[tuple[str, object]], timeout: float):
+    """Starts every (name, stream) at once and keeps the first to say something: (name, stream, first piece).
+    The others are cancelled and closed. None when none of them answers in time."""
+    tasks = {asyncio.ensure_future(_first_words(stream)): (name, stream) for name, stream in contenders}
+    winner = None
+    pending = set(tasks)
+    end = time.monotonic() + timeout
+    try:
+        while pending and winner is None:
+            done, pending = await asyncio.wait(pending, timeout=max(0.0, end - time.monotonic()),
+                                               return_when=asyncio.FIRST_COMPLETED)
+            if not done:
+                break
+            for task in done:
+                if winner is None and not task.cancelled() and task.exception() is None and task.result():
+                    winner = (*tasks[task], task.result())
+    finally:
+        for task, (_, stream) in tasks.items():
+            if winner is not None and stream is winner[1]:
+                continue
+            task.cancel()
+            try:
+                await task
+            except BaseException:  # noqa: BLE001 - a cancelled or failed contender is just dropped
+                pass
+            await _close(stream)
+    return winner
 
 
 async def stream_conversation(conversation: list[dict], *, streamer=None, max_tokens: int = 4096,
@@ -486,11 +505,34 @@ async def stream_conversation(conversation: list[dict], *, streamer=None, max_to
     deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if fast else CHAT_DEADLINE_SECONDS)
     if fast:
         max_tokens = min(max_tokens, 600)
-    routes = [(base, key, candidate, stream) for candidate in _candidates(base, model, fast)]
+    routes = [(base, key, candidate) for candidate in _candidates(base, model, fast)]
     direct = _voice_direct() if fast else None
     if direct:
-        routes.insert(0, (*direct, streamer or _direct_streamer))
-    for base, key, candidate, stream in routes:
+        routes.insert(0, direct)
+        # Voice: the direct model and the first server model start together and the first to speak wins.
+        # Measured 2026-11-18: the free Gemini answered in 0.8 s to 10 s; the server chain in ~2-2.7 s.
+        contenders = routes[:2]
+        routes = routes[2:]
+        budget = min(deadline - time.monotonic(), 12)
+        winner = await _race([(candidate, stream(b, k, candidate, conversation, max_tokens, budget).__aiter__())
+                              for b, k, candidate in contenders], budget)
+        if winner is not None:
+            candidate, iterator, piece = winner
+            yield "model", candidate
+            yield "delta", piece
+            try:
+                while True:
+                    try:
+                        piece = await asyncio.wait_for(iterator.__anext__(), timeout=60)
+                    except StopAsyncIteration:
+                        return
+                    if piece:
+                        yield "delta", piece
+            except Exception:  # noqa: BLE001 - failed mid-answer: clear it and let the next model answer
+                yield "reset", ""
+            finally:
+                await _close(iterator)
+    for base, key, candidate in routes:
         remaining = deadline - time.monotonic()
         if remaining < 2:
             break

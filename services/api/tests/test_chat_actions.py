@@ -42,29 +42,39 @@ def test_voice_direct_model_goes_first_and_falls_back(monkeypatch):
     assert all(base != chat.GROQ_BASE_URL for base, _, _ in calls)       # only voice uses the direct model
 
 
-def test_direct_gemini_voice_turns_reasoning_off_and_falls_back_when_refused(monkeypatch):
+
+def test_voice_races_the_direct_model_against_the_server_and_the_fastest_speaks():
     import asyncio
-    import httpx
     from kiara_api import chat
-    monkeypatch.setattr(chat, "_reasoning_choice", {})
-    sent = []
 
-    async def fake(base, key, model, conversation, max_tokens, timeout, extra=None):
-        sent.append(extra)
-        if extra and extra["reasoning_effort"] == "none":  # this model refuses "none" but accepts "minimal"
-            raise httpx.HTTPStatusError("bad", request=httpx.Request("POST", base), response=httpx.Response(400))
-        yield "Oi!"
+    async def run(slow_direct: bool):
+        calls = []
 
-    monkeypatch.setattr(chat, "_default_streamer", fake)
-    base = "https://generativelanguage.googleapis.com/v1beta/openai"
+        async def streamer(base, key, model, conversation, max_tokens, timeout):
+            calls.append(model)
+            await asyncio.sleep(0.3 if (model == "direct-model") == slow_direct else 0.01)
+            yield f"Oi de {model}."
+            yield " Tudo bem?"
 
-    async def run():
-        return [piece async for piece in chat._direct_streamer(base, "k", "gemini-x", [], 100, 10)]
+        import os
+        os.environ["KIARA_VOICE_DIRECT_API_KEY"] = "k"
+        os.environ["KIARA_VOICE_DIRECT_BASE_URL"] = "https://direct.example/v1"
+        os.environ["KIARA_VOICE_DIRECT_MODEL"] = "direct-model"
+        try:
+            chat._configuration = lambda: ("https://gateway.example/ai/v1", "main-model", "gw-key")
+            events = [e async for e in chat.stream_conversation([{"role": "user", "content": "oi"}], streamer=streamer, fast=True)]
+        finally:
+            for name in ("KIARA_VOICE_DIRECT_API_KEY", "KIARA_VOICE_DIRECT_BASE_URL", "KIARA_VOICE_DIRECT_MODEL"):
+                os.environ.pop(name, None)
+        return calls, events
 
-    assert asyncio.run(run()) == ["Oi!"]
-    assert sent == [{"reasoning_effort": "none"}, {"reasoning_effort": "minimal"}]
-    sent.clear()
-    assert asyncio.run(run()) == ["Oi!"] and sent == [{"reasoning_effort": "minimal"}]   # remembered
-    sent.clear()
-    asyncio.run(chat._direct_streamer("https://api.groq.com/openai/v1", "k", "llama", [], 100, 10).__anext__())
-    assert sent == [None]                                                                  # other providers: as before
+    original = chat._configuration
+    try:
+        calls, events = asyncio.run(run(slow_direct=True))
+        assert calls[0] == "direct-model" and len(calls) == 2                 # both started together
+        assert events[0] == ("model", calls[1]) and "".join(t for k, t in events if k == "delta") == f"Oi de {calls[1]}. Tudo bem?"
+        calls, events = asyncio.run(run(slow_direct=False))
+        assert events[0] == ("model", "direct-model")
+        assert [e for e in events if e[0] == "reset"] == []
+    finally:
+        chat._configuration = original
