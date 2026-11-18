@@ -21,6 +21,10 @@ export const metadata: Metadata = {
     "Kiara Intelligence: prospecção, atendimento, criação de sites, vídeos e automação em uma plataforma integrada.",
   applicationName: "Kiara Intelligence",
   category: "business",
+  // Installed on the iPhone home screen: full screen, named "Kiara". A solid status bar, so no screen ends up
+  // under the clock and the notch (only the module bar pads for it).
+  appleWebApp: { capable: true, title: "Kiara", statusBarStyle: "black" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

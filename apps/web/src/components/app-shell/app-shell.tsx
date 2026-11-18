@@ -21,6 +21,7 @@ import {
   ListChecks,
   Building2,
   Ellipsis,
+  Download,
 } from "lucide-react";
 import { KiaraBrand } from "@/components/brand/kiara-brand";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { InstallApp, openInstallApp, useCanInstall } from "@/components/app-shell/install-app";
 import { isModuleNavActive, modulePrefixForPath } from "@/lib/module-navigation";
 
 function subscribeHash(listener: () => void) {
@@ -170,6 +172,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const canInstall = useCanInstall();
   
   // Detecta o módulo ativo
   const modulePrefix = previewModule ?? modulePrefixForPath(pathname);
@@ -253,6 +256,11 @@ export function AppShell({
             <Link href="/app" onClick={() => setMenuOpen(false)} className="mt-6 block rounded-xl p-3 text-sm font-medium text-sidebar-foreground/60 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground">
               Trocar módulo
             </Link>
+            {canInstall && (
+              <button type="button" onClick={() => { setMenuOpen(false); openInstallApp(); }} className="mt-1 flex w-full items-center gap-2 rounded-xl p-3 text-left text-sm font-medium text-sidebar-foreground/60 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground">
+                <Download className="size-4" aria-hidden="true" />Instalar app no celular
+              </button>
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -269,6 +277,7 @@ export function AppShell({
           {children}
         </main>
       </div>
+      <InstallApp aboveTabBar={isModuleActive} />
     </div>
   );
 }
