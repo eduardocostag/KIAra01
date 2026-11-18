@@ -99,9 +99,9 @@ export function TodayQueue({ entries }: { entries: PipelineEntry[] }) {
     ...(consumer.fit?.reasons.slice(0, 3).map((reason) => reason.text) ?? [])].filter(Boolean) as string[]
 
   return <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-6">
-    <aside aria-label="Fila de hoje" className="kiara-soft-panel -mx-1 h-fit rounded-2xl border p-2 lg:mx-0 lg:p-3">
+    <aside aria-label="Fila de hoje" className="kiara-soft-panel -mx-1 h-fit rounded-2xl border p-2 lg:sticky lg:top-4 lg:mx-0 lg:p-3">
       <p className="px-2 pb-2 text-sm font-medium">{pending.length} pendente{pending.length === 1 ? "" : "s"} · {done.size} feito{done.size === 1 ? "" : "s"}</p>
-      <ol className="flex snap-x gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] lg:block lg:max-h-[60vh] lg:space-y-1 lg:overflow-y-auto lg:pb-0">{pending.map((item, position) => <li key={item.entry.id} className="w-[11.5rem] shrink-0 snap-start lg:w-auto">
+      <ol className="flex snap-x gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] lg:block lg:max-h-[calc(100dvh-14rem)] lg:space-y-1 lg:overflow-y-auto lg:overscroll-contain lg:pb-6 lg:pr-1 lg:[scrollbar-width:thin] lg:[mask-image:linear-gradient(to_bottom,#000_calc(100%-2.5rem),transparent)]">{pending.map((item, position) => <li key={item.entry.id} className="w-[11.5rem] shrink-0 snap-start lg:w-auto">
         <button type="button" onClick={() => setIndex(position)} aria-current={item === current ? "true" : undefined}
           className={cn("w-full rounded-lg border border-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted/50", item === current && "border-primary/40 bg-primary/15 shadow-[0_0_18px_-6px_rgb(124_77_255/.7)]")}>
           <span className="block truncate font-medium">{leadDisplayName(item.entry.consumer)}</span>

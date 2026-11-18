@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, ChevronsRight, Copy, Download, FileDown, FileSpreadsheet, ExternalLink, FileText, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings2, Share2, Sparkles, Square, Trash2, Upload, Video, Volume2, Workflow, X } from "lucide-react"
+import { ArrowUp, AudioLines, Bot, ChartNoAxesCombined, Check, ChevronsRight, Copy, Download, FileDown, FileSpreadsheet, ExternalLink, FileText, Globe2, ImagePlus, LoaderCircle, MessageCircle, Mic, Paperclip, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Share2, Sparkles, Square, Trash2, Upload, Video, Volume2, Workflow, X } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -741,12 +741,10 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
         </div>
       })() : <p className="px-2 text-xs text-sidebar-foreground/50">Suas conversas aparecem aqui. Elas ficam salvas apenas neste navegador.</p>}
     </nav>}
-    footer={isAdmin ? <button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Settings2 className="size-4" aria-hidden="true" />Ajustes e recursos</button> : undefined}
     topBar={<>
       <span className="truncate font-medium">KIARA Chat</span>
       {isAdmin ? <>
         <span className="ml-auto inline-flex items-center gap-1.5 truncate text-xs text-muted-foreground" role="status"><span className={cn("size-1.5 shrink-0 rounded-full", checking ? "bg-amber-400" : status?.connected ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden="true" />{statusLabel}</span>
-        <Button type="button" variant="ghost" size="icon" aria-label="Ajustes e recursos" onClick={() => setSettingsOpen(true)}><Settings2 /></Button>
       </> : null}
     </>}
   >

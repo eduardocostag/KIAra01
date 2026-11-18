@@ -294,7 +294,6 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   </div>
 
   return <ImmersiveShell label="Fluxos da Kiara Automation" sidebar={sidebar}
-    footer={<AdminOnly><Link href="/app/settings/integrations" className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm text-sidebar-foreground/65 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground"><Plug className="size-4" />Conexões</Link></AdminOnly>}
     topBar={flow ? <>
       <WorkflowIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
       <input value={flow.name} onChange={(event) => update({ ...flow, name: event.target.value.slice(0, 80) })} aria-label="Nome do fluxo" className="min-w-0 flex-1 truncate bg-transparent text-sm font-medium outline-none" />

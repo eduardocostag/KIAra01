@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { salesRequest, type SalesProfile } from "@/lib/api/sales"
+import { salesRequest } from "@/lib/api/sales"
 import { cn } from "@/lib/utils"
 
 type Metrics = { found: number; added: number; approached: number; conversations: number; replied: number; opportunities: number; won: number; generated_cents: number; won_cents: number }
@@ -28,8 +28,6 @@ export function ResultsPanel() {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<Results | null>(null)
   const [error, setError] = useState("")
-  const [average, setAverage] = useState("")
-  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async (period: number) => {
     setError("")
@@ -38,20 +36,6 @@ export function ResultsPanel() {
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(days) }, [days, load])
-
-  async function saveAverage() {
-    const cents = Math.round(Number(average.replace(/\./g, "").replace(",", ".")) * 100)
-    if (!Number.isFinite(cents) || cents <= 0) { setError("Informe um valor em reais, por exemplo 1.500."); return }
-    setSaving(true); setError("")
-    try {
-      const profile = await salesRequest<SalesProfile>("/api/sales/profile")
-      const body: Partial<SalesProfile> = { ...profile, average_deal_cents: cents }
-      delete body.updated_at  // read-only: the API refuses unknown fields
-      await salesRequest("/api/sales/profile", { method: "PUT", body: JSON.stringify(body) })
-      await load(days)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível salvar.") }
-    finally { setSaving(false) }
-  }
 
   const current = data?.current
   const steps = current ? [
@@ -63,7 +47,6 @@ export function ResultsPanel() {
   ] : []
   const top = Math.max(1, ...steps.map((step) => step.value))
   const empty = Boolean(current && !steps.some((step) => step.value) && !current.generated_cents && !data?.open_cents && !current.conversations)
-  const noMoney = data && !empty && !data.average_deal_cents && !data.current.generated_cents && !data.current.won_cents
   const replyRate = current?.approached ? Math.round((current.replied / current.approached) * 100) : 0
 
   return <section aria-labelledby="results-title" className="kiara-results kiara-soft-panel rounded-2xl border p-5 sm:p-7">
@@ -95,12 +78,6 @@ export function ResultsPanel() {
           <div><dt className="text-muted-foreground">Em negociação</dt><dd className="mt-0.5 text-lg font-medium tabular-nums">{money(data.open_cents, true)}</dd></div>
         </dl>
       </div>
-
-      {noMoney ? <form className="mt-5 flex flex-wrap items-center gap-2 rounded-xl bg-white/[.03] p-3 text-sm" onSubmit={(event) => { event.preventDefault(); void saveAverage() }}>
-        <label htmlFor="average-deal" className="flex-1 text-muted-foreground">Quanto vale, em média, uma venda sua? Assim a Kiara mostra o resultado em reais.</label>
-        <span className="flex items-center rounded-md border bg-background px-2"><span className="text-muted-foreground">R$</span><input id="average-deal" inputMode="decimal" value={average} onChange={(event) => setAverage(event.target.value)} placeholder="1.500" className="h-9 w-28 bg-transparent px-2 outline-none" /></span>
-        <Button type="submit" size="sm" disabled={saving}>Salvar</Button>
-      </form> : null}
 
       <ol className="mt-7 grid grid-cols-3 gap-x-4 gap-y-5 border-t border-white/[.06] pt-6 sm:grid-cols-5 sm:gap-0" aria-label={`Funil dos últimos ${data.days} dias`}>{steps.map((step, index) => {
         const previous = index ? steps[index - 1].value : 0
