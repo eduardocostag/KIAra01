@@ -112,10 +112,14 @@ function voiceAudio(context: AudioContext | null): HTMLAudioElement {
   return plainAudio ??= makeAudio()
 }
 
+/** The server voiced the first `chars` characters of the reply itself ("pending" comes before that text). */
+export type ServerSpeech = { kind: "pending"; chars: number } | { kind: "audio"; chars: number; audio: Blob | null }
+
 export type VoiceBackends = {
   /** Sends the user's words to the chat and resolves with Kiara's reply; `onText` receives the reply while it is
-   *  written, so Kiara starts speaking the first sentence before the rest arrives. */
-  ask: (text: string, onText?: (soFar: string) => void) => Promise<string>
+   *  written, so Kiara starts speaking the first sentence before the rest arrives; `onSpeech` brings the first
+   *  phrase's audio when the server prepared it (one request less before she starts talking). */
+  ask: (text: string, onText?: (soFar: string) => void, onSpeech?: (event: ServerSpeech) => void) => Promise<string>
   /** Neural voice from the connected service, when available. */
   synthesize?: (text: string) => Promise<Blob>
   /** Server transcription, used when the browser cannot recognize speech. */
@@ -396,7 +400,22 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     const turn = ++turnRef.current
     const speaker = createSpeaker(turn)
     let fed = 0
+    // The first phrase voiced by the server: its characters wait for that audio instead of a request of our own.
+    let reserved = 0
+    const waiting: { deliver: ((audio: Blob | null) => void) | null } = { deliver: null }
+    let prepared: Promise<Blob | null> | null = null
+    const onSpeech = (event: ServerSpeech) => {
+      if (turnRef.current !== turn) return
+      if (event.kind === "pending") {
+        if (fed === 0 && !reserved) { reserved = event.chars; prepared = new Promise((resolve) => { waiting.deliver = resolve }) }
+      } else if (event.chars === reserved && waiting.deliver) { waiting.deliver(event.audio); waiting.deliver = null }
+    }
     const feed = (soFar: string, final = false) => {
+      if (reserved && fed === 0) {
+        if (soFar.length < reserved && !final) return
+        speaker.say(soFar.slice(0, reserved), prepared ?? undefined)
+        fed = Math.min(reserved, soFar.length)
+      }
       const rest = soFar.slice(fed)
       let cut = final ? rest.length : 0
       if (!final) {
@@ -419,7 +438,8 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     }
     try {
       let streamed = ""
-      const answer = await backendsRef.current.ask(text, (soFar) => { streamed = soFar; if (turnRef.current === turn) feed(soFar) })
+      const answer = await backendsRef.current.ask(text, (soFar) => { streamed = soFar; if (turnRef.current === turn) feed(soFar) }, onSpeech)
+      waiting.deliver?.(null) // the stream ended without the audio: the phrase is voiced the usual way
       if (!activeRef.current || turnRef.current !== turn) return
       // What was not spoken yet; nothing more when the final text no longer matches what was already said.
       if (!streamed || answer.startsWith(streamed.slice(0, fed))) feed(answer, true)
@@ -435,13 +455,17 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     let chain = Promise.resolve()
     const current = () => activeRef.current && turnRef.current === turn
     return {
-      say(raw: string) {
+      /** `prepared`: this text's audio already on its way from the server (null when it failed). */
+      say(raw: string, prepared?: Promise<Blob | null>) {
         const spoken = speakable(raw)
         if (!spoken) return
         const synthesize = backendsRef.current.synthesize
         // One retry before the browser voice: a single failed request would otherwise switch voices mid-reply
         // (the system voice sounds like an accent next to Kiara's).
-        const pieces = speechChunks(spoken).map((part) => ({ part, audio: synthesize ? synthesize(part).catch(() => synthesize(part)).catch(() => null) : Promise.resolve(null) }))
+        const voiced = (part: string) => synthesize ? synthesize(part).catch(() => synthesize(part)).catch(() => null) : Promise.resolve(null)
+        const pieces = prepared
+          ? [{ part: spoken, audio: prepared.then((audio) => audio ?? voiced(spoken)) }]
+          : speechChunks(spoken).map((part) => ({ part, audio: voiced(part) }))
         chain = chain.then(async () => {
           for (const { part, audio } of pieces) {
             if (!current()) return

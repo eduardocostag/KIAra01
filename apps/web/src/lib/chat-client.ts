@@ -86,6 +86,15 @@ function parseSources(values: unknown[]): ChatSource[] {
 }
 
 export type StreamEvent = { type: "delta"; text: string } | { type: "reset" } | { type: "status"; text: string }
+  // Voice: the server voices the first `chars` characters itself; "speech" brings that audio (none if it failed).
+  | { type: "speech_pending"; chars: number } | { type: "speech"; chars: number; audio: Blob | null }
+
+/** The first phrase's audio sent inside the voice stream, checked like the speech route's answer. */
+function speechBlob(event: Record<string, unknown>): Blob | null {
+  const data = event.audio_base64, mime = event.mime
+  if (typeof data !== "string" || typeof mime !== "string" || !mime.startsWith("audio/") || data.length > 15_000_000) return null
+  try { return new Blob([Uint8Array.from(atob(data), (char) => char.charCodeAt(0))], { type: mime }) } catch { return null }
+}
 
 /** Thrown when the streaming route is not usable at all, so the caller can use the classic request. */
 export class StreamUnavailableError extends Error {}
@@ -118,6 +127,8 @@ export async function streamChat(body: Record<string, unknown>, onEvent: (event:
       if (event.type === "delta" && typeof event.text === "string") onEvent({ type: "delta", text: event.text })
       else if (event.type === "reset") onEvent({ type: "reset" })
       else if (event.type === "status" && typeof event.text === "string") onEvent({ type: "status", text: event.text })
+      else if (event.type === "speech_pending" && typeof event.chars === "number") onEvent({ type: "speech_pending", chars: event.chars })
+      else if (event.type === "speech" && typeof event.chars === "number") onEvent({ type: "speech", chars: event.chars, audio: speechBlob(event) })
       else if (event.type === "error") throw new Error(typeof event.message === "string" ? event.message : "Não foi possível concluir a resposta.")
       else if (event.type === "done") return parseChatReply({ ...event, provider: "kiara" })
     }

@@ -163,3 +163,29 @@ def test_fake_files_are_refused(monkeypatch):
     response = api.post("/v1/chat/stream", json={"messages": ASK, "attachments": [
         {"name": "x.jpg", "mime": "image/jpeg", "data_base64": fake}]})
     assert response.status_code == 422 and response.json()["error"]["code"] == "attachment_invalid"
+
+
+def test_voice_stream_voices_the_first_phrase_on_the_server(monkeypatch):
+    monkeypatch.delenv("KIARA_VOICE_DIRECT_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    spoken = []
+
+    async def fake_speak(text):
+        spoken.append(text)
+        return b"mp3-bytes", "francisca"
+
+    monkeypatch.setattr(chat, "speak", fake_speak)
+    monkeypatch.setattr(chat, "speech_available", lambda: True)
+    api, _ = build(monkeypatch, {chat.DEFAULT_VOICE_MODEL: ["Lead frio ainda não ", "conhece sua empresa, ", "enquanto o quente já ", "conversou com você."]})
+    got = events(api, {"messages": [{"role": "user", "content": "Lead frio e quente?"}], "voice": True})
+    kinds = [e["type"] for e in got]
+    # The app hears about the phrase before the text that completes it, then gets its audio in the same stream.
+    pending = kinds.index("speech_pending")
+    assert kinds[pending + 1] == "delta" and got[pending + 1]["text"] == "conhece sua empresa, "
+    assert got[pending]["chars"] == len("Lead frio ainda não conhece sua empresa, ")
+    speech = next(e for e in got if e["type"] == "speech")
+    assert speech["chars"] == got[pending]["chars"] and base64.b64decode(speech["audio_base64"]) == b"mp3-bytes"
+    assert spoken == ["Lead frio ainda não conhece sua empresa, "] and kinds[-1] == "done"
+    # Written chat: nothing of this.
+    got = events(api, {"messages": [{"role": "user", "content": "Lead frio e quente?"}]})
+    assert not [e for e in got if e["type"] in ("speech_pending", "speech")]

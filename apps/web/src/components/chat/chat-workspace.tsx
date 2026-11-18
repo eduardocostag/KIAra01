@@ -11,7 +11,7 @@ import { downloadWord, looksUnfinished, printAnswer, whatsappText } from "@/lib/
 import { parseBlocks, plainText, type Inline } from "@/lib/chat-markdown"
 import { cn } from "@/lib/utils"
 import { pollVideoJob } from "@/lib/video-polling"
-import { femininePortugueseVoice, primeVoiceAudio, VoiceConversation, type VoiceBackends } from "./voice-conversation"
+import { femininePortugueseVoice, primeVoiceAudio, VoiceConversation, type ServerSpeech, type VoiceBackends } from "./voice-conversation"
 
 function InlineText({ parts }: { parts: Inline[] }) {
   return <>{parts.map((part, index) => part.href
@@ -438,7 +438,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
         const reply = await streamChat({ messages: chatHistory, ...files }, (event) => {
           if (event.type === "delta") { shown += event.text; patchMessage(conversationId, replyId, { content: show(shown), status: undefined }) }
           else if (event.type === "reset") { shown = ""; patchMessage(conversationId, replyId, { content: show("") }) }
-          else patchMessage(conversationId, replyId, { status: event.text })
+          else if (event.type === "status") patchMessage(conversationId, replyId, { status: event.text })
         }, controller.signal)
         const image = reply.image ? { ...reply.image, thumb: await imageThumbnail(reply.image.src) } : undefined
         remember(reply.file_context)
@@ -633,7 +633,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
   }
 
   /** One spoken turn: same conversation history as the written chat. */
-  async function askByVoice(content: string, onText?: (soFar: string) => void): Promise<string> {
+  async function askByVoice(content: string, onText?: (soFar: string) => void, onSpeech?: (event: ServerSpeech) => void): Promise<string> {
     const conversationId = activeIdRef.current || crypto.randomUUID()
     const previous = conversationsRef.current.find((item) => item.id === conversationId)?.messages ?? []
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", content }
@@ -650,6 +650,8 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
         reply = await streamChat({ messages: history, voice: true }, (event) => {
           if (event.type === "delta") { shown += event.text; onText?.(shown) }
           else if (event.type === "reset") shown = ""
+          else if (event.type === "speech_pending") onSpeech?.({ kind: "pending", chars: event.chars })
+          else if (event.type === "speech") onSpeech?.({ kind: "audio", chars: event.chars, audio: event.audio })
         })
       } catch (reason) {
         if (!(reason instanceof StreamUnavailableError) || shown) throw reason
