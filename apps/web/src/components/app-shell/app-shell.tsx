@@ -20,7 +20,6 @@ import {
   SlidersHorizontal,
   ListChecks,
   Building2,
-  Gem,
   Ellipsis,
 } from "lucide-react";
 import { KiaraBrand } from "@/components/brand/kiara-brand";
@@ -55,7 +54,6 @@ const navConfigs = {
     { href: "/app/fila", label: "Fila de hoje", icon: ListChecks },
     { href: "/app/pipeline", label: "Contatos", icon: UsersRound },
     { href: "/app/empresa", label: "Minha empresa", icon: Building2 },
-    { href: "/app/plano", label: "Plano", icon: Gem },
   ],
   "/app/whatsapp": [
     { href: "/app/whatsapp", label: "Visão geral", icon: House },
