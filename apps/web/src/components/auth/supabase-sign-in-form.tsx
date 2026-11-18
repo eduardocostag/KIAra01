@@ -24,7 +24,8 @@ export function SupabaseSignInForm({ googleEnabled }: { googleEnabled: boolean }
     try {
       const supabase = createClient()
       const identifier = login.trim().toLowerCase()
-      const email = identifier === "admin" ? "admin@kiara.local" : identifier
+      // Accounts created by the administrator with a plain user name (e.g. "kiara01") live at <name>@kiara.local.
+      const email = identifier.includes("@") ? identifier : `${identifier}@kiara.local`
       const result = await supabase.auth.signInWithPassword({ email, password })
       if (result.error) throw result.error
       router.replace("/app")

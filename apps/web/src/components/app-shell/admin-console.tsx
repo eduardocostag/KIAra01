@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import {
   Activity, AlertTriangle, Ban, CheckCircle2, CircleHelp, ExternalLink, Eye, EyeOff, FileClock,
-  KeyRound, LoaderCircle, LockOpen, LogOut, Mail, MoreHorizontal, RefreshCw, ServerCog, ShieldCheck, Trash2, UsersRound, XCircle,
+  KeyRound, LoaderCircle, LockOpen, LogOut, Mail, MoreHorizontal, RefreshCw, ServerCog, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -44,6 +44,8 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
   const [showPassword, setShowPassword] = useState(false)
   const [confirmEmail, setConfirmEmail] = useState("")
   const [acting, setActing] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [newUser, setNewUser] = useState({ open: false, name: "", login: "", password: "" })
   const operational = snapshot.services.filter((service) => service.status === "operational").length
   const grouped = useMemo(() => Object.groupBy(snapshot.services, (service) => service.category), [snapshot.services])
 
@@ -92,6 +94,24 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
     } finally { setActing(null) }
   }
 
+  async function createUser() {
+    setCreating(true); setMessage(null)
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newUser.name, login: newUser.login, password: newUser.password }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível criar a conta.")
+      setSnapshot((current) => ({ ...current, users: [body.user, ...current.users] }))
+      setNewUser({ open: false, name: "", login: "", password: "" }); setShowPassword(false)
+      setMessage({ ok: true, text: body.message })
+    } catch (error) {
+      setMessage({ ok: false, text: error instanceof Error ? error.message : "Não foi possível criar a conta." })
+      setNewUser((current) => ({ ...current, open: false }))
+    } finally { setCreating(false) }
+  }
+
   return <div className="space-y-6">
     <section className="relative overflow-hidden rounded-[28px] border bg-card px-5 py-6 shadow-[var(--shadow-2)] sm:px-7">
       <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-primary/10 blur-3xl" />
@@ -121,7 +141,7 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
         {Object.entries(grouped).map(([category, services]) => services?.length ? <Card key={category} className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5"><CardTitle className="text-base">{category}</CardTitle><CardDescription>Estado observado em {formatDate(snapshot.generatedAt)}.</CardDescription></CardHeader><CardContent className="divide-y p-0">{services.map((service) => <ServiceRow key={service.id} service={service} />)}</CardContent></Card> : null)}
       </TabsContent>
 
-      <TabsContent value="users"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Usuários da aplicação</CardTitle><CardDescription>Controle total das contas: trocar a senha, desconectar de todos os aparelhos, bloquear o acesso ou excluir.</CardDescription></CardHeader><CardContent className="p-0">
+      <TabsContent value="users"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6"><div><CardTitle>Usuários da aplicação</CardTitle><CardDescription className="mt-1.5">Controle total das contas: criar, trocar a senha, desconectar de todos os aparelhos, bloquear o acesso ou excluir.</CardDescription></div><Button type="button" className="shrink-0" disabled={creating} onClick={() => { setShowPassword(false); setNewUser({ open: true, name: "", login: "", password: "" }) }}>{creating ? <LoaderCircle className="animate-spin" /> : <UserPlus />}Novo usuário</Button></CardHeader><CardContent className="p-0">
         {snapshot.users.length ? <div className="divide-y">{snapshot.users.map((user) => <div key={user.id} className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-semibold">{user.name}</p>{user.isAdmin && <Badge className="bg-primary/15 text-primary">Administrador</Badge>}{user.blocked && <Badge className="bg-destructive/15 text-destructive">Bloqueado</Badge>}</div><p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{user.provider}</span><span>Último acesso: {formatDate(user.lastSignInAt)}</span><span>Criado em: {formatDate(user.createdAt)}</span></div></div><div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" disabled={acting !== null} onClick={() => { setPassword(""); setShowPassword(false); setDialog({ kind: "password", user }) }}><KeyRound />Trocar senha</Button>
           <DropdownMenu>
@@ -148,6 +168,18 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
 
       <TabsContent value="logs"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Logs e auditoria</CardTitle><CardDescription>Eventos de negócio sem conteúdo de mensagens, senhas ou chaves secretas.</CardDescription></CardHeader><CardContent className="p-0">{snapshot.auditEvents.length ? <div className="divide-y">{snapshot.auditEvents.map((event) => <div key={event.id} className="grid gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><p className="truncate font-mono text-xs font-semibold">{event.action}</p><p className="mt-1 truncate text-xs text-muted-foreground">{event.resourceType} · ref. {event.correlationId}</p></div><time className="text-xs text-muted-foreground">{formatDate(event.occurredAt)}</time></div>)}</div> : <div className="grid min-h-52 place-items-center p-8 text-center"><div><FileClock className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">Nenhum evento de auditoria publicado</p><p className="mt-1 max-w-md text-sm text-muted-foreground">Use os estados da Visão geral para o diagnóstico atual. Os logs detalhados continuam protegidos no provedor de infraestrutura.</p></div></div>}</CardContent></Card></TabsContent>
     </Tabs>
+      <Dialog open={newUser.open} onOpenChange={(open) => { if (!open) setNewUser((current) => ({ ...current, open: false })) }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Novo usuário</DialogTitle><DialogDescription>A conta já nasce liberada para entrar. Use um e-mail ou só um nome de usuário (ex.: kiara02), que vira o login.</DialogDescription></DialogHeader>
+          <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void createUser() }}>
+            <Input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} maxLength={80} placeholder="Nome (opcional)" aria-label="Nome" autoComplete="off" />
+            <Input value={newUser.login} onChange={(event) => setNewUser({ ...newUser, login: event.target.value })} maxLength={254} placeholder="E-mail ou nome de usuário" aria-label="E-mail ou nome de usuário" autoComplete="off" autoCapitalize="none" spellCheck={false} autoFocus />
+            <div className="flex items-center gap-2"><Input type={showPassword ? "text" : "password"} value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} minLength={6} maxLength={72} autoComplete="new-password" placeholder="Senha (mínimo 6 caracteres)" aria-label="Senha" />
+              <Button type="button" variant="ghost" size="icon" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}>{showPassword ? <EyeOff /> : <Eye />}</Button></div>
+            <DialogFooter><Button type="button" variant="ghost" onClick={() => setNewUser((current) => ({ ...current, open: false }))}>Cancelar</Button><Button type="submit" disabled={creating || newUser.login.trim().length < 2 || newUser.password.length < 6}>{creating ? <LoaderCircle className="animate-spin" /> : <UserPlus />}Criar conta</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <Dialog open={dialog?.kind === "password"} onOpenChange={(open) => { if (!open) setDialog(null) }}>
       <DialogContent>
         <DialogHeader><DialogTitle>Trocar senha</DialogTitle><DialogDescription>Nova senha para {dialog?.user.email}. A senha antiga para de funcionar na hora e os aparelhos conectados precisam entrar de novo.</DialogDescription></DialogHeader>
