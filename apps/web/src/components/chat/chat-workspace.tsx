@@ -712,7 +712,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
       </div>
     </div>
     {!checking && !available ? <p className="mt-2 px-3 text-center text-xs text-muted-foreground">{!isAdmin ? status?.connected ? `${activeMode.label} ainda não está disponível.` : "A Kiara está indisponível no momento. Tente novamente em instantes."
-      : status?.connected ? capability(mode)?.detail || `${activeMode.label} ainda não está disponível nesta conexão.` : "A IA não está conectada. Abra os ajustes para verificar a conexão."}</p> : null}
+      : status?.connected ? capability(mode)?.detail || `${activeMode.label} ainda não está disponível nesta conexão.` : "A IA não está conectada."}</p> : null}
     {error ? <p role="alert" className="mt-2 px-3 text-center text-sm text-destructive">{error}</p> : notice ? <p role="status" className="mt-2 px-3 text-center text-xs text-muted-foreground">{notice}</p> : null}
   </div>
 
