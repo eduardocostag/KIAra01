@@ -9,7 +9,8 @@ from fastapi.responses import JSONResponse
 
 
 class FakeResult:
-    rowcount = 2
+    async def fetchone(self):
+        return {"ended": 2}
 
 
 class FakeConnection:
@@ -17,11 +18,8 @@ class FakeConnection:
         self.log = log
 
     async def execute(self, sql, params):
-        self.log.append((sql.split()[2], params))
+        self.log.append((sql, params))
         return FakeResult()
-
-    def transaction(self):
-        return self
 
     async def __aenter__(self):
         return self
@@ -53,5 +51,5 @@ def test_only_system_admins_end_sessions():
     assert postgres.log == []
     response = client("eduardocgonsalves@hotmail.com", postgres).post(f"/v1/admin/users/{target}/sign-out")
     assert response.status_code == 200 and response.json() == {"ended_sessions": 2}
-    assert [table for table, _ in postgres.log] == ["auth.refresh_tokens", "auth.sessions"]
+    assert postgres.log == [("SELECT kiara.admin_end_user_sessions(%s::uuid) AS ended", (target,))]
     assert client("admin@kiara.local", postgres).post("/v1/admin/users/not-a-uuid/sign-out").status_code == 422
