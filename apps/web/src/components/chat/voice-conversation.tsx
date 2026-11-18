@@ -92,6 +92,12 @@ function isPhone() {
   return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches
 }
 
+/** iPhone and iPad (iPadOS reports itself as a Mac with touch). */
+function isIPhone() {
+  if (typeof navigator === "undefined") return false
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1)
+}
+
 /** Safari 16.4+: tells iOS whether this page is playing (loudspeaker, full volume) or recording. */
 function setAudioSession(type: "auto" | "playback" | "play-and-record") {
   try {
@@ -131,6 +137,7 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
   const recorderRef = useRef<MediaRecorder | null>(null)
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const turnRef = useRef(0)
+  const bargeAllowedRef = useRef(true)
   const syntheticRef = useRef(0)
   const stopSpeakingRef = useRef<(() => void) | null>(null)
   useEffect(() => { backendsRef.current = backends }, [backends])
@@ -230,16 +237,62 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
 
   /** Right before Kiara speaks: on phones the microphone is released and the audio goes to the loudspeaker. */
   function prepareToSpeak() {
-    if (!isPhone()) return
-    closeMic()
-    setAudioSession("playback")
+    if (isIPhone()) {
+      // iOS: an open microphone sends Kiara's voice to the call earpiece; tapping the orb interrupts her there.
+      closeMic()
+      setAudioSession("playback")
+    }
+    watchForBargeIn(turnRef.current)
+  }
+
+  /** Talking over Kiara interrupts her at once (like the voice modes of ChatGPT and Claude). The microphone keeps
+   *  listening while she speaks; the browser's echo cancellation removes her own voice, and the level of what is
+   *  left at the start of her speech is the baseline, so only a real voice (~250 ms above it) cuts her off. */
+  function watchForBargeIn(turn: number) {
+    if (isIPhone()) return
+    const begin = () => {
+      const analyser = micAnalyserRef.current
+      if (!analyser) return
+      const buffer = new Float32Array(analyser.fftSize)
+      const started = performance.now()
+      let baseline = 0
+      let loud = 0
+      const tick = () => {
+        if (!activeRef.current || turnRef.current !== turn || phaseRef.current !== "speaking") return
+        if (bargeAllowedRef.current) {
+          analyser.getFloatTimeDomainData(buffer)
+          let sum = 0
+          for (const value of buffer) sum += value * value
+          const level = Math.sqrt(sum / buffer.length)
+          if (performance.now() - started < 350) baseline = Math.max(baseline, level)
+          else {
+            loud = level > Math.max(0.03, baseline * 2.2) ? loud + 1 : Math.max(0, loud - 1)
+            if (loud >= 5) { interrupt(); return }
+          }
+        } else loud = 0
+        setTimeout(tick, 50)
+      }
+      tick()
+    }
+    if (micAnalyserRef.current) begin()
+    else openMic().then(begin).catch(() => { /* No microphone: the orb tap still interrupts. */ })
+  }
+
+  /** Stops Kiara right now and gives the turn to the person. */
+  function interrupt() {
+    turnRef.current += 1
+    stopSpeakingRef.current?.()
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel()
+    listen()
   }
 
   function listen() {
     if (!activeRef.current) return
     setError(""); go("listening")
-    if (isPhone()) setAudioSession("play-and-record")
+    if (isIPhone()) setAudioSession("play-and-record")
     const Constructor = recognitionConstructor()
+    // Phones: the microphone opened to hear a talk-over is released so the recognizer can use it.
+    if (Constructor && isPhone()) closeMic()
     if (Constructor) return listenWithBrowser(Constructor)
     if (backendsRef.current.transcribe) {
       if (micStreamRef.current) return listenWithRecorder()
@@ -418,9 +471,15 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
   async function speakWithBrowser(text: string) {
     if (!("speechSynthesis" in window) || !text) return
     window.speechSynthesis.cancel()
-    for (const part of speechChunks(text)) {
-      if (!activeRef.current || phaseRef.current !== "speaking") return
-      await speakUtterance(part)
+    // The system voice is not removed by echo cancellation: no talking-over detection while it speaks.
+    bargeAllowedRef.current = false
+    try {
+      for (const part of speechChunks(text)) {
+        if (!activeRef.current || phaseRef.current !== "speaking") return
+        await speakUtterance(part)
+      }
+    } finally {
+      bargeAllowedRef.current = true
     }
   }
 
@@ -443,13 +502,7 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
   /** Tapping the orb interrupts Kiara and gives the turn back to the user, or pauses/resumes listening. */
   function pressOrb() {
     primeVoiceAudio()
-    if (phaseRef.current === "speaking") {
-      turnRef.current += 1
-      stopSpeakingRef.current?.()
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
-      listen()
-      return
-    }
+    if (phaseRef.current === "speaking") { interrupt(); return }
     if (phaseRef.current === "listening") { pause(); return }
     if (phaseRef.current === "idle" || phaseRef.current === "error") listen()
   }

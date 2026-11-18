@@ -1,4 +1,6 @@
 fastapi>=0.115,<1
+# Pooled, kept-alive HTTPS to the model gateway (each new connection through the Funnel costs ~1 s).
+httpx>=0.27,<1
 PyYAML>=6.0.2
 psycopg[binary]>=3.2,<4
 PyJWT[crypto]>=2.10,<3

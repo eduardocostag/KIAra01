@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import re
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
@@ -334,14 +335,78 @@ def _candidates(base: str, model: str, fast: bool) -> list[str]:
     return list(dict.fromkeys(item for item in models if item))
 
 
+_HTTP_CLIENT = None
+_HTTP_LOCK = threading.Lock()
+
+
+def _http_client():
+    """One pooled HTTPS client per server instance. The model sits behind the Debian gateway (Tailscale Funnel),
+    where opening a connection costs ~1 s (TLS through the relay) and reusing one ~0.3 s; urllib reconnected on
+    every message. Synchronous and used from worker threads, so it does not depend on any event loop."""
+    global _HTTP_CLIENT
+    import httpx
+
+    with _HTTP_LOCK:
+        if _HTTP_CLIENT is None or _HTTP_CLIENT.is_closed:
+            _HTTP_CLIENT = httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
+                                        limits=httpx.Limits(max_connections=16, max_keepalive_connections=8, keepalive_expiry=240))
+        return _HTTP_CLIENT
+
+
+def warm_model_connection() -> None:
+    """Opens (or keeps) the pooled connection to the gateway; called when voice mode starts."""
+    from .server_gateway import gateway_configuration
+    base, _token = gateway_configuration()
+    if not base:
+        return
+    try:
+        _http_client().get(f"{base}/healthz", timeout=10)
+    except Exception:  # noqa: BLE001 - only a warm-up
+        pass
+
+
+async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> AsyncIterator[dict]:
+    """Server-sent events of a POST, read in a worker thread through the pooled client."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def worker() -> None:
+        try:
+            with _http_client().stream("POST", url, json=payload, timeout=timeout,
+                                       headers={"Authorization": f"Bearer {key}", "Accept": "text/event-stream"}) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    line = line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    loop.call_soon_threadsafe(queue.put_nowait, json.loads(data))
+        except BaseException as exc:  # noqa: BLE001 - cross-thread error transport
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    task = asyncio.create_task(asyncio.to_thread(worker))
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        if task.done():
+            task.result()
+
+
 async def _default_streamer(base: str, key: str, model: str, conversation: list[dict], max_tokens: int,
                             timeout: float) -> AsyncIterator[str]:
-    """Token deltas from an OpenAI-compatible endpoint (server-sent events)."""
-    from app.providers.remote import _stream_http_json
-
+    """Token deltas from an OpenAI-compatible endpoint (server-sent events), over a kept-alive connection."""
     payload = {"model": model, "messages": conversation, "stream": True, "max_tokens": max_tokens}
-    async for event in _stream_http_json(f"{base}/chat/completions", payload, timeout, api_key=key, sse=True,
-                                         follow_redirects=False):
+    async for event in _sse_events(f"{base}/chat/completions", payload, key, timeout):
         choices = event.get("choices") or []
         delta = choices[0].get("delta") if choices and isinstance(choices[0], dict) else None
         content = delta.get("content") if isinstance(delta, dict) else None
@@ -551,6 +616,9 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         response.headers["Cache-Control"] = "no-store, private"
         base, model, _key = _configuration()
         available = bool(base and model)
+        if available:
+            # The chat screen and voice mode ask for the status first: open the model connection meanwhile.
+            asyncio.get_running_loop().run_in_executor(None, warm_model_connection)
         capabilities = [{
             "id": "chat", "available": available,
             "detail": "Provedor configurado; a resposta é verificada ao enviar." if available else
