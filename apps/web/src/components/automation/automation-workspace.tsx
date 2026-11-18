@@ -425,8 +425,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
       <span className="mb-4 grid size-14 place-items-center rounded-2xl border bg-card text-primary"><WorkflowIcon className="size-6" /></span>
       <h1 className="text-2xl font-medium tracking-tight">Automatize com a Kiara</h1>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">Monte fluxos ligando blocos: gatilhos, IA, CRM, mensagens, agenda, sites, computador, redes sociais e anúncios.</p>
-      <div className="mt-6 grid w-full max-w-2xl gap-3 sm:grid-cols-2">{templates.map((template) => <button key={template.id} type="button" onClick={() => open(template.build())} className="rounded-2xl border bg-card p-4 text-left transition hover:border-primary/50"><p className="font-medium">{template.title}</p><p className="mt-1 text-sm text-muted-foreground">{template.description}</p></button>)}</div>
-      <Button type="button" variant="outline" className="mt-4" onClick={() => open(emptyWorkflow())}><Plus />Começar do zero</Button>
+      <Button type="button" variant="outline" className="mt-6" onClick={() => open(emptyWorkflow())}><Plus />Começar do zero</Button>
     </div>}
   </ImmersiveShell>
 }
