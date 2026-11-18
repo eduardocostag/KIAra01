@@ -78,3 +78,32 @@ def test_voice_races_the_direct_model_against_the_server_and_the_fastest_speaks(
         assert [e for e in events if e[0] == "reset"] == []
     finally:
         chat._configuration = original
+
+
+def test_ai_answers_queue_and_then_say_busy_instead_of_piling_up(monkeypatch):
+    import asyncio
+    from kiara_api import chat
+    monkeypatch.setattr(chat, "AI_CONCURRENCY", 1)
+    monkeypatch.setattr(chat, "AI_QUEUE_SECONDS", 0.05)
+    monkeypatch.setattr(chat, "_AI_SLOTS", {})
+    monkeypatch.setattr(chat, "_configuration", lambda: ("https://gateway.example/ai/v1", "main-model", "gw-key"))
+    monkeypatch.delenv("KIARA_VOICE_DIRECT_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    async def slow(base, key, model, conversation, max_tokens, timeout):
+        await asyncio.sleep(0.3)
+        yield "Oi!"
+
+    async def run():
+        first = asyncio.ensure_future(chat.stream_conversation([{"role": "user", "content": "oi"}], streamer=slow).__anext__())
+        await asyncio.sleep(0.01)                                   # the only slot is taken
+        try:
+            await chat.stream_conversation([{"role": "user", "content": "oi"}], streamer=slow).__anext__()
+        except chat.AiBusyError:
+            busy = True
+        else:
+            busy = False
+        assert await first == ("model", "main-model")
+        return busy
+
+    assert asyncio.run(run()) is True

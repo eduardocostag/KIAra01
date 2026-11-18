@@ -6,13 +6,23 @@ it in the chat, in the SDR answers and in the first-contact messages, so she spe
 from __future__ import annotations
 
 import base64
+import time
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .adapters.postgres import PostgresRepository, _uuid
-from .chat_files import Attachment, AttachmentError, DOCX, XLSX, docx_text, pdf_text, plain_text, xlsx_text
+from .chat_files import (
+    DOCX,
+    XLSX,
+    Attachment,
+    AttachmentError,
+    docx_text,
+    pdf_text,
+    plain_text,
+    xlsx_text,
+)
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
@@ -95,9 +105,19 @@ def prompt_block(context: str) -> str:
             + context)
 
 
+# Read on every chat message (the business knowledge in Kiara's instruction): kept for a minute per instance,
+# cleared on this instance as soon as the workspace changes it. Other instances see a change within a minute.
+CONTEXT_CACHE_SECONDS = 60
+
+
 class KnowledgeRepository:
     def __init__(self, postgres: PostgresRepository) -> None:
         self._postgres = postgres
+        self._context_cache: dict[tuple[str, int], tuple[float, str]] = {}
+
+    def _forget_context(self, organization_id: str) -> None:
+        for key in [key for key in self._context_cache if key[0] == organization_id]:
+            self._context_cache.pop(key, None)
 
     async def list(self, organization_id: str) -> dict[str, Any]:
         org = _uuid("organization", organization_id)
@@ -143,6 +163,7 @@ class KnowledgeRepository:
             row = await (await connection.execute(
                 """INSERT INTO business_knowledge(organization_id,title,kind,content,source_url) VALUES(%s,%s,%s,%s,%s)
                    RETURNING id""", (org, title[:200] or "Sem título", body.kind, content, source))).fetchone()
+        self._forget_context(organization_id)
         return await self.get(organization_id, str(row["id"]))
 
     async def update(self, organization_id: str, item_id: str, body: KnowledgeUpdate) -> dict[str, Any]:
@@ -153,16 +174,26 @@ class KnowledgeRepository:
             async with self._postgres._transaction(organization_id) as connection:
                 await connection.execute(f"UPDATE business_knowledge SET {columns},updated_at=now() WHERE organization_id=%s AND id=%s",
                                          (*changes.values(), org, item))
+            self._forget_context(organization_id)
         return await self.get(organization_id, item_id)
 
     async def delete(self, organization_id: str, item_id: str) -> None:
         org, item = _uuid("organization", organization_id), _uuid("knowledge", item_id)
         async with self._postgres._transaction(organization_id) as connection:
             await connection.execute("DELETE FROM business_knowledge WHERE organization_id=%s AND id=%s", (org, item))
+        self._forget_context(organization_id)
 
     async def context(self, organization_id: str, limit: int = PROMPT_CHARACTERS) -> str:
+        key = (organization_id, limit)
+        cached = self._context_cache.get(key)
+        if cached and time.monotonic() - cached[0] < CONTEXT_CACHE_SECONDS:
+            return cached[1]
         async with self._postgres._transaction(organization_id) as connection:
-            return await knowledge_context(connection, _uuid("organization", organization_id), limit)
+            text = await knowledge_context(connection, _uuid("organization", organization_id), limit)
+        if len(self._context_cache) > 5000:
+            self._context_cache.clear()
+        self._context_cache[key] = (time.monotonic(), text)
+        return text
 
 
 def _operator(context: RequestContext) -> None:

@@ -11,6 +11,7 @@ consumers.attributes.sdr.memory and given back to the reply prompt (see sdr.py).
 from __future__ import annotations
 
 import re
+import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -79,18 +80,31 @@ class MemoryCreate(BaseModel):
     fact: str = Field(min_length=3, max_length=300)
 
 
+# Read on every chat message; kept for a minute per instance and cleared here on any change (other instances
+# see a change within a minute).
+LIST_CACHE_SECONDS = 60
+
+
 class MemoryRepository:
     def __init__(self, postgres: PostgresRepository) -> None:
         self._postgres = postgres
+        self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
     async def list(self, organization_id: str) -> list[dict[str, Any]]:
+        cached = self._cache.get(organization_id)
+        if cached and time.monotonic() - cached[0] < LIST_CACHE_SECONDS:
+            return [dict(item) for item in cached[1]]
         org = _uuid("organization", organization_id)
         async with self._postgres._transaction(organization_id) as connection:
             rows = await (await connection.execute(
                 "SELECT id,fact,source,updated_at FROM kiara_memories WHERE organization_id=%s ORDER BY updated_at DESC LIMIT %s",
                 (org, MAX_FACTS))).fetchall()
-        return [{"id": str(row["id"]), "fact": row["fact"], "source": row["source"], "updated_at": row["updated_at"].isoformat()}
-                for row in rows]
+        items = [{"id": str(row["id"]), "fact": row["fact"], "source": row["source"], "updated_at": row["updated_at"].isoformat()}
+                 for row in rows]
+        if len(self._cache) > 5000:
+            self._cache.clear()
+        self._cache[organization_id] = (time.monotonic(), items)
+        return [dict(item) for item in items]
 
     async def facts(self, organization_id: str) -> list[str]:
         return [item["fact"] for item in await self.list(organization_id)]
@@ -111,6 +125,7 @@ class MemoryRepository:
                 """DELETE FROM kiara_memories WHERE organization_id=%s AND id IN (
                      SELECT id FROM kiara_memories WHERE organization_id=%s ORDER BY updated_at DESC OFFSET %s)""",
                 (org, org, MAX_FACTS))
+        self._cache.pop(organization_id, None)
         return len(clean)
 
     async def forget(self, organization_id: str, subjects: list[str]) -> int:
@@ -122,6 +137,7 @@ class MemoryRepository:
                 cursor = await connection.execute(
                     "DELETE FROM kiara_memories WHERE organization_id=%s AND fact ILIKE %s", (org, pattern))
                 removed += cursor.rowcount or 0
+        self._cache.pop(organization_id, None)
         return removed
 
     async def delete(self, organization_id: str, memory_id: str) -> None:
@@ -134,6 +150,7 @@ class MemoryRepository:
             cursor = await connection.execute("DELETE FROM kiara_memories WHERE organization_id=%s AND id=%s", (org, item))
             if not cursor.rowcount:
                 raise ApiError(404, "memory_not_found", "Lembrança não encontrada.")
+        self._cache.pop(organization_id, None)
 
 
 def _operator(context: RequestContext) -> None:

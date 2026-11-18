@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -10,7 +11,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import dict_row, tuple_row
 
 from ..http.errors import ApiError
 
@@ -32,46 +33,139 @@ def _psycopg_url(value: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
+# --- Connection pool -------------------------------------------------------------------------------------------
+# Before 2026-11-18 every query opened a new connection (TLS + login to Supabase's pooler, 3-5 per chat message);
+# a traffic peak used up the pooler's client slots in about a second and the rest got errors. Now each server
+# instance keeps a small pool of connections that requests take turns on. With Supabase's pooler the API talks
+# to the "transaction" port (6543), where many clients share a few real database connections; nothing in the
+# code needs a connection of its own (no session SET, LISTEN, named cursors or session locks).
+POOL_MAX = max(1, int(os.getenv("KIARA_DB_POOL_MAX", "10") or 10))
+POOL_WAIT_SECONDS = float(os.getenv("KIARA_DB_POOL_WAIT_SECONDS", "10") or 10)
+BUSY_MESSAGE = "Muita gente usando a Kiara neste momento. Tente de novo em alguns segundos."
+_POOLS: dict[str, tuple[Any, Any]] = {}  # url -> (event loop, pool)
+_ENSURED_ORGANIZATIONS: set[UUID] = set()
+
+
+def pooled_url(url: str) -> str:
+    """Supabase's pooler on its session port (5432) becomes the transaction port (6543): in session mode each
+    client holds a whole database connection, so a few busy instances would exhaust the small database.
+    KIARA_DB_SESSION_POOLER=1 keeps the session port."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if host.endswith("pooler.supabase.com") and parts.port in (None, 5432) and os.getenv("KIARA_DB_SESSION_POOLER") != "1":
+        netloc = parts.netloc.rsplit(":", 1)[0] if parts.port else parts.netloc
+        return urlunsplit((parts.scheme, f"{netloc}:6543", parts.path, parts.query, parts.fragment))
+    return url
+
+
+def connection_mode(url: str) -> str:
+    """How the API reaches the database, for diagnostics (no secrets)."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if host.endswith("pooler.supabase.com"):
+        return "supabase-transaction-pooler" if parts.port == 6543 else "supabase-session-pooler"
+    return "direct" if host else "unknown"
+
+
+async def _pool_for(url: str) -> Any:
+    """One pool per database URL and event loop (each server instance runs one loop; tests run several)."""
+    from psycopg_pool import AsyncConnectionPool
+
+    loop = asyncio.get_running_loop()
+    entry = _POOLS.get(url)
+    pool = entry[1] if entry and entry[0] is loop else None
+    if pool is None:
+        transaction_pooler = connection_mode(url) == "supabase-transaction-pooler"
+        pool = AsyncConnectionPool(
+            conninfo=url,
+            min_size=1,
+            max_size=POOL_MAX,
+            timeout=POOL_WAIT_SECONDS,
+            max_idle=60,
+            # Prepared statements do not survive a transaction pooler (each transaction may use another backend).
+            kwargs={"connect_timeout": 5, "prepare_threshold": None if transaction_pooler else 5},
+            check=AsyncConnectionPool.check_connection,
+            open=False,
+            name="kiara",
+        )
+        _POOLS[url] = (loop, pool)
+        await pool.open(wait=False)
+        # Internal log only (no host or password): confirms how production reaches the database.
+        print(json.dumps({"event": "kiara_db_pool", "mode": connection_mode(url), "max_size": POOL_MAX}), flush=True)
+    return pool
+
+
+class _Lease:
+    """`async with await repo._connect() as connection`: a pooled connection, committed (or rolled back on error)
+    and handed back to the pool at the end, the same contract an AsyncConnection had when it was closed."""
+
+    def __init__(self, url: str, row_factory: Any) -> None:
+        self._url = url
+        self._row_factory = row_factory
+        self._pool: Any = None
+        self._connection: Any = None
+
+    async def __aenter__(self) -> Any:
+        from psycopg_pool import PoolTimeout
+
+        self._pool = await _pool_for(self._url)
+        try:
+            self._connection = await self._pool.getconn()
+        except PoolTimeout:
+            # Every connection busy for POOL_WAIT_SECONDS: a friendly "try again" instead of an error page.
+            raise ApiError(503, "database_busy", BUSY_MESSAGE) from None
+        self._connection.row_factory = self._row_factory if self._row_factory is not None else tuple_row
+        return self._connection
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        connection = self._connection
+        try:
+            if not connection.closed:
+                if connection.autocommit:
+                    await connection.set_autocommit(False)  # e.g. migrations; the pool expects the default
+                elif exc_type is None:
+                    await connection.commit()
+                else:
+                    await connection.rollback()
+        except Exception:  # a broken connection is closed; the pool replaces it
+            await connection.close()
+            if exc_type is None:
+                raise
+        finally:
+            await self._pool.putconn(connection)
+
+
 class PostgresRepository:
     """Persistent, tenant-scoped repository backed by Supabase PostgreSQL."""
 
     def __init__(self, database_url: str) -> None:
-        self._database_url = _psycopg_url(database_url)
+        self._database_url = pooled_url(_psycopg_url(database_url))
 
     async def _connect(self, *, row_factory: Any = dict_row) -> Any:
-        """Open a database connection with bounded retries for transient pool failures."""
-        last_error: psycopg.OperationalError | None = None
-        for delay in (0.0, 0.2, 0.5):
-            if delay:
-                await asyncio.sleep(delay)
-            try:
-                options: dict[str, Any] = {
-                    "conninfo": self._database_url,
-                    "connect_timeout": 5,
-                }
-                if row_factory is not None:
-                    options["row_factory"] = row_factory
-                # Em ambientes assíncronos padrão usamos AsyncConnection
-                return await psycopg.AsyncConnection.connect(**options)
-            except psycopg.OperationalError as exc:
-                last_error = exc
-        assert last_error is not None
-        raise last_error
+        """A pooled connection (see _Lease); waits up to POOL_WAIT_SECONDS when all are busy, then answers 503."""
+        return _Lease(self._database_url, row_factory)
 
     @asynccontextmanager
     async def _transaction(self, organization_id: str) -> AsyncIterator[psycopg.AsyncConnection]:
         organization_uuid = _uuid("organization", organization_id)
+        # The workspace row is created once; afterwards this instance skips that write on every transaction.
+        ensured = organization_uuid in _ENSURED_ORGANIZATIONS
         async with await self._connect() as connection, connection.transaction():
             await connection.execute(
                 "SELECT set_config('app.organization_id', %s, true)",
                 (str(organization_uuid),),
             )
-            await connection.execute(
-                """INSERT INTO organizations (id, slug, name)
-                   VALUES (%s, %s, %s) ON CONFLICT DO NOTHING""",
-                (organization_uuid, f"workspace-{organization_uuid}", "Kiara Workspace"),
-            )
+            if not ensured:
+                await connection.execute(
+                    """INSERT INTO organizations (id, slug, name)
+                       VALUES (%s, %s, %s) ON CONFLICT DO NOTHING""",
+                    (organization_uuid, f"workspace-{organization_uuid}", "Kiara Workspace"),
+                )
             yield connection
+        if not ensured:
+            if len(_ENSURED_ORGANIZATIONS) > 50_000:
+                _ENSURED_ORGANIZATIONS.clear()
+            _ENSURED_ORGANIZATIONS.add(organization_uuid)
 
     async def ready(self) -> bool:
         try:

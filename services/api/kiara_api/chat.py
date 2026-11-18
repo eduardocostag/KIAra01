@@ -354,7 +354,20 @@ async def complete_conversation(conversation: list[dict[str, str]], *, fast: boo
     """Run a conversation through the configured model chain (each step a different provider/account).
 
     `fast` uses the voice chain (Claude Haiku without the thinking step first): quick answers for voice and the SDR.
-    Returns (text, model) or ("", "") when every provider failed; never raises provider details."""
+    Returns (text, model) or ("", "") when every provider failed (or the instance stayed busy, see AI_CONCURRENCY);
+    never raises provider details."""
+    try:
+        slots = await _take_ai_slot()
+    except AiBusyError:
+        return "", ""
+    try:
+        return await _complete_conversation(conversation, fast=fast, provider_factory=provider_factory, max_tokens=max_tokens)
+    finally:
+        slots.release()
+
+
+async def _complete_conversation(conversation: list[dict[str, str]], *, fast: bool, provider_factory,
+                                 max_tokens: int | None) -> tuple[str, str]:
     base, model, key = _configuration()
     if not base:
         return "", ""
@@ -527,6 +540,37 @@ class NoProviderError(RuntimeError):
     pass
 
 
+# --- How many AI answers one server instance writes at the same time ----------------------------------------
+# The models sit behind one Debian server and free accounts; a traffic peak must queue for a few seconds and then
+# get a friendly "try again" instead of piling thousands of requests on them (and failing for everyone).
+AI_CONCURRENCY = max(1, int(os.getenv("KIARA_AI_CONCURRENCY", "24") or 24))
+AI_QUEUE_SECONDS = float(os.getenv("KIARA_AI_QUEUE_SECONDS", "15") or 15)
+AI_BUSY_MESSAGE = "Muita gente conversando com a Kiara agora. Tente de novo em alguns segundos."
+_AI_SLOTS: dict[int, tuple[object, asyncio.Semaphore]] = {}
+
+
+def _ai_slots() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    entry = _AI_SLOTS.get(id(loop))
+    if entry is None or entry[0] is not loop:
+        entry = (loop, asyncio.Semaphore(AI_CONCURRENCY))
+        _AI_SLOTS[id(loop)] = entry
+    return entry[1]
+
+
+class AiBusyError(RuntimeError):
+    """Every AI slot of this instance stayed busy for AI_QUEUE_SECONDS."""
+
+
+async def _take_ai_slot() -> asyncio.Semaphore:
+    slots = _ai_slots()
+    try:
+        await asyncio.wait_for(slots.acquire(), timeout=AI_QUEUE_SECONDS)
+    except TimeoutError:
+        raise AiBusyError() from None
+    return slots
+
+
 async def _first_words(iterator) -> str | None:
     """The first non-empty piece of a model stream; None when it ends without one."""
     while True:
@@ -586,6 +630,17 @@ async def stream_conversation(conversation: list[dict], *, streamer=None, max_to
     base, model, key = _configuration()
     if not base:
         raise NoProviderError("chat_not_configured")
+    slots = await _take_ai_slot()
+    try:
+        async for item in _stream_conversation(conversation, base, model, key, streamer=streamer,
+                                               max_tokens=max_tokens, fast=fast):
+            yield item
+    finally:
+        slots.release()
+
+
+async def _stream_conversation(conversation: list[dict], base: str, model: str, key: str, *, streamer,
+                               max_tokens: int, fast: bool) -> AsyncIterator[tuple[str, str]]:
     stream = streamer or _default_streamer
     deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if fast else CHAT_DEADLINE_SECONDS)
     if fast:
@@ -965,6 +1020,8 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 yield event("done", text=final, model=model if admin else "", **result)
             except NoProviderError:
                 yield event("error", message="O modelo não respondeu agora. Tente de novo em instantes.")
+            except AiBusyError:
+                yield event("error", message=AI_BUSY_MESSAGE)
             except ApiError as error:  # e.g. the plan's monthly limit: the message is written for the client
                 yield event("error", message=error.message)
             except Exception:  # noqa: BLE001 - details never reach the browser
