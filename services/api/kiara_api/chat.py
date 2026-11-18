@@ -411,7 +411,13 @@ async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> Asyn
                         finished = True
                         continue
                     timing.setdefault("first_event_s", round(time.monotonic() - started, 3))
-                    loop.call_soon_threadsafe(queue.put_nowait, json.loads(data))
+                    parsed = json.loads(data)
+                    if "first_text_s" not in timing:
+                        choices = parsed.get("choices") or [] if isinstance(parsed, dict) else []
+                        delta = choices[0].get("delta") if choices and isinstance(choices[0], dict) else None
+                        if isinstance(delta, dict) and delta.get("content"):
+                            timing["first_text_s"] = round(time.monotonic() - started, 3)
+                    loop.call_soon_threadsafe(queue.put_nowait, parsed)
                 timing["reusable"] = True
         except BaseException as exc:  # noqa: BLE001 - cross-thread error transport
             timing["error"] = type(exc).__name__
