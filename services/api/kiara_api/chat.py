@@ -343,6 +343,17 @@ def _candidates(base: str, model: str, fast: bool) -> list[str]:
 
 _HTTP_CLIENT = None
 _HTTP_LOCK = threading.Lock()
+# Model-call timing log (Vercel's internal log only: host, timings, no content or keys). Shows whether a voice
+# turn reused the pooled connection and which server instance answered.
+_INSTANCE = (os.urandom(3).hex(), time.monotonic())
+
+
+def _idle_connections(host: str) -> int:
+    try:
+        pool = _http_client()._transport._pool  # httpcore pool; diagnostics only
+        return sum(1 for c in pool.connections if c.is_idle() and host in str(getattr(c, "_origin", "")))
+    except Exception:  # noqa: BLE001
+        return -1
 
 
 def _http_client():
@@ -377,9 +388,15 @@ async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> Asyn
     queue: asyncio.Queue = asyncio.Queue()
 
     def worker() -> None:
+        host = urlsplit(url).hostname or ""
+        idle = _idle_connections(host)
+        started = time.monotonic()
+        timing = {"event": "kiara_model_timing", "instance": _INSTANCE[0], "instance_age_s": round(started - _INSTANCE[1]),
+                  "host": host.split(".")[0][:12], "model": str(payload.get("model", ""))[:60], "idle_before": idle}
         try:
             with _http_client().stream("POST", url, json=payload, timeout=timeout,
                                        headers={"Authorization": f"Bearer {key}", "Accept": "text/event-stream"}) as response:
+                timing["headers_s"] = round(time.monotonic() - started, 3)
                 response.raise_for_status()
                 for line in response.iter_lines():
                     line = line.strip()
@@ -388,10 +405,14 @@ async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> Asyn
                     data = line[5:].strip()
                     if data == "[DONE]":
                         break
+                    timing.setdefault("first_event_s", round(time.monotonic() - started, 3))
                     loop.call_soon_threadsafe(queue.put_nowait, json.loads(data))
         except BaseException as exc:  # noqa: BLE001 - cross-thread error transport
+            timing["error"] = type(exc).__name__
             loop.call_soon_threadsafe(queue.put_nowait, exc)
         finally:
+            timing["total_s"] = round(time.monotonic() - started, 3)
+            print(json.dumps(timing), flush=True)
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
     task = asyncio.create_task(asyncio.to_thread(worker))
