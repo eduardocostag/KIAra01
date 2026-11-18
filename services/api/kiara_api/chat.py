@@ -808,12 +808,18 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
     async def stream(body: ChatRequest, context: Annotated[RequestContext, Depends(authenticated_context)]):
         """The same answer as /messages, sent while it is written (server-sent events)."""
         _authorize(context)
+        received = time.monotonic()
         if not _configuration()[0]:
             raise ApiError(503, "chat_not_configured", "A IA na nuvem não está configurada.")
         await charge(context, "ai_messages")
+        charged = time.monotonic()
         conversation, file_context = build_conversation(body, await business(context, _recent_question(body)))
+        prepared = time.monotonic()
         admin = _is_system_admin(context)
         urls = chat_links.find_urls(body.messages[-1].content)
+        timing = {"event": "kiara_stream_timing", "instance": _INSTANCE[0], "voice": body.voice,
+                  "charge_s": round(charged - received, 3), "context_s": round(prepared - charged, 3),
+                  "prompt_chars": sum(len(str(m.get("content", ""))) for m in conversation)}
 
         def event(kind: str, **data) -> str:
             return "data: " + json.dumps({"type": kind, **data}, ensure_ascii=False) + "\n\n"
@@ -840,6 +846,10 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                             text += value
                             visible = _visible(text)
                             if len(visible) > len(shown) and visible.startswith(shown):
+                                if "first_delta_s" not in timing:
+                                    timing["first_delta_s"] = round(time.monotonic() - received, 3)
+                                    timing["model"] = model[:60]
+                                    print(json.dumps(timing), flush=True)
                                 yield event("delta", text=visible[len(shown):])
                                 shown = visible
                     search = chat_search.MARKER.search(text) if attempt == 1 else None
