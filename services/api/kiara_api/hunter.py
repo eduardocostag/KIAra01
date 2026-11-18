@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import hmac
 import ipaddress
 import json
@@ -1524,8 +1525,10 @@ async def _read_maps_remote(connect_url: str, query: str, limit: int, *, headers
     Playwright's driver is the fallback."""
     try:
         return await _read_kiara_browser(connect_url, query, limit, headers or {})
-    except Exception as exc:  # noqa: BLE001 - Playwright remains an independent path
+    except Exception as exc:  # noqa: BLE001 - Playwright remains an independent path where it is installed
         logger.warning("hunter.maps.raw_cdp_failed %s", _safe_error(exc))
+        if importlib.util.find_spec("playwright") is None:
+            raise
     return await _read_maps_cdp(connect_url, query, limit, headers=headers)
 
 
@@ -1586,11 +1589,9 @@ async def _maps_browser_search(query: str, limit: int, unverified_rows: list[dic
     key, project = os.getenv("BROWSERBASE_API_KEY"), os.getenv("BROWSERBASE_PROJECT_ID")
     if not obscura and (not key or not project):
         return await local_or_index()
-    try:
-        import playwright.async_api  # noqa: F401 — check optional dependency before creating a paid session
-    except ImportError as exc:
-        logger.warning("hunter.maps.playwright_unavailable", extra={"error_class": type(exc).__name__})
-        return await maps_index_search(query, limit)
+    # Remote browsers are read over raw CDP (cdp_maps.py), which needs no Playwright: the API on Vercel ships
+    # without it (its 111 MB pushed the bundle over Vercel's size limit, so every new instance installed 50
+    # packages before answering; measured 2026-11-18).
     if obscura:
         endpoint, headers = obscura
         try:
