@@ -39,7 +39,9 @@ def _psycopg_url(value: str) -> str:
 # instance keeps a small pool of connections that requests take turns on. With Supabase's pooler the API talks
 # to the "transaction" port (6543), where many clients share a few real database connections; nothing in the
 # code needs a connection of its own (no session SET, LISTEN, named cursors or session locks).
-POOL_MAX = max(1, int(os.getenv("KIARA_DB_POOL_MAX", "10") or 10))
+# 5 per instance: a 500-request peak spun up ~29 instances (2026-11-18), and the small plan's pooler admits
+# about 200 clients; each request holds a connection only for milliseconds, so 5 is plenty per instance.
+POOL_MAX = max(1, int(os.getenv("KIARA_DB_POOL_MAX", "5") or 5))
 POOL_WAIT_SECONDS = float(os.getenv("KIARA_DB_POOL_WAIT_SECONDS", "10") or 10)
 BUSY_MESSAGE = "Muita gente usando a Kiara neste momento. Tente de novo em alguns segundos."
 _POOLS: dict[str, tuple[Any, Any]] = {}  # url -> (event loop, pool)
