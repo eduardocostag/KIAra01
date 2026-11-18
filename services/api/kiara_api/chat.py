@@ -225,16 +225,12 @@ _PAUSE = re.compile(r"[,;:—–]\s")
 
 
 def first_phrase_end(text: str) -> int:
-    """Where Kiara's first spoken phrase ends in the text written so far (0: not yet). The same rule as the
-    app's voice mode (voice-conversation.tsx): up to the last finished sentence once there are 12+ characters,
-    otherwise the first pause (a comma after a few words)."""
-    ends = [match.end() for match in _SENTENCE_END.finditer(text)]
-    if ends and ends[-1] >= 12:
-        return ends[-1]
-    for match in _PAUSE.finditer(text):
-        if 18 <= match.start() <= 120:
-            return match.end()
-    return 0
+    """Where Kiara's first spoken phrase ends in the text written so far (0: not yet): the earliest finished
+    sentence of 12+ characters or pause (a comma after 18+ characters). The shorter the first phrase, the sooner
+    its audio is ready (about 0.7 s for a short one, 1.5 s+ for a 100-character sentence; measured 2026-11-18)."""
+    cuts = [match.end() for match in _SENTENCE_END.finditer(text) if match.end() >= 12]
+    cuts += [match.end() for match in _PAUSE.finditer(text) if 18 <= match.start() <= 120]
+    return min(cuts, default=0)
 
 
 class SpeechRequest(BaseModel):
