@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react"
 import {
-  Activity, AlertTriangle, CheckCircle2, CircleHelp, ExternalLink, FileClock,
-  KeyRound, LoaderCircle, RefreshCw, ServerCog, ShieldCheck, UsersRound, XCircle,
+  Activity, AlertTriangle, Ban, CheckCircle2, CircleHelp, ExternalLink, Eye, EyeOff, FileClock,
+  KeyRound, LoaderCircle, LockOpen, LogOut, Mail, MoreHorizontal, RefreshCw, ServerCog, ShieldCheck, Trash2, UsersRound, XCircle,
 } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { IntegrationSettings } from "@/components/app-shell/integration-settings"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -36,6 +39,11 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
   const [refreshing, setRefreshing] = useState(false)
   const [resetting, setResetting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [dialog, setDialog] = useState<{ kind: "password" | "delete"; user: AdminUser } | null>(null)
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [confirmEmail, setConfirmEmail] = useState("")
+  const [acting, setActing] = useState<string | null>(null)
   const operational = snapshot.services.filter((service) => service.status === "operational").length
   const grouped = useMemo(() => Object.groupBy(snapshot.services, (service) => service.category), [snapshot.services])
 
@@ -64,6 +72,24 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
     } catch (error) {
       setMessage({ ok: false, text: error instanceof Error ? error.message : "Falha ao enviar a recuperação." })
     } finally { setResetting(null) }
+  }
+
+  /** Password, sign-out, block/unblock and delete (Administração → Usuários). */
+  async function manage(user: AdminUser, action: "password" | "sign_out" | "block" | "unblock" | "delete", extra: Record<string, string> = {}) {
+    setActing(user.id); setMessage(null)
+    try {
+      const response = await fetch(`/api/admin/users/${user.id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível concluir a ação.")
+      setMessage({ ok: true, text: body.message })
+      setDialog(null); setPassword(""); setConfirmEmail(""); setShowPassword(false)
+      if (action === "delete") setSnapshot((current) => ({ ...current, users: current.users.filter((item) => item.id !== user.id) }))
+      if (action === "block" || action === "unblock") setSnapshot((current) => ({ ...current, users: current.users.map((item) => item.id === user.id ? { ...item, blocked: action === "block" } : item) }))
+    } catch (error) {
+      setMessage({ ok: false, text: error instanceof Error ? error.message : "Não foi possível concluir a ação." })
+    } finally { setActing(null) }
   }
 
   return <div className="space-y-6">
@@ -95,8 +121,24 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
         {Object.entries(grouped).map(([category, services]) => services?.length ? <Card key={category} className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5"><CardTitle className="text-base">{category}</CardTitle><CardDescription>Estado observado em {formatDate(snapshot.generatedAt)}.</CardDescription></CardHeader><CardContent className="divide-y p-0">{services.map((service) => <ServiceRow key={service.id} service={service} />)}</CardContent></Card> : null)}
       </TabsContent>
 
-      <TabsContent value="users"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Usuários da aplicação</CardTitle><CardDescription>Consulte acessos e envie um link seguro para o próprio usuário definir uma nova senha.</CardDescription></CardHeader><CardContent className="p-0">
-        {snapshot.users.length ? <div className="divide-y">{snapshot.users.map((user) => <div key={user.id} className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-semibold">{user.name}</p>{user.isAdmin && <Badge className="bg-primary/15 text-primary">Administrador</Badge>}</div><p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{user.provider}</span><span>Último acesso: {formatDate(user.lastSignInAt)}</span><span>Criado em: {formatDate(user.createdAt)}</span></div></div><Button type="button" variant="outline" disabled={resetting !== null} onClick={() => void resetPassword(user)}>{resetting === user.id ? <LoaderCircle className="animate-spin" /> : <KeyRound />}Enviar redefinição</Button></div>)}</div> : <div className="p-8 text-center text-sm text-muted-foreground">Nenhum usuário pôde ser carregado. Revise a configuração do Supabase Admin.</div>}
+      <TabsContent value="users"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Usuários da aplicação</CardTitle><CardDescription>Controle total das contas: trocar a senha, desconectar de todos os aparelhos, bloquear o acesso ou excluir.</CardDescription></CardHeader><CardContent className="p-0">
+        {snapshot.users.length ? <div className="divide-y">{snapshot.users.map((user) => <div key={user.id} className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-semibold">{user.name}</p>{user.isAdmin && <Badge className="bg-primary/15 text-primary">Administrador</Badge>}{user.blocked && <Badge className="bg-destructive/15 text-destructive">Bloqueado</Badge>}</div><p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{user.provider}</span><span>Último acesso: {formatDate(user.lastSignInAt)}</span><span>Criado em: {formatDate(user.createdAt)}</span></div></div><div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" disabled={acting !== null} onClick={() => { setPassword(""); setShowPassword(false); setDialog({ kind: "password", user }) }}><KeyRound />Trocar senha</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button type="button" variant="outline" disabled={acting !== null || resetting !== null} aria-label={`Gerenciar ${user.email}`}>{acting === user.id || resetting === user.id ? <LoaderCircle className="animate-spin" /> : <MoreHorizontal />}Gerenciar</Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuItem onSelect={() => void manage(user, "sign_out")}><LogOut />Desconectar de todos os aparelhos</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void resetPassword(user)}><Mail />Enviar e-mail para redefinir senha</DropdownMenuItem>
+              {!user.isAdmin ? <>
+                <DropdownMenuSeparator />
+                {user.blocked
+                  ? <DropdownMenuItem onSelect={() => void manage(user, "unblock")}><LockOpen />Desbloquear acesso</DropdownMenuItem>
+                  : <DropdownMenuItem variant="destructive" onSelect={() => void manage(user, "block")}><Ban />Bloquear acesso</DropdownMenuItem>}
+                <DropdownMenuItem variant="destructive" onSelect={() => { setConfirmEmail(""); setDialog({ kind: "delete", user }) }}><Trash2 />Excluir conta</DropdownMenuItem>
+              </> : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div></div>)}</div> : <div className="p-8 text-center text-sm text-muted-foreground">Nenhum usuário pôde ser carregado. Revise a configuração do Supabase Admin.</div>}
       </CardContent></Card></TabsContent>
 
       <TabsContent value="integrations" className="space-y-6">
@@ -106,6 +148,25 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
 
       <TabsContent value="logs"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5 sm:p-6"><CardTitle>Logs e auditoria</CardTitle><CardDescription>Eventos de negócio sem conteúdo de mensagens, senhas ou chaves secretas.</CardDescription></CardHeader><CardContent className="p-0">{snapshot.auditEvents.length ? <div className="divide-y">{snapshot.auditEvents.map((event) => <div key={event.id} className="grid gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><p className="truncate font-mono text-xs font-semibold">{event.action}</p><p className="mt-1 truncate text-xs text-muted-foreground">{event.resourceType} · ref. {event.correlationId}</p></div><time className="text-xs text-muted-foreground">{formatDate(event.occurredAt)}</time></div>)}</div> : <div className="grid min-h-52 place-items-center p-8 text-center"><div><FileClock className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">Nenhum evento de auditoria publicado</p><p className="mt-1 max-w-md text-sm text-muted-foreground">Use os estados da Visão geral para o diagnóstico atual. Os logs detalhados continuam protegidos no provedor de infraestrutura.</p></div></div>}</CardContent></Card></TabsContent>
     </Tabs>
+      <Dialog open={dialog?.kind === "password"} onOpenChange={(open) => { if (!open) setDialog(null) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Trocar senha</DialogTitle><DialogDescription>Nova senha para {dialog?.user.email}. A senha antiga para de funcionar na hora e os aparelhos conectados precisam entrar de novo.</DialogDescription></DialogHeader>
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (dialog) void manage(dialog.user, "password", { password }) }}>
+          <div className="flex items-center gap-2"><Input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} maxLength={72} autoComplete="new-password" placeholder="Nova senha (mínimo 6 caracteres)" aria-label="Nova senha" autoFocus />
+            <Button type="button" variant="ghost" size="icon" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}>{showPassword ? <EyeOff /> : <Eye />}</Button></div>
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setDialog(null)}>Cancelar</Button><Button type="submit" disabled={password.length < 6 || acting !== null}>{acting ? <LoaderCircle className="animate-spin" /> : <KeyRound />}Salvar nova senha</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={dialog?.kind === "delete"} onOpenChange={(open) => { if (!open) setDialog(null) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Excluir conta</DialogTitle><DialogDescription>A conta de {dialog?.user.email} é excluída e a pessoa não consegue mais entrar. Isso não pode ser desfeito. Para confirmar, digite o e-mail da conta.</DialogDescription></DialogHeader>
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (dialog) void manage(dialog.user, "delete") }}>
+          <Input value={confirmEmail} onChange={(event) => setConfirmEmail(event.target.value)} placeholder={dialog?.user.email} aria-label="E-mail da conta" autoComplete="off" />
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setDialog(null)}>Cancelar</Button><Button type="submit" variant="destructive" disabled={confirmEmail.trim().toLowerCase() !== dialog?.user.email.toLowerCase() || acting !== null}>{acting ? <LoaderCircle className="animate-spin" /> : <Trash2 />}Excluir conta</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </div>
 }
 

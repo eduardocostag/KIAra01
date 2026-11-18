@@ -26,6 +26,7 @@ import "@/components/fx/effects.css"
 import "../(app)/app/reference-surfaces.css"
 import "../(app)/app/orbit-dashboard.css"
 import { FxPreview } from "./fx-preview"
+import { AdminConsole } from "@/components/app-shell/admin-console"
 
 const previewApprovals: ActionRequest[] = [
   { id: "a1", kind: "whatsapp", title: "Enviar WhatsApp: (51) 99999-0000", payload: { to: "(51) 99999-0000", text: "Olá, Dra. Ana! Vi que a Clínica Sorriso tem ótimas avaliações no Google. Posso mostrar como um site pode trazer ainda mais pacientes?", entrada: "" }, status: "pending", note: null, version: 1, flow_name: "Boas-vindas no WhatsApp", created_at: "2026-11-13T12:10:00Z", decided_at: null },
@@ -39,6 +40,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const { workspace, view } = await searchParams
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace isAdmin />
+  if (workspace === "admin") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-7xl"><AdminConsole initialSnapshot={{ generatedAt: new Date().toISOString(), services: [], auditEvents: [], notices: [], users: [
+    { id: "11111111-1111-4111-8111-111111111111", email: "eduardocgonsalves@hotmail.com", name: "Eduardo", provider: "E-mail e senha", createdAt: "2026-09-01T10:00:00Z", lastSignInAt: "2026-11-17T20:00:00Z", isAdmin: true, blocked: false },
+    { id: "22222222-2222-4222-8222-222222222222", email: "kiara01@kiara.local", name: "Kiara01", provider: "E-mail e senha", createdAt: "2026-11-17T21:00:00Z", lastSignInAt: null, isAdmin: false, blocked: false },
+    { id: "33333333-3333-4333-8333-333333333333", email: "cliente@empresa.com", name: "Ana Julia", provider: "Google", createdAt: "2026-10-02T10:00:00Z", lastSignInAt: "2026-11-10T09:00:00Z", isAdmin: false, blocked: true },
+  ] }} /></div></AppShell>
   if (workspace === "leads") return <AppShell previewModule="/app/leads"><LeadsDashboard pipeline={{ entries: previewEntries, available: true }} /></AppShell>
   if (workspace === "lead") return <AppShell previewModule="/app/leads"><LeadDetail entry={previewEntries[0]} /></AppShell>
   if (workspace === "pipeline") return <AppShell previewModule="/app/leads"><div className="space-y-4"><InboxHub entries={previewEntries} prospectError="" initialView="contacts" initialContactId="" /></div></AppShell>

@@ -6,6 +6,8 @@ export type AdminUser = {
   createdAt: string
   lastSignInAt: string | null
   isAdmin: boolean
+  /** Access blocked by an administrator (Supabase ban). */
+  blocked: boolean
 }
 
 export type AdminService = {

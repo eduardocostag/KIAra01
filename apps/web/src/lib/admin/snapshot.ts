@@ -53,6 +53,7 @@ async function loadUsers(notices: string[]): Promise<AdminUser[]> {
         createdAt: user.created_at,
         lastSignInAt: user.last_sign_in_at ?? null,
         isAdmin: isSystemAdminEmail(user.email),
+        blocked: Boolean(user.banned_until && new Date(user.banned_until).getTime() > Date.now()),
       }
     })
   } catch (error) {

@@ -36,6 +36,7 @@ from .whatsapp_server import WhatsAppServerService, create_whatsapp_server_route
 from .whatsapp_cloud import WhatsAppCloudService, create_whatsapp_cloud_router
 from .sdr import SdrService, create_sdr_router
 from .db_admin import create_db_admin_router
+from .admin_users import create_admin_users_router
 from .chatwoot import create_chatwoot_router
 from .competition import create_competition_router
 from .competition_store import CompetitionRepository
@@ -440,6 +441,7 @@ def create_app(
                                        patterns=learning_service.chat_block if learning_service else None))
     app.include_router(create_server_gateway_router())
     app.include_router(create_db_admin_router(PostgresRepository(config.database_url) if config.database_url else None))
+    app.include_router(create_admin_users_router(growth_db))
     app.include_router(create_whatsapp_server_router(WhatsAppServerService(PostgresRepository(config.database_url) if config.database_url else None)))
     app.include_router(create_whatsapp_cloud_router(WhatsAppCloudService(
         IntegrationRepository(PostgresRepository(config.database_url), config.integration_encryption_key)
