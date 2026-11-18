@@ -414,6 +414,24 @@ async def _default_streamer(base: str, key: str, model: str, conversation: list[
             yield str(content)
 
 
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+DEFAULT_GROQ_VOICE_MODEL = "llama-3.3-70b-versatile"
+
+
+def _voice_direct() -> tuple[str, str, str] | None:
+    """(base, key, model) of a model the API calls directly for voice, skipping the Debian gateway (~1.5 s faster).
+    GROQ_API_KEY alone uses Groq (free plan, does not train on the data); KIARA_VOICE_DIRECT_BASE_URL /
+    _API_KEY / _MODEL choose any OpenAI-compatible provider. When it fails, the usual voice chain answers."""
+    key = os.getenv("KIARA_VOICE_DIRECT_API_KEY", "").strip() or os.getenv("GROQ_API_KEY", "").strip()
+    if not key:
+        return None
+    base = os.getenv("KIARA_VOICE_DIRECT_BASE_URL", "").strip().rstrip("/") or GROQ_BASE_URL
+    model = os.getenv("KIARA_VOICE_DIRECT_MODEL", "").strip() or DEFAULT_GROQ_VOICE_MODEL
+    if not base.startswith("https://"):
+        return None
+    return base, key, model
+
+
 class NoProviderError(RuntimeError):
     pass
 
@@ -432,7 +450,11 @@ async def stream_conversation(conversation: list[dict], *, streamer=None, max_to
     deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if fast else CHAT_DEADLINE_SECONDS)
     if fast:
         max_tokens = min(max_tokens, 600)
-    for candidate in _candidates(base, model, fast):
+    routes = [(base, key, candidate) for candidate in _candidates(base, model, fast)]
+    direct = _voice_direct() if fast else None
+    if direct:
+        routes.insert(0, direct)
+    for base, key, candidate in routes:
         remaining = deadline - time.monotonic()
         if remaining < 2:
             break
