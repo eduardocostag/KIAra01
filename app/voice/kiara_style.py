@@ -28,10 +28,10 @@ PRONUNCIATION = {
 # loanwords (leads, WhatsApp, online, feedback, app, site, dashboard, startup, design) already sound right and a
 # respelling made them worse. Case-insensitive.
 LOANWORDS = {
-    "follow-ups": "fólou âpis",
-    "follow-up": "fólou âpi",
-    "follow up": "fólou âpi",
-    "followup": "fólou âpi",
+    "follow-ups": "fólou ápis",
+    "follow-up": "fólou ápi",
+    "follow up": "fólou ápi",
+    "followup": "fólou ápi",
     "stories": "stóris",
     "story": "stóri",
     "reels": "vídeos curtos",
@@ -70,7 +70,7 @@ def speakable_symbols(text: str) -> str:
 
 
 def spoken(text: str, extra: dict[str, str] | None = None) -> str:
-    """Rewrite what the voice mispronounces (e.g. CRM -> "cê érre ême", follow-up -> "fólou âpi", 14h30)."""
+    """Rewrite what the voice mispronounces (e.g. CRM -> "cê érre ême", follow-up -> "fólou ápi", 14h30)."""
     text = speakable_symbols(text)
     for word, sound in LOANWORDS.items():
         text = re.sub(_BOUND.format(re.escape(word)), sound, text, flags=re.IGNORECASE)

@@ -3,7 +3,7 @@ from app.voice.kiara_style import spoken
 
 
 def test_loanwords_that_failed_the_listening_test_are_respelled_in_any_case():
-    assert spoken("Faça um Follow-up e poste nos Stories e Reels.") == "Faça um fólou âpi e poste nos stóris e vídeos curtos."
+    assert spoken("Faça um Follow-up e poste nos Stories e Reels.") == "Faça um fólou ápi e poste nos stóris e vídeos curtos."
     assert spoken("Tive um insight.") == "Tive um ínsaiti."
 
 
