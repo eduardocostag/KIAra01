@@ -40,3 +40,31 @@ def test_voice_direct_model_goes_first_and_falls_back(monkeypatch):
     calls.clear()
     asyncio.run(chat.stream_conversation([{"role": "user", "content": "oi"}], streamer=streamer, fast=False).__anext__())
     assert all(base != chat.GROQ_BASE_URL for base, _, _ in calls)       # only voice uses the direct model
+
+
+def test_direct_gemini_voice_turns_reasoning_off_and_falls_back_when_refused(monkeypatch):
+    import asyncio
+    import httpx
+    from kiara_api import chat
+    monkeypatch.setattr(chat, "_reasoning_choice", {})
+    sent = []
+
+    async def fake(base, key, model, conversation, max_tokens, timeout, extra=None):
+        sent.append(extra)
+        if extra and extra["reasoning_effort"] == "none":  # this model refuses "none" but accepts "minimal"
+            raise httpx.HTTPStatusError("bad", request=httpx.Request("POST", base), response=httpx.Response(400))
+        yield "Oi!"
+
+    monkeypatch.setattr(chat, "_default_streamer", fake)
+    base = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+    async def run():
+        return [piece async for piece in chat._direct_streamer(base, "k", "gemini-x", [], 100, 10)]
+
+    assert asyncio.run(run()) == ["Oi!"]
+    assert sent == [{"reasoning_effort": "none"}, {"reasoning_effort": "minimal"}]
+    sent.clear()
+    assert asyncio.run(run()) == ["Oi!"] and sent == [{"reasoning_effort": "minimal"}]   # remembered
+    sent.clear()
+    asyncio.run(chat._direct_streamer("https://api.groq.com/openai/v1", "k", "llama", [], 100, 10).__anext__())
+    assert sent == [None]                                                                  # other providers: as before

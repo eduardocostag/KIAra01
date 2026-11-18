@@ -23,3 +23,13 @@ test("splits replies so speech starts after a short first sentence", () => {
   assert.equal(chunks.join(" "), "Oi! Tudo ótimo por aqui. Para encher a agenda, ative pacientes antigos pelo WhatsApp. Também vale anunciar no Instagram. Quer ver como?")
   assert.deepEqual(speechChunks("sem pontuação final"), ["sem pontuação final"])
 })
+
+test("a long first sentence is split at its first pause so the first audio is short", () => {
+  const long = "Lead frio é quem ainda não conhece sua empresa, enquanto o lead quente já conversou com você e está perto de decidir. Quer exemplos?"
+  const chunks = speechChunks(long)
+  assert.equal(chunks[0], "Lead frio é quem ainda não conhece sua empresa,")
+  assert.ok(chunks[1].startsWith("enquanto o lead quente"))
+  assert.equal(chunks.join(" ").replace(/\s+/g, " "), long)
+  // Short first sentences stay whole.
+  assert.equal(speechChunks("Claro, posso ajudar. Vamos lá?")[0], "Claro, posso ajudar.")
+})

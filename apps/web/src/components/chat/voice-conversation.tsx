@@ -402,6 +402,15 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
         // Up to the last finished sentence, once there is enough to say.
         const last = [...rest.matchAll(/[.!?…]+["')\]]*\s/g)].at(-1)
         if (last?.index !== undefined && last.index + last[0].length >= 12) cut = last.index + last[0].length
+        // Her first words: start at the first pause (a comma after a few words) instead of waiting for the whole
+        // sentence, so the first audio is short and fast to prepare (~0.6 s instead of 2-3 s for a long sentence).
+        if (!cut && fed === 0) {
+          const pause = /[,;:—–]\s/g
+          let match: RegExpExecArray | null
+          while ((match = pause.exec(rest))) {
+            if (match.index >= 18 && match.index <= 120) { cut = match.index + match[0].length; break }
+          }
+        }
       }
       if (cut <= 0) return
       speaker.say(rest.slice(0, cut))

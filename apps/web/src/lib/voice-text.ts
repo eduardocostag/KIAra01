@@ -26,5 +26,17 @@ export function speechChunks(text: string): string[] {
     if (last !== undefined && (last.length < 12 || (chunks.length > 1 && last.length + sentence.length < 220))) chunks[chunks.length - 1] = `${last} ${sentence}`
     else chunks.push(sentence)
   }
+  // A long first sentence is split at its first pause: the first audio is prepared (and heard) sooner.
+  const first = chunks[0]
+  if (first && first.length > 90) {
+    const pause = /[,;:—–]\s/g
+    let match: RegExpExecArray | null
+    while ((match = pause.exec(first))) {
+      if (match.index >= 18 && match.index <= 90) {
+        chunks.splice(0, 1, first.slice(0, match.index + 1).trim(), first.slice(match.index + match[0].length).trim())
+        break
+      }
+    }
+  }
   return chunks.length ? chunks : [text]
 }

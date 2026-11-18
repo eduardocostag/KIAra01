@@ -76,7 +76,8 @@ VOICE_STYLE = (
     "Responda como uma pessoa inteligente numa ligação: frases completas e bem construídas, em texto corrido, "
     "sem listas, títulos, emojis, markdown, links ou símbolos. Seja breve: normalmente 1 a 3 frases curtas "
     "(até umas 40 palavras), e a primeira frase já responde o principal, porque ela começa a ser falada antes "
-    "do resto. Só se a pessoa pedir detalhes, explique mais, sem enrolar. "
+    "do resto. Comece com uma frase bem curta, de até 8 palavras (ela vira a primeira fala), e só depois continue. "
+    "Só se a pessoa pedir detalhes, explique mais, sem enrolar. "
     "A transcrição da fala pode ter erros: entenda a intenção pelo contexto da conversa. "
     "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar. "
     "Fale como uma brasileira fala: português do Brasil com acentuação correta, preferindo a palavra em português "
@@ -408,9 +409,9 @@ async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> Asyn
 
 
 async def _default_streamer(base: str, key: str, model: str, conversation: list[dict], max_tokens: int,
-                            timeout: float) -> AsyncIterator[str]:
+                            timeout: float, extra: dict | None = None) -> AsyncIterator[str]:
     """Token deltas from an OpenAI-compatible endpoint (server-sent events), over a kept-alive connection."""
-    payload = {"model": model, "messages": conversation, "stream": True, "max_tokens": max_tokens}
+    payload = {"model": model, "messages": conversation, "stream": True, "max_tokens": max_tokens, **(extra or {})}
     async for event in _sse_events(f"{base}/chat/completions", payload, key, timeout):
         choices = event.get("choices") or []
         delta = choices[0].get("delta") if choices and isinstance(choices[0], dict) else None
@@ -437,6 +438,36 @@ def _voice_direct() -> tuple[str, str, str] | None:
     return base, key, model
 
 
+# Gemini "thinks" silently before answering unless told not to: measured 2026-11-18 in production, half the voice
+# turns waited 5-6 s for the first word. Voice answers are short, so the direct voice model answers without it.
+# The first effort Google accepts is remembered; if it refuses all of them, the request goes as before.
+_REASONING_EFFORTS = ("none", "minimal")
+_reasoning_choice: dict[str, int] = {}
+
+
+async def _direct_streamer(base: str, key: str, model: str, conversation: list[dict], max_tokens: int,
+                           timeout: float) -> AsyncIterator[str]:
+    """The direct voice model, with its reasoning step switched off where the provider supports it."""
+    import httpx
+
+    efforts = _REASONING_EFFORTS if "generativelanguage.googleapis.com" in base else ()
+    index = _reasoning_choice.get(model, 0)
+    while True:
+        extra = {"reasoning_effort": efforts[index]} if index < len(efforts) else None
+        produced = False
+        try:
+            async for piece in _default_streamer(base, key, model, conversation, max_tokens, timeout, extra):
+                produced = True
+                yield piece
+            _reasoning_choice[model] = index
+            return
+        except httpx.HTTPStatusError as exc:
+            if produced or extra is None or exc.response.status_code != 400:
+                raise
+            index += 1  # this effort is not accepted by the model: try the next one (or none at all)
+            _reasoning_choice[model] = index
+
+
 class NoProviderError(RuntimeError):
     pass
 
@@ -455,11 +486,11 @@ async def stream_conversation(conversation: list[dict], *, streamer=None, max_to
     deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if fast else CHAT_DEADLINE_SECONDS)
     if fast:
         max_tokens = min(max_tokens, 600)
-    routes = [(base, key, candidate) for candidate in _candidates(base, model, fast)]
+    routes = [(base, key, candidate, stream) for candidate in _candidates(base, model, fast)]
     direct = _voice_direct() if fast else None
     if direct:
-        routes.insert(0, direct)
-    for base, key, candidate in routes:
+        routes.insert(0, (*direct, streamer or _direct_streamer))
+    for base, key, candidate, stream in routes:
         remaining = deadline - time.monotonic()
         if remaining < 2:
             break
