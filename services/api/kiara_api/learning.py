@@ -22,6 +22,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import time
 import re
 import unicodedata
 from collections import defaultdict
@@ -44,6 +45,7 @@ GUIDES_DIR = "Ensinar a Kiara"
 MAX_GUIDES = 150
 GUIDE_CHARS = 3000          # per note, after cleaning
 GUIDES_TOTAL = 12000        # all notes together in one chat prompt
+CHAT_CACHE_SECONDS = 300    # patterns + guides kept in memory for the chat
 SKILLS_PER_CHAT = 4         # skill notes (subfolders) chosen by relevance to the conversation
 _STOPWORDS = frozenset("""para como mais porque quando onde qual quais sobre esta este isso essa esse estou voce voces
 pode posso fazer tenho temos minha meu meus minhas seus suas uma umas uns dos das nos nas com sem que kiara favor
@@ -270,6 +272,7 @@ def vault_notes(patterns: list[dict[str, Any]], workspaces: int, now: datetime |
 class LearningService:
     def __init__(self, postgres: PostgresRepository | None) -> None:
         self.postgres = postgres
+        self._cache: tuple[float, list[dict[str, Any]], list[dict[str, Any]]] | None = None
 
     async def touch(self, organization_id: str) -> None:
         """Puts the workspace in the learning registry (called when it searches for leads)."""
@@ -346,13 +349,18 @@ class LearningService:
         return {"received": len(files), "saved": len(items)}
 
     async def chat_block(self, query: str = "") -> str:
-        """General patterns plus the team's guidance (skills chosen by the conversation), for every workspace's chat."""
-        block = prompt_block(await self.patterns())
-        try:
-            block += guides_block(await self.guides(), query)
-        except Exception:  # noqa: BLE001 - patterns still reach the chat if the guides table is missing
-            pass
-        return block
+        """General patterns plus the team's guidance (skills chosen by the conversation), for every workspace's chat.
+        Both change a few times a day, so they are kept for CHAT_CACHE_SECONDS instead of read on every message."""
+        now = time.monotonic()
+        if self._cache is None or now - self._cache[0] > CHAT_CACHE_SECONDS:
+            patterns = await self.patterns()
+            try:
+                guides = await self.guides()
+            except Exception:  # noqa: BLE001 - patterns still reach the chat if the guides table is missing
+                guides = []
+            self._cache = (now, patterns, guides)
+        _, patterns, guides = self._cache
+        return prompt_block(patterns) + guides_block(guides, query)
 
     async def vault(self) -> dict[str, Any]:
         patterns = await self.patterns()

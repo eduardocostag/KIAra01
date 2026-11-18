@@ -73,8 +73,9 @@ def site_context() -> str:
 VOICE_STYLE = (
     "Modo conversa por voz: o usuário falou com você pelo microfone e sua resposta será lida em voz alta. "
     "Responda como uma pessoa inteligente numa ligação: frases completas e bem construídas, em texto corrido, "
-    "sem listas, títulos, emojis, markdown, links ou símbolos. Normalmente use de 2 a 5 frases; "
-    "se o assunto pedir mais profundidade, explique melhor, mas sem enrolar. "
+    "sem listas, títulos, emojis, markdown, links ou símbolos. Seja breve: normalmente 1 a 3 frases curtas "
+    "(até umas 40 palavras), e a primeira frase já responde o principal, porque ela começa a ser falada antes "
+    "do resto. Só se a pessoa pedir detalhes, explique mais, sem enrolar. "
     "A transcrição da fala pode ter erros: entenda a intenção pelo contexto da conversa. "
     "Termine sempre a última frase e, quando ajudar, faça uma pergunta curta para continuar."
 )
@@ -352,8 +353,10 @@ class NoProviderError(RuntimeError):
     pass
 
 
-async def stream_conversation(conversation: list[dict], *, streamer=None, max_tokens: int = 4096) -> AsyncIterator[tuple[str, str]]:
-    """("model", name), ("delta", text) and ("reset", "") events through the same model chain as the chat.
+async def stream_conversation(conversation: list[dict], *, streamer=None, max_tokens: int = 4096,
+                              fast: bool = False) -> AsyncIterator[tuple[str, str]]:
+    """("model", name), ("delta", text) and ("reset", "") events through the same model chain as the chat
+    (`fast`: the voice chain, short answers, so Kiara starts speaking about a second after the question).
 
     A provider that fails before its first token is skipped silently; one that fails mid-answer emits "reset"
     so the screen clears its partial text before the next provider answers."""
@@ -361,12 +364,14 @@ async def stream_conversation(conversation: list[dict], *, streamer=None, max_to
     if not base:
         raise NoProviderError("chat_not_configured")
     stream = streamer or _default_streamer
-    deadline = time.monotonic() + CHAT_DEADLINE_SECONDS
-    for candidate in _candidates(base, model, False):
+    deadline = time.monotonic() + (VOICE_DEADLINE_SECONDS if fast else CHAT_DEADLINE_SECONDS)
+    if fast:
+        max_tokens = min(max_tokens, 600)
+    for candidate in _candidates(base, model, fast):
         remaining = deadline - time.monotonic()
         if remaining < 2:
             break
-        budget = min(remaining, 90)
+        budget = min(remaining, 12 if fast else 90)
         produced = False
         iterator = stream(base, key, candidate, conversation, max_tokens, budget).__aiter__()
         try:
@@ -424,24 +429,24 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
             await usage.consume(context, metric)
 
     async def business(context: RequestContext, query: str = "") -> str:
-        block = ""
-        if knowledge is not None:
-            try:
-                from .knowledge import prompt_block
-                block = prompt_block(await knowledge(context.organization_id, 8000))
-            except Exception:  # noqa: BLE001 - the chat never fails because of the knowledge base
-                block = ""
-        if memory is not None:
-            try:
-                block += kiara_memory.MEMORY_STYLE + kiara_memory.prompt_block(await memory.facts(context.organization_id))
-            except Exception:  # noqa: BLE001 - nor because of the memory
-                pass
-        if patterns is not None:
-            try:
-                block += await patterns(query)
-            except Exception:  # noqa: BLE001 - nor because of the general patterns
-                pass
-        return block
+        """Knowledge, memory and general patterns, read at the same time (each is its own database round trip)."""
+        async def knowledge_part() -> str:
+            if knowledge is None:
+                return ""
+            from .knowledge import prompt_block
+            return prompt_block(await knowledge(context.organization_id, 8000))
+
+        async def memory_part() -> str:
+            if memory is None:
+                return ""
+            return kiara_memory.MEMORY_STYLE + kiara_memory.prompt_block(await memory.facts(context.organization_id))
+
+        async def patterns_part() -> str:
+            return await patterns(query) if patterns is not None else ""
+
+        parts = await asyncio.gather(knowledge_part(), memory_part(), patterns_part(), return_exceptions=True)
+        # The chat never fails because of the knowledge base, the memory or the general patterns.
+        return "".join(part for part in parts if isinstance(part, str))
 
     async def learn(text: str, context: RequestContext) -> str:
         """Store the [[LEMBRAR]] facts, apply [[ESQUECER]] and return the answer without the markers."""
@@ -628,7 +633,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 current, model, sources = conversation, "", []
                 for attempt in (1, 2):
                     text, shown = "", ""
-                    async for kind, value in stream_conversation(current, streamer=streamer):
+                    async for kind, value in stream_conversation(current, streamer=streamer, fast=body.voice):
                         if kind == "model":
                             model = value
                         elif kind == "reset":

@@ -37,9 +37,66 @@ const phaseLabels: Record<VoicePhase, string> = {
   idle: "Microfone pausado", listening: "Ouvindo…", thinking: "Pensando…", speaking: "Falando…", error: "Algo deu errado",
 }
 
+const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+// One audio context and two players for the whole page: phones only let sound start from a tap, so they are
+// unlocked in the tap that opens voice mode (primeVoiceAudio). The routed player feeds the orb with the real
+// voice level but only plays while the context runs; the plain one always goes straight to the speakers.
+let sharedContext: AudioContext | null = null
+let routedAudio: HTMLAudioElement | null = null
+let plainAudio: HTMLAudioElement | null = null
+let outputAnalyser: AnalyserNode | null = null
+
+function makeAudio() {
+  const audio = new Audio()
+  audio.preload = "auto"
+  audio.setAttribute("playsinline", "")
+  return audio
+}
+
+function sharedAudioContext(): AudioContext | null {
+  try { return sharedContext ??= new AudioContext() } catch { return null }
+}
+
+/** Call inside the tap that opens voice mode (and on every orb tap): unlocks the players and the browser voice. */
+export function primeVoiceAudio() {
+  const context = sharedAudioContext()
+  void context?.resume().catch(() => {})
+  plainAudio ??= makeAudio()
+  if (context && !routedAudio) {
+    try {
+      const audio = makeAudio()
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 1024
+      context.createMediaElementSource(audio).connect(analyser)
+      analyser.connect(context.destination)
+      routedAudio = audio
+      outputAnalyser = analyser
+    } catch { /* The plain player is enough. */ }
+  }
+  for (const audio of [plainAudio, routedAudio]) {
+    if (!audio || !audio.paused) continue
+    audio.src = SILENT_WAV
+    void audio.play().catch(() => {})
+  }
+  try {
+    if ("speechSynthesis" in window && !window.speechSynthesis.speaking) {
+      const warm = new SpeechSynthesisUtterance(" ")
+      warm.volume = 0
+      window.speechSynthesis.speak(warm)
+    }
+  } catch { /* No browser voice. */ }
+}
+
+/** The routed player only while the context runs (a suspended context would play it silently). */
+function voiceAudio(context: AudioContext | null): HTMLAudioElement {
+  if (context?.state === "running" && routedAudio) return routedAudio
+  return plainAudio ??= makeAudio()
+}
+
 export type VoiceBackends = {
-  /** Sends the user's words to the chat and resolves with Kiara's reply. */
-  ask: (text: string) => Promise<string>
+  /** Sends the user's words to the chat and resolves with Kiara's reply; `onText` receives the reply while it is
+   *  written, so Kiara starts speaking the first sentence before the rest arrives. */
+  ask: (text: string, onText?: (soFar: string) => void) => Promise<string>
   /** Neural voice from the connected service, when available. */
   synthesize?: (text: string) => Promise<Blob>
   /** Server transcription, used when the browser cannot recognize speech. */
@@ -56,11 +113,11 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
   const backendsRef = useRef(backends)
   const audioContextRef = useRef<AudioContext | null>(null)
   const micAnalyserRef = useRef<AnalyserNode | null>(null)
-  const outAnalyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const recognitionRef = useRef<Recognition | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const turnRef = useRef(0)
   const syntheticRef = useRef(0)
   const stopSpeakingRef = useRef<(() => void) | null>(null)
   useEffect(() => { backendsRef.current = backends }, [backends])
@@ -83,7 +140,11 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       const current = phaseRef.current
       let level = 0
       if (current === "listening") level = micAnalyserRef.current ? rms(micAnalyserRef.current) : 0.08 + Math.sin(time / 450) * 0.05
-      else if (current === "speaking") level = outAnalyserRef.current && audioRef.current && !audioRef.current.paused ? rms(outAnalyserRef.current) : (syntheticRef.current = syntheticRef.current * 0.9)
+      else if (current === "speaking") {
+        if (outputAnalyser && routedAudio && !routedAudio.paused) level = rms(outputAnalyser)
+        else if (plainAudio && !plainAudio.paused) level = 0.22 + Math.sin(time / 110) * 0.12
+        else level = (syntheticRef.current = syntheticRef.current * 0.9)
+      }
       else if (current === "thinking") level = 0.12 + Math.sin(time / 300) * 0.06
       orbRef.current?.style.setProperty("--level", level.toFixed(3))
       frame = requestAnimationFrame(tick)
@@ -97,12 +158,17 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
         if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return }
         micStreamRef.current = stream
-        const context = new AudioContext()
+        const context = sharedAudioContext()
         audioContextRef.current = context
-        const analyser = context.createAnalyser()
-        analyser.fftSize = 1024
-        context.createMediaStreamSource(stream).connect(analyser)
-        micAnalyserRef.current = analyser
+        if (context) {
+          void context.resume().catch(() => {})
+          const analyser = context.createAnalyser()
+          analyser.fftSize = 1024
+          const source = context.createMediaStreamSource(stream)
+          source.connect(analyser)
+          micSourceRef.current = source
+          micAnalyserRef.current = analyser
+        }
         listen()
       } catch {
         if (cancelled) return
@@ -121,7 +187,8 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       if (recorderRef.current?.state === "recording") recorderRef.current.stop()
       stopSpeakingRef.current?.()
       micStreamRef.current?.getTracks().forEach((track) => track.stop())
-      void audioContextRef.current?.close()
+      // The shared audio context stays open for the next conversation (it was unlocked by a tap).
+      micSourceRef.current?.disconnect()
     }
     // The conversation loop is wired once for the lifetime of the overlay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,9 +226,9 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
       }
       finalText = finals
       interimText = interim
-      // The turn ends after ~1.5 s without new words.
+      // The turn ends after ~1 s without new words.
       clearTimeout(silence)
-      silence = setTimeout(() => recognition.stop(), 1500)
+      silence = setTimeout(() => recognition.stop(), 1000)
     }
     let useRecorder = false
     recognition.onerror = (event) => {
@@ -226,71 +293,82 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
     watch()
   }
 
+  /** Kiara's reply is spoken sentence by sentence while it is still being written. */
   async function respond(text: string) {
     go("thinking")
+    const turn = ++turnRef.current
+    const speaker = createSpeaker(turn)
+    let fed = 0
+    const feed = (soFar: string, final = false) => {
+      const rest = soFar.slice(fed)
+      let cut = final ? rest.length : 0
+      if (!final) {
+        // Up to the last finished sentence, once there is enough to say.
+        const last = [...rest.matchAll(/[.!?…]+["')\]]*\s/g)].at(-1)
+        if (last?.index !== undefined && last.index + last[0].length >= 12) cut = last.index + last[0].length
+      }
+      if (cut <= 0) return
+      speaker.say(rest.slice(0, cut))
+      fed += cut
+    }
     try {
-      const answer = await backendsRef.current.ask(text)
-      if (!activeRef.current) return
-      await speak(answer)
-      if (activeRef.current && phaseRef.current === "speaking") listen()
+      let streamed = ""
+      const answer = await backendsRef.current.ask(text, (soFar) => { streamed = soFar; if (turnRef.current === turn) feed(soFar) })
+      if (!activeRef.current || turnRef.current !== turn) return
+      // What was not spoken yet; nothing more when the final text no longer matches what was already said.
+      if (!streamed || answer.startsWith(streamed.slice(0, fed))) feed(answer, true)
+      await speaker.done()
+      if (activeRef.current && turnRef.current === turn && (phaseRef.current === "speaking" || phaseRef.current === "thinking")) listen()
     } catch (reason) {
-      if (activeRef.current) fail(reason instanceof Error ? reason.message : "A Kiara não conseguiu responder.")
+      if (activeRef.current && turnRef.current === turn) fail(reason instanceof Error ? reason.message : "A Kiara não conseguiu responder.")
     }
   }
 
-  async function speak(text: string) {
-    go("speaking")
-    const spoken = speakable(text)
-    const synthesize = backendsRef.current.synthesize
-    if (synthesize) {
-      // Sentence by sentence: Kiara starts talking after the first one is ready while the next is prepared.
-      const parts = speechChunks(spoken)
-      let index = 0
-      try {
-        let next = synthesize(parts[0])
-        for (; index < parts.length; index += 1) {
-          const blob = await next
-          if (index + 1 < parts.length) next = synthesize(parts[index + 1])
-          if (!activeRef.current || phaseRef.current !== "speaking") return
-          await playAudio(blob)
-        }
-        return
-      } catch {
-        // Fall back to the browser voice for whatever was not spoken yet.
-        if (!activeRef.current || phaseRef.current !== "speaking") return
-        await speakWithBrowser(parts.slice(index).join(" "))
-        return
-      }
+  /** Each sentence's audio is prepared as soon as it arrives; playback keeps the order. */
+  function createSpeaker(turn: number) {
+    let chain = Promise.resolve()
+    const current = () => activeRef.current && turnRef.current === turn
+    return {
+      say(raw: string) {
+        const spoken = speakable(raw)
+        if (!spoken) return
+        const synthesize = backendsRef.current.synthesize
+        const pieces = speechChunks(spoken).map((part) => ({ part, audio: synthesize ? synthesize(part).catch(() => null) : Promise.resolve(null) }))
+        chain = chain.then(async () => {
+          for (const { part, audio } of pieces) {
+            if (!current()) return
+            if (phaseRef.current === "thinking") go("speaking")
+            if (phaseRef.current !== "speaking") return
+            const blob = await audio
+            if (!current() || phaseRef.current !== "speaking") return
+            if (blob && await playAudio(blob)) continue
+            // No neural voice, or the browser refused to play it: the browser voice says this part.
+            await speakWithBrowser(part)
+          }
+        })
+      },
+      done: () => chain,
     }
-    await speakWithBrowser(spoken)
   }
 
-  function playAudio(blob: Blob) {
-    return new Promise<void>((resolve) => {
-      const context = audioContextRef.current
-      let audio = audioRef.current
-      if (!audio) {
-        audio = new Audio()
-        audioRef.current = audio
-        if (context) {
-          // Route the voice through an analyser so the orb follows the real output level.
-          const analyser = context.createAnalyser()
-          analyser.fftSize = 1024
-          const source = context.createMediaElementSource(audio)
-          source.connect(analyser)
-          analyser.connect(context.destination)
-          outAnalyserRef.current = analyser
-        }
-      }
-      const url = URL.createObjectURL(blob)
-      const finish = () => { URL.revokeObjectURL(url); stopSpeakingRef.current = null; resolve() }
-      audio.onended = finish
-      audio.onerror = finish
-      stopSpeakingRef.current = () => { audio!.pause(); finish() }
-      audio.src = url
-      void context?.resume()
-      audio.play().catch(finish)
-    })
+  /** Plays one prepared sentence; false when the browser refused to play it. */
+  async function playAudio(blob: Blob): Promise<boolean> {
+    const context = audioContextRef.current ?? sharedContext
+    if (context && context.state !== "running") await context.resume().catch(() => {})
+    const audio = voiceAudio(context)
+    const url = URL.createObjectURL(blob)
+    try {
+      return await new Promise<boolean>((resolve) => {
+        const finish = (played: boolean) => { stopSpeakingRef.current = null; resolve(played) }
+        audio.onended = () => finish(true)
+        audio.onerror = () => finish(false)
+        stopSpeakingRef.current = () => { audio.pause(); finish(true) }
+        audio.src = url
+        audio.play().catch(() => finish(false))
+      })
+    } finally {
+      URL.revokeObjectURL(url)
+    }
   }
 
   /** Sentence by sentence: Chrome silently cuts long utterances, which left Kiara's sentences unfinished. */
@@ -321,7 +399,14 @@ export function VoiceConversation({ backends, onClose }: { backends: VoiceBacken
 
   /** Tapping the orb interrupts Kiara and gives the turn back to the user, or pauses/resumes listening. */
   function pressOrb() {
-    if (phaseRef.current === "speaking") { stopSpeakingRef.current?.(); listen(); return }
+    primeVoiceAudio()
+    if (phaseRef.current === "speaking") {
+      turnRef.current += 1
+      stopSpeakingRef.current?.()
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
+      listen()
+      return
+    }
     if (phaseRef.current === "listening") { pause(); return }
     if (phaseRef.current === "idle" || phaseRef.current === "error") listen()
   }

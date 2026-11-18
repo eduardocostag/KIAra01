@@ -6,12 +6,12 @@ import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { blobBase64, CHAT_ATTACHMENT_ACCEPT, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, prepareAttachment, streamChat, StreamUnavailableError, validateChatAudio, type ChatAction, type ChatArtifact, type ChatAttachment, type ChatImage, type ChatSource, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
+import { blobBase64, CHAT_ATTACHMENT_ACCEPT, chatRequest, fetchVideo, imageThumbnail, isolatedHtml, parseChatReply, parseChatStatus, parseVideoJob, prepareAttachment, streamChat, StreamUnavailableError, validateChatAudio, type ChatAction, type ChatArtifact, type ChatReply, type ChatAttachment, type ChatImage, type ChatSource, type ChatVideoJob, type ChatMessage, type ChatMode, type ChatPlan, type ChatStatus, type ChatTransport } from "@/lib/chat-client"
 import { downloadWord, looksUnfinished, printAnswer, whatsappText } from "@/lib/chat-export"
 import { parseBlocks, plainText, type Inline } from "@/lib/chat-markdown"
 import { cn } from "@/lib/utils"
 import { pollVideoJob } from "@/lib/video-polling"
-import { femininePortugueseVoice, VoiceConversation, type VoiceBackends } from "./voice-conversation"
+import { femininePortugueseVoice, primeVoiceAudio, VoiceConversation, type VoiceBackends } from "./voice-conversation"
 
 function InlineText({ parts }: { parts: Inline[] }) {
   return <>{parts.map((part, index) => part.href
@@ -632,7 +632,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
   }
 
   /** One spoken turn: same conversation history as the written chat. */
-  async function askByVoice(content: string): Promise<string> {
+  async function askByVoice(content: string, onText?: (soFar: string) => void): Promise<string> {
     const conversationId = activeIdRef.current || crypto.randomUUID()
     const previous = conversationsRef.current.find((item) => item.id === conversationId)?.messages ?? []
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", content }
@@ -640,8 +640,22 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
     setActiveId(conversationId)
     appendMessage(conversationId, userMessage, content.replace(/\s+/g, " ").slice(0, 60))
     // Voice turns ask for a short spoken answer from a fast model (the local bridge ignores the flag).
-    const reply = parseChatReply(await chatRequest(transport, "chat", { messages: boundedHistory([...previous, userMessage]), ...(transport === "cloud" ? { voice: true } : {}) }))
-    appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text })
+    const history = boundedHistory([...previous, userMessage])
+    let reply: ChatReply | null = null
+    if (transport === "cloud") {
+      // Streamed: the voice starts with the first sentence instead of waiting for the whole answer.
+      let shown = ""
+      try {
+        reply = await streamChat({ messages: history, voice: true }, (event) => {
+          if (event.type === "delta") { shown += event.text; onText?.(shown) }
+          else if (event.type === "reset") shown = ""
+        })
+      } catch (reason) {
+        if (!(reason instanceof StreamUnavailableError) || shown) throw reason
+      }
+    }
+    reply ??= parseChatReply(await chatRequest(transport, "chat", { messages: history, ...(transport === "cloud" ? { voice: true } : {}) }))
+    appendMessage(conversationId, { id: crypto.randomUUID(), role: "assistant", content: reply.text, ...(reply.actions ? { actions: reply.actions } : {}) })
     return reply.text
   }
 
@@ -691,7 +705,7 @@ export function ChatWorkspace({ userId = "preview", isAdmin = false }: { userId?
         <Button type="button" variant="ghost" size="icon" className={cn("size-8 rounded-full text-muted-foreground", recording && "bg-destructive/15 text-destructive")} onClick={() => void startRecording()} disabled={busy || !canTranscribe} aria-label={recording ? "Parar gravação" : "Gravar áudio"} aria-pressed={recording}>{recording ? <Square /> : <Mic />}</Button>
         <div className="ml-auto">
           {busy ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => abortRef.current?.abort()} aria-label="Parar resposta" title="Parar resposta (o que já foi escrito fica)"><Square className="fill-current" /></Button>
-            : !draft.trim() && !attachments.length && !recording ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => { stopSpeech(); setVoiceOpen(true) }} disabled={!voiceReady || checking} aria-label="Conversar por voz" title={voiceReady ? "Conversar por voz" : "Conecte a IA para conversar por voz"}><AudioLines /></Button>
+            : !draft.trim() && !attachments.length && !recording ? <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => { stopSpeech(); primeVoiceAudio(); setVoiceOpen(true) }} disabled={!voiceReady || checking} aria-label="Conversar por voz" title={voiceReady ? "Conversar por voz" : "Conecte a IA para conversar por voz"}><AudioLines /></Button>
             : <Button type="button" size="icon" className="size-9 rounded-full" onClick={() => void send()} disabled={(!draft.trim() && !attachments.length) || !available || checking || recording} aria-label={mode === "automation" ? "Preparar plano" : "Enviar"}><ArrowUp /></Button>}
         </div>
       </div>
