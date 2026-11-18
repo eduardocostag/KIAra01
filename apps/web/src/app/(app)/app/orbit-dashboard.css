@@ -113,3 +113,13 @@
   .kiara-orbit-dashboard .kiara-dashboard-see-all { min-height: 2.1rem; }
   .kiara-orbit-dashboard .kiara-dashboard-lead-link { display: flex; min-height: 1.75rem; }
 }
+
+/* Phones and tablets: the orbit drawn flat (2D). Keeping the whole scene in live 3D made the phone redraw it at
+   ~10 frames per second (measured on an emulated iPhone with a 4x slower CPU), so every tap and screen change
+   after opening Leads stuttered; flat, it runs 2-3x faster and looks the same (rings, moons, eyes still move).
+   The two light arcs stay still: they cost the most and are barely visible on a small screen. */
+@media (pointer: coarse), (max-width: 767px) {
+  .kiara-orbit-scene, .kiara-orbit-scene * { transform-style: flat !important; }
+  .kiara-orbit-arc { animation: none; }
+}
+.kiara-orbit-scene[data-offscreen], .kiara-orbit-scene[data-offscreen] *, .kiara-orbit-scene[data-offscreen] *::before, .kiara-orbit-scene[data-offscreen] *::after { animation-play-state: paused !important; }

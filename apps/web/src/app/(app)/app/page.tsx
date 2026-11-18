@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { ArrowRight, CheckCheck, Inbox, MessageCircle, Search, Settings2, ShieldCheck, Workflow } from "lucide-react";
 import { OrbitScene } from "@/components/brand/orbit-scene";
 import { LaunchBadge } from "@/components/early-access/launch-badge";
@@ -17,40 +18,37 @@ export default async function ModuleSelectorPage() {
     { href: "/app/chat", label: "KIARA Chat", description: "Conversa, voz e criação com IA.", icon: Inbox, operational: true },
     { href: "/app/automation", label: "KIARA Automation", description: "Fluxos, tarefas, agenda, redes e anúncios.", icon: Workflow, operational: true },
   ];
-  // Pending items in the approval center; the page still renders if the API is unavailable.
-  const pending = await kiaraApi("/v1/approvals?status=pending")
-    .then(async (response) => (response.ok ? Number((await response.json()).pending) || 0 : 0))
-    .catch(() => 0);
+  // The pending approvals count streams in after the screen shows (PendingCount), so the modules never wait for the API.
   const shortcuts = [
-    { href: "/app/aprovacoes", label: "Aprovações", icon: CheckCheck, count: pending },
+    { href: "/app/aprovacoes", label: "Aprovações", icon: CheckCheck, count: true },
     { href: "/app/settings", label: "Configurações", icon: Settings2 },
     ...(isSystemAdmin ? [{ href: "/app/admin", label: "Administração", icon: ShieldCheck }] : []),
   ];
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center px-4 pb-10 pt-20 sm:p-8">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-start px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+4.25rem)] sm:min-h-screen sm:justify-center sm:p-8">
       <div className="absolute inset-x-0 top-0 z-0 h-72 bg-[radial-gradient(60%_100%_at_50%_0%,rgb(124_77_255/.35),transparent)] sm:hidden" aria-hidden="true" />
       <div className="absolute inset-0 z-0 hidden opacity-25 sm:block">
         <OrbitScene />
       </div>
-      <nav aria-label="Conta e administração" className="absolute right-4 top-4 z-20 flex gap-2 sm:right-8 sm:top-6">
+      <nav aria-label="Conta e administração" className="absolute right-4 top-[calc(env(safe-area-inset-top)+.75rem)] z-20 flex gap-2 sm:right-8 sm:top-6">
         {shortcuts.map(({ href, label, icon: Icon, ...rest }) => {
-          const count = "count" in rest ? Number(rest.count) : 0;
+          const count = "count" in rest;
           return (
-          <Link key={href} href={href} aria-label={count ? `${label}: ${count} pendente(s)` : label} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3.5 text-sm font-medium text-white/75 backdrop-blur-xl transition hover:border-primary/50 hover:text-white">
+          <Link key={href} href={href} aria-label={label} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3.5 text-sm font-medium text-white/75 backdrop-blur-xl transition hover:border-primary/50 hover:text-white">
             <Icon className="size-4" aria-hidden="true" /><span className="hidden sm:inline">{label}</span>
-            {count ? <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 text-xs font-semibold tabular-nums text-primary-foreground">{count > 99 ? "99+" : count}</span> : null}
+            {count ? <Suspense fallback={null}><PendingCount /></Suspense> : null}
           </Link>
           );
         })}
       </nav>
-      <div className="relative z-10 w-full max-w-5xl text-center">
-        <p className="fx-rise mb-3 text-[11px] font-semibold uppercase tracking-[.18em] text-primary sm:hidden">Kiara Intelligence</p><h1 className="fx-rise kiara-gradient-text mb-3 text-balance text-[2rem] font-bold leading-[1.05] tracking-tight sm:text-4xl">Selecione o módulo de operação</h1>
-        <p className="fx-rise mb-9 text-sm text-muted-foreground">Primeira vez aqui? <WelcomeTourLink className="-my-1.5 inline-block py-1.5 text-primary underline-offset-4 hover:underline" /></p>
+      <div className="relative z-10 mx-auto w-full max-w-md text-center md:max-w-5xl">
+        <p className="fx-rise mb-3 text-[11px] font-semibold uppercase tracking-[.18em] text-primary sm:hidden">Kiara Intelligence</p><h1 className="fx-rise kiara-gradient-text mb-2 text-balance text-[1.75rem] font-bold leading-[1.05] tracking-tight sm:text-4xl">Selecione o módulo de operação</h1>
+        <p className="fx-rise mb-6 text-sm text-muted-foreground sm:mb-9">Primeira vez aqui? <WelcomeTourLink className="-my-1.5 inline-block py-1.5 text-primary underline-offset-4 hover:underline" /></p>
         <div className="grid grid-cols-1 gap-3 sm:gap-6 md:grid-cols-2 lg:grid-cols-4">
           {modules.map(({ href, label, description, icon: Icon, operational }, index) => (
             <Link key={href} href={href} data-tilt="12" style={{ "--i": index + 1 } as React.CSSProperties} className={cn(
-              "fx-rise fx-tilt fx-spot group relative grid grid-cols-[auto_1fr_auto] items-center gap-x-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-left backdrop-blur-xl hover:border-primary/50 hover:bg-black/60 sm:flex sm:flex-col sm:rounded-3xl sm:p-8 sm:text-center",
+              "fx-rise fx-tilt fx-spot group relative grid grid-cols-[auto_1fr_auto] items-center gap-x-4 rounded-2xl border border-white/10 bg-black/50 p-4 text-left hover:border-primary/50 sm:bg-black/40 sm:backdrop-blur-xl hover:bg-black/60 sm:flex sm:flex-col sm:rounded-3xl sm:p-8 sm:text-center",
               operational && "kiara-module-live",
               !operational && "opacity-80 hover:opacity-100"
             )}>
@@ -72,4 +70,13 @@ export default async function ModuleSelectorPage() {
       {workspace ? <WelcomeTour userId={workspace.userId} fullAccess /> : null}
     </div>
   );
+}
+
+/** Pending items in the approval center; nothing shows when there are none or the API is unavailable. */
+async function PendingCount() {
+  const pending = await kiaraApi("/v1/approvals?status=pending")
+    .then(async (response) => (response.ok ? Number((await response.json()).pending) || 0 : 0))
+    .catch(() => 0);
+  if (!pending) return null;
+  return <span aria-label={`${pending} pendente(s)`} className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 text-xs font-semibold tabular-nums text-primary-foreground">{pending > 99 ? "99+" : pending}</span>;
 }

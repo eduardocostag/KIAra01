@@ -957,3 +957,9 @@
 }
 /* Contact sheet on phones: the panel sits flat inside the sheet. */
 .kiara-contact-sheet > aside { border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; }
+
+/* Phones: no frosted glass on cards that scroll with the page (each blurred card repaints on every scroll frame
+   on the iPhone). The fixed top bar and tab bar keep theirs; the cards already sit on a dark, near-opaque fill. */
+@media (max-width: 767px) {
+  .kiara-dashboard-metric, .lead-float-card, .lead-scan-chip, .reference-skill, .reference-search-window, .reference-company-card { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

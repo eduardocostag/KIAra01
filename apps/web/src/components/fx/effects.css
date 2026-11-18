@@ -88,6 +88,21 @@
 @keyframes fx-route-out { to { opacity: 0; transform: perspective(1200px) translateZ(-80px) rotateX(4deg); filter: blur(3px); } }
 @keyframes fx-route-in { from { opacity: 0; transform: perspective(1200px) translateZ(60px); filter: blur(4px); } }
 
+/* Phones and tablets (touch): the same feel, at a cost the GPU of a phone carries smoothly. No blur filters
+   (each one repaints the whole element every frame), no 3D layers kept alive for a tilt that needs a mouse,
+   and a quick crossfade between screens instead of the folding page. */
+@media (pointer: coarse), (max-width: 767px) {
+  .fx-tilt, .fx-tilt[data-fx-active] { transform: none; transform-style: flat; will-change: auto; transition: border-color .2s, background-color .2s; }
+  .fx-tilt .fx-pop { transform: none; }
+  .fx-rise { animation-name: fx-rise-light; animation-duration: .32s; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
+  .fx-spot::after, .kiara-halo-hover::before { display: none; } /* hover glows "stick" after a tap */
+  ::view-transition-old(.fx-route) { animation: fx-fade-out .12s ease-in both; }
+  ::view-transition-new(.fx-route) { animation: fx-fade-in .18s ease-out both; }
+}
+@keyframes fx-rise-light { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fx-fade-out { to { opacity: 0; } }
+@keyframes fx-fade-in { from { opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   .fx-tilt, .fx-tilt .fx-pop { transform: none !important; }
   .fx-rise, .fx-hot::before, .fx-skeleton, .fx-burst > .fx-particle { animation: none !important; }
@@ -138,4 +153,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .kiara-gradient-text, .kiara-halo-hover::before { animation: none !important; }
+}
+
+/* Phones: the headline's moving shine repaints the text every frame; it stays still there (after the rule above). */
+@media (pointer: coarse), (max-width: 767px) {
+  .kiara-gradient-text { animation: fx-rise-light .32s ease-out both; background-position: 50% 0; }
 }

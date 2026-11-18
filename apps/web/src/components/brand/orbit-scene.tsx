@@ -33,9 +33,14 @@ export function OrbitScene() {
       })
     }
 
+    // Off screen (scrolled past it), the orbit pauses: the phone stops spending on an animation nobody sees.
+    const visibility = new IntersectionObserver(([entry]) => scene.toggleAttribute("data-offscreen", !entry.isIntersecting))
+    visibility.observe(scene)
+
     window.addEventListener("pointermove", followPointer, { passive: true })
     motionPreference.addEventListener("change", resetEyes)
     return () => {
+      visibility.disconnect()
       window.removeEventListener("pointermove", followPointer)
       motionPreference.removeEventListener("change", resetEyes)
       if (frame) cancelAnimationFrame(frame)
