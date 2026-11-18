@@ -398,15 +398,21 @@ async def _sse_events(url: str, payload: dict, key: str, timeout: float) -> Asyn
                                        headers={"Authorization": f"Bearer {key}", "Accept": "text/event-stream"}) as response:
                 timing["headers_s"] = round(time.monotonic() - started, 3)
                 response.raise_for_status()
+                finished = False
                 for line in response.iter_lines():
                     line = line.strip()
-                    if not line.startswith("data:"):
+                    # After [DONE] the rest is read to the end instead of breaking out: a response closed before its
+                    # last bytes makes httpx drop the connection, and every voice turn then paid a new TLS handshake
+                    # to the Debian server (~1.25 s to the first word instead of ~0.77 s; production log 2026-11-18).
+                    if finished or not line.startswith("data:"):
                         continue
                     data = line[5:].strip()
                     if data == "[DONE]":
-                        break
+                        finished = True
+                        continue
                     timing.setdefault("first_event_s", round(time.monotonic() - started, 3))
                     loop.call_soon_threadsafe(queue.put_nowait, json.loads(data))
+                timing["reusable"] = True
         except BaseException as exc:  # noqa: BLE001 - cross-thread error transport
             timing["error"] = type(exc).__name__
             loop.call_soon_threadsafe(queue.put_nowait, exc)
