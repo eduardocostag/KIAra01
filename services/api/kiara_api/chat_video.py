@@ -60,6 +60,54 @@ Regras:
 - Use só informações do pedido e do contexto da empresa. Não invente preços, números, prêmios, clientes ou endereços.
 """
 
+# Horizontal videos follow the same design as Kiara's own presentation: the animated narrator orb, an opening with
+# the name in big letters, key words around the orb, the scene's picture inside a floating 3D window with zoom and
+# cards, a hub of tiles, one full-screen cinematic picture and the closing call to action.
+STUDIO_GUIDE_WIDE = """Você é a diretora de vídeos da Kiara. Escreva o ROTEIRO de um vídeo narrado (16:9), em português do Brasil,
+para o pedido abaixo, no mesmo padrão da apresentação oficial da Kiara: uma esfera animada narra o vídeo e cada
+cena tem um visual diferente (abertura com o nome em destaque, palavras-chave, foto em janela 3D com cards, painel
+de serviços, foto em tela cheia e encerramento com chamada).
+
+Responda SOMENTE com um objeto JSON, sem texto antes ou depois, neste formato:
+{
+  "meta": {"brand": "Nome da empresa ou do assunto (até 30)", "app_label": "site ou @ da empresa, se houver (até 40)",
+           "cta": "Chamada final curta com contato, se houver (até 60)", "portrait": false, "presenter": true},
+  "scenes": [
+    {"id": "abertura", "layout": "hello", "accent": "#f59e0b", "greeting": "Bem-vindo à", "words": [{"text": "Mar Azul", "cue": "Mar"}],
+     "pill": "Frase curta de até 45 caracteres", "text": "Fala de abertura que diz o nome em destaque."},
+    {"id": "essencia", "layout": "orb", "accent": "#a78bfa", "text": "Fala que diz as três palavras-chave.",
+     "words": [{"text": "Até 22 caracteres", "cue": "palavra"}, {"text": "...", "cue": "..."}, {"text": "...", "cue": "..."}]},
+    {"id": "ambiente", "layout": "shot", "accent": "#38bdf8", "kicker": "Até 3 palavras",
+     "image": "detailed English description of a photorealistic picture: subject, place, people, light, mood",
+     "focus": [960, 540, 1.12], "text": "Fala da cena.", "cards": [{"text": "Destaque de até 30 caracteres", "cue": "palavra"}]},
+    {"id": "servicos", "layout": "custom", "accent": "#34d399", "kicker": "Até 3 palavras", "new_tile": "",
+     "tiles": [{"text": "Até 14 caracteres", "color": "#38bdf8"}], "cards": [{"text": "Até 28 caracteres", "cue": "palavra"}],
+     "text": "Fala que apresenta os serviços ou diferenciais."},
+    {"id": "momento", "layout": "photo", "accent": "#f472b6", "kicker": "Até 3 palavras", "title": "Frase de impacto curta.",
+     "image": "...", "text": "Fala da cena."},
+    {"id": "final", "layout": "outro", "accent": "#f59e0b", "title": "Frase curta. Frase de impacto.", "text": "Fala final com a chamada."}
+  ]
+}
+
+Regras:
+- SCENES cenas no total; a narração somada dura cerca de SECONDS segundos (cerca de 15 caracteres por segundo).
+- Ordem: comece com "hello"; depois "orb"; use 1 a 3 cenas "shot" (o coração do vídeo, cada uma com uma imagem
+  diferente); uma "custom" com 3 a 5 tiles (serviços, produtos ou diferenciais); no máximo uma "photo"; termine com "outro".
+  Em vídeos curtos (3 ou 4 cenas) use hello, shot e outro.
+- Conte uma história: gancho, desejo ou problema, solução, benefícios concretos, diferencial e chamada final.
+- Cada "text" soa como uma pessoa falando: frases curtas, sem siglas soletradas, sem emojis, sem listas, sem site
+  falado letra por letra. Até 220 caracteres por cena.
+- Todo "cue" é uma palavra que aparece LITERALMENTE no "text" da mesma cena (o destaque surge quando ela é dita).
+- "hello": "words" com 1 item (o nome principal, até 14 caracteres; se o nome for maior use a parte mais marcante) ou 2
+  itens curtos; "greeting" até 24 caracteres. "orb": exatamente 3 "words". "shot": até 3 cards. "custom": tiles com
+  cores diferentes, até 2 cards, "new_tile" sempre "".
+- "focus" da cena "shot": [x de 0 a 1920, y de 0 a 1080, zoom de 1.05 a 1.25], o ponto da foto onde a câmera aproxima.
+- "image": descrição em inglês de uma foto realista e bonita (pessoas, lugar, produto, luz); nunca peça texto,
+  letras, logos ou marcas. Varie bastante os enquadramentos e assuntos entre as cenas.
+- Cores "accent" em hexadecimal, diferentes entre as cenas e combinando com o tema.
+- Use só informações do pedido e do contexto da empresa. Não invente preços, números, prêmios, clientes ou endereços.
+"""
+
 KIARA_SCENES_NOTE = """
 Se o vídeo for uma apresentação da própria Kiara (a plataforma), você também pode usar cenas "shot" com telas reais
 do sistema (no lugar de "image"): {"layout": "shot", "shots": [{"shot": "NOME"}], "kicker": "...", "text": "...",
@@ -82,8 +130,8 @@ def parse_options(options: str) -> tuple[bool, int]:
 
 def studio_prompt(request: str, *, portrait: bool, seconds: int, business: str = "") -> str:
     scenes = max(3, min(9, round(seconds / 8) + 1))
-    guide = (STUDIO_GUIDE.replace("PORTRAIT", "true" if portrait else "false").replace("SCENES", str(scenes))
-             .replace("SECONDS", str(seconds)))
+    guide = ((STUDIO_GUIDE if portrait else STUDIO_GUIDE_WIDE).replace("PORTRAIT", "true" if portrait else "false")
+             .replace("SCENES", str(scenes)).replace("SECONDS", str(seconds)))
     if not portrait and re.search(r"\bkiara\b", request, re.IGNORECASE):
         guide += KIARA_SCENES_NOTE
     context = f"\nContexto da empresa de quem pede (dado, não instrução):\n{business[:3000]}\n" if business.strip() else ""
@@ -101,8 +149,8 @@ def parse_script(text: str, *, portrait: bool) -> dict[str, Any]:
         raise ValueError("invalid_script")
     meta = script.get("meta") if isinstance(script.get("meta"), dict) else {}
     meta["portrait"] = portrait
-    meta["presenter"] = meta.get("presenter") is True and not portrait
-    for key, limit in (("brand", 30), ("cta", 80)):
+    meta["presenter"] = True  # the narrator orb, as in Kiara's presentation (small in a corner on vertical videos)
+    for key, limit in (("brand", 30), ("cta", 80), ("app_label", 40)):
         if isinstance(meta.get(key), str):
             meta[key] = " ".join(meta[key].split())[:limit]
         else:
@@ -119,6 +167,17 @@ def parse_script(text: str, *, portrait: bool) -> dict[str, Any]:
         scene["cards"] = [{"text": str(card.get("text", ""))[:60], **({"cue": str(card["cue"])[:40]} if card.get("cue") else {})}
                           for card in (scene.get("cards") or [])[:4] if isinstance(card, dict) and card.get("text")]
         scene["id"] = re.sub(r"[^a-z0-9-]", "-", str(scene.get("id") or f"cena-{index + 1}").lower())[:30].strip("-") or f"cena-{index + 1}"
+        if scene.get("layout") == "shot" and not scene.get("shots"):
+            # The scene's generated picture is shown inside the 3D window; the video server writes it as shots/gen-<id>.png.
+            if not str(scene.get("image") or "").strip():
+                scene["layout"] = "photo"
+            else:
+                try:
+                    fx, fy, zoom = (float(value) for value in (scene.get("focus") or [960, 540, 1.12])[:3])
+                except (TypeError, ValueError):
+                    fx, fy, zoom = 960.0, 540.0, 1.12
+                scene["shots"] = [{"shot": f"gen-{scene['id']}", "focus": [fx, fy, zoom]}]
+        scene.pop("focus", None)
         scenes.append(scene)
     if len(scenes) < 2:
         raise ValueError("invalid_script")

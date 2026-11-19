@@ -309,8 +309,13 @@ def studio_images(job: dict, project: Path) -> list[str]:
     size = "1024x1536" if portrait else "1536x1024"
     framing = ("vertical 9:16 composition, subject centered, " if portrait else "wide 16:9 composition, ") + \
         "photorealistic, cinematic light, high detail, no text, no letters, no logos, no watermark"
-    wanted = [scene for scene in job["script"]["scenes"]
-              if isinstance(scene, dict) and scene.get("layout") in {"photo", "outro"} and str(scene.get("image") or "").strip()]
+    shots = project / "shots"
+    shots.mkdir(parents=True, exist_ok=True)
+    scenes = [scene for scene in job["script"]["scenes"] if isinstance(scene, dict)]
+    # "shot" scenes with a generated picture (shots: [{"shot": "gen-<id>"}]) show it inside the presentation's 3D window.
+    windows = [scene for scene in scenes if scene.get("layout") == "shot" and str(scene.get("image") or "").strip()
+               and any(str(shot.get("shot", "")).startswith("gen-") for shot in scene.get("shots") or [] if isinstance(shot, dict))]
+    wanted = [scene for scene in scenes if scene.get("layout") in {"photo", "outro"} and str(scene.get("image") or "").strip()] + windows
     done = [0]
 
     def make(scene: dict) -> None:
@@ -320,17 +325,37 @@ def studio_images(job: dict, project: Path) -> list[str]:
             scene["photo"] = path.name
         with lock:
             done[0] += 1
-        update(job, progress=0.05 + 0.3 * done[0] / max(1, len(wanted)), message=f"Criando as imagens ({done[0]} de {len(wanted)})")
+        update(job, progress=0.05 + 0.3 * min(1, done[0] / max(1, len(wanted))), message=f"Criando as imagens ({min(done[0], len(wanted))} de {len(wanted)})")
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(make, wanted))
+    for scene in wanted:  # one more calm try for the pictures that failed (rate limits often clear in seconds)
+        if not scene.get("photo"):
+            make(scene)
     made = [scene["photo"] for scene in wanted if scene.get("photo")]
+    # A picture appears in one scene only (the closing scene may reuse one, dimmed): a scene whose picture failed takes
+    # an unused one, or else becomes an animated scene with its headline, never the same photo again.
+    spare = [scene["photo"] for scene in wanted if scene.get("photo") and scene.get("layout") == "outro"]
+    for scene in windows:
+        source = scene.pop("photo", None) or (spare.pop(0) if spare else None)
+        shot = next(str(s["shot"]) for s in scene["shots"] if isinstance(s, dict) and str(s.get("shot", "")).startswith("gen-"))
+        try:
+            if not source:
+                raise RuntimeError("no_picture")
+            run(["ffmpeg", "-y", "-v", "error", "-i", str(images / source), "-vf",
+                 "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080",
+                 "-frames:v", "1", str(shots / f"{shot}.png")], timeout=60)
+        except Exception:  # noqa: BLE001 - without any picture the scene becomes a plain animated one
+            scene["layout"], scene["shots"] = "photo", []
+            scene["title"] = scene.get("title") or scene.get("kicker") or ""
+            scene.pop("image", None)
+    wanted = [scene for scene in wanted if scene not in windows]
     # A scene whose picture failed borrows one that worked; the closing scene reuses the first (dimmed).
     missing = [scene for scene in job["script"]["scenes"] if isinstance(scene, dict) and not scene.get("photo")
                and (scene.get("layout") == "outro" or (scene.get("layout") == "photo" and scene.get("image")))]
-    for index, scene in enumerate(missing):
-        if made:
-            scene["photo"] = made[0] if scene.get("layout") == "outro" else made[index % len(made)]
+    for scene in missing:
+        if made and scene.get("layout") == "outro":
+            scene["photo"] = made[0]
     if wanted and not made:
         return ["Os geradores de imagem estavam sem cota agora; o vídeo usa fundos animados no lugar das fotos."]
     return []

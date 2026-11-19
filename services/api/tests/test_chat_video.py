@@ -79,7 +79,7 @@ def test_chat_marker_writes_a_script_and_starts_a_studio_job(monkeypatch):
     job = seen["jobs"][0]
     assert job["kind"] == "studio" and "script" not in body["video"]
     meta, scenes = job["script"]["meta"], job["script"]["scenes"]
-    assert meta["portrait"] is True and meta["presenter"] is False          # vertical: the client's brand only
+    assert meta["portrait"] is True and meta["presenter"] is True           # the narrator orb, as in the presentation
     assert [scene["id"] for scene in scenes] == ["abertura", "final"] and scenes[-1]["layout"] == "outro"
     assert scenes[0]["image"] == "beach at sunset, golden light" and scenes[0]["cards"] == [{"text": "Vista para o mar", "cue": "mar"}]
 
@@ -125,3 +125,9 @@ def test_helpers():
     assert "shot" not in chat_video.studio_prompt("Apresentação da Kiara para a Ana", portrait=True, seconds=60)
     script = chat_video.parse_script("aqui: " + SCRIPT + " fim", portrait=False)
     assert script["meta"]["presenter"] is True and script["meta"]["portrait"] is False
+    assert "hello" in chat_video.studio_prompt("Vídeo da pousada", portrait=False, seconds=45)
+    window = json.dumps({"scenes": [{"id": "Quarto", "layout": "shot", "image": "a cozy room", "focus": [900, 500, 1.2], "text": "Veja."},
+                                    {"id": "sem", "layout": "shot", "text": "Sem foto."}, {"id": "fim", "layout": "outro", "text": "Tchau."}]})
+    scenes = chat_video.parse_script(window, portrait=False)["scenes"]
+    assert scenes[0]["shots"] == [{"shot": "gen-quarto", "focus": [900.0, 500.0, 1.2]}] and "focus" not in scenes[0]
+    assert scenes[1]["layout"] == "photo"
