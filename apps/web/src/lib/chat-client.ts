@@ -6,7 +6,7 @@ export type ChatStatus = { connected: boolean; provider: string; model: string; 
 export type ChatMessage = { role: "user" | "assistant"; content: string; file_context?: string; attachments?: { name: string; mime: ChatAttachment["mime"]; data_base64: string }[] }
 export type ChatArtifact = { name: string; mime: "text/html"; content: string }
 export type ChatPlan = { id: string; steps: string[]; requires_approval: true }
-export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null; parts?: number }
+export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null; parts?: number; lightParts?: number }
 /** `src` is a data URL; `thumb` is the small copy kept in this browser's history. */
 export type ChatImage = { src: string; prompt: string; thumb?: string }
 export type ChatSource = { title: string; url: string; site: string }
@@ -215,6 +215,7 @@ export function parseVideoJob(value: unknown): ChatVideoJob {
     warnings: Array.isArray(data.warnings) ? data.warnings.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
     error: typeof data.error === "string" ? data.error.slice(0, 400) : null,
     ...(typeof data.parts === "number" && Number.isInteger(data.parts) && data.parts >= 1 && data.parts <= 40 ? { parts: data.parts } : {}),
+    ...(typeof data.light_parts === "number" && Number.isInteger(data.light_parts) && data.light_parts >= 1 && data.light_parts <= 40 ? { lightParts: data.light_parts } : {}),
   }
 }
 
@@ -237,7 +238,8 @@ export function chatServerUrl(value = process.env.NEXT_PUBLIC_KIARA_CHAT_URL): s
 }
 
 /** Downloads a finished video from the local bridge (videos are produced on this computer). */
-export async function fetchVideo(jobId: string, transport: ChatTransport = "local", knownParts?: number | null): Promise<Blob> {
+/** `light`: the 720p copy for watching in the chat (cloud only; `knownParts` must then be its own part count). */
+export async function fetchVideo(jobId: string, transport: ChatTransport = "local", knownParts?: number | null, light = false): Promise<Blob> {
   if (transport === "cloud") {
     // Kiara's server keeps the finished video; it arrives in parts of up to 2.5 MB (a whole narrated video would
     // pass the hosting's response limit). Parts come as plain bytes, several at once — on a phone the old
@@ -246,7 +248,7 @@ export async function fetchVideo(jobId: string, transport: ChatTransport = "loca
     const chunks: BlobPart[] = []
     let parts = knownParts && knownParts >= 1 ? Math.min(40, Math.floor(knownParts)) : 0
     if (!parts) {
-      const first = await fetchVideoPart(jobId, 0)
+      const first = await fetchVideoPart(jobId, 0, light)
       chunks[0] = first.data
       parts = Math.min(40, first.parts)
     }
@@ -255,7 +257,7 @@ export async function fetchVideo(jobId: string, transport: ChatTransport = "loca
     const worker = async () => {
       while (next < rest.length) {
         const part = rest[next++]
-        chunks[part] = (await fetchVideoPart(jobId, part).catch(() => fetchVideoPart(jobId, part))).data
+        chunks[part] = (await fetchVideoPart(jobId, part, light).catch(() => fetchVideoPart(jobId, part, light))).data
       }
     }
     await Promise.all(Array.from({ length: Math.min(5, rest.length) }, worker))
@@ -268,8 +270,8 @@ export async function fetchVideo(jobId: string, transport: ChatTransport = "loca
   return await response.blob()
 }
 
-async function fetchVideoPart(jobId: string, part: number): Promise<{ data: Blob; parts: number }> {
-  const response = await fetch("/api/chat/video", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "download", job_id: jobId, part, raw: true }), signal: AbortSignal.timeout(120_000) })
+async function fetchVideoPart(jobId: string, part: number, light = false): Promise<{ data: Blob; parts: number }> {
+  const response = await fetch("/api/chat/video", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "download", job_id: jobId, part, raw: true, ...(light ? { light: true } : {}) }), signal: AbortSignal.timeout(120_000) })
   const count = (value: unknown) => typeof value === "number" && value >= 1 ? Math.floor(value) : Number.parseInt(String(value ?? ""), 10) || 1
   if (response.ok && (response.headers.get("Content-Type") ?? "").startsWith("video/mp4")) {
     return { data: await response.blob(), parts: count(response.headers.get("X-Kiara-Parts")) }

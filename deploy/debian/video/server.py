@@ -91,7 +91,7 @@ def update(job: dict, **changes) -> None:
 
 
 def public(job: dict) -> dict:
-    keys = ("id", "status", "progress", "message", "title", "duration", "error", "engine", "warnings", "parts")
+    keys = ("id", "status", "progress", "message", "title", "duration", "error", "engine", "warnings", "parts", "light_parts")
     return {key: job.get(key) for key in keys}
 
 
@@ -129,6 +129,14 @@ def normalize(source: Path, target: Path, portrait: bool) -> None:
         if target.stat().st_size <= MAX_BYTES:
             return
     raise RuntimeError("video_too_large")
+
+
+def light_copy(source: Path, target: Path, portrait: bool) -> None:
+    """A 720p copy for watching in the chat on a phone (about a third of the full file; the full one is for posting)."""
+    scale = "scale='min(720,iw)':-2" if portrait else "scale=-2:'min(720,ih)'"
+    run(["ffmpeg", "-y", "-v", "error", "-i", str(source), "-vf", f"{scale},format=yuv420p",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "25", "-maxrate", "1400k", "-bufsize", "2800k",
+         "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(target)], timeout=300)
 
 
 def gateway_image(prompt: str, folder: Path, size: str = "1024x1024", name: str = "frame") -> Path | None:
@@ -453,8 +461,19 @@ def process_studio(job: dict) -> None:
             raise RuntimeError("video_too_large")
         target = FILES / f"{job['id']}.mp4"
         shutil.move(str(output), target)
+        light, light_parts = FILES / f"{job['id']}-light.mp4", None
+        update(job, progress=0.99, message="Preparando a versão para celular")
+        try:
+            light_copy(target, light, bool(job["script"].get("meta", {}).get("portrait")))
+            if light.stat().st_size < target.stat().st_size:
+                light_parts = max(1, -(-light.stat().st_size // PART_BYTES))
+            else:
+                light.unlink(missing_ok=True)
+        except Exception as error:  # noqa: BLE001 - the chat simply plays the full file
+            light.unlink(missing_ok=True)
+            job.setdefault("tries", []).append(f"light: {type(error).__name__}: {str(error)[:200]}")
         update(job, status="done", progress=1.0, message="Pronto", engine="studio", duration=round(timeline["duration"], 1),
-               warnings=warnings, parts=max(1, -(-target.stat().st_size // PART_BYTES)))
+               warnings=warnings, parts=max(1, -(-target.stat().st_size // PART_BYTES)), light_parts=light_parts)
     except Exception as error:  # noqa: BLE001 - the reason stays in the job file, the person gets a plain message
         job.setdefault("tries", []).append(f"studio: {type(error).__name__}: {str(error)[:300]}")
         update(job, status="failed", progress=1.0, message="Falhou",
@@ -540,10 +559,12 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2:
                 return self.send(200, public(job))
             if parts[2:] == ["file"] and job.get("status") == "done":
-                path = FILES / f"{parts[1]}.mp4"
+                query = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                light = FILES / f"{parts[1]}-light.mp4"
+                # ?variant=light: the phone-sized copy, when there is one (else the full file).
+                path = light if (query.get("variant") or [""])[0] == "light" and light.is_file() else FILES / f"{parts[1]}.mp4"
                 size = path.stat().st_size
                 total = max(1, -(-size // PART_BYTES))
-                query = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
                 try:
                     part = int((query.get("part") or ["-1"])[0])
                 except ValueError:

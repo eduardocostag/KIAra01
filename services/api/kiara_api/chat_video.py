@@ -227,7 +227,8 @@ def public_job(job: Any) -> dict[str, Any]:
             "progress": job.get("progress") or 0, "message": str(job.get("message") or "")[:200],
             "title": str(job.get("title") or "Vídeo da Kiara")[:120], "duration": job.get("duration"),
             "warnings": [str(item)[:300] for item in (job.get("warnings") or [])][:5], "error": job.get("error"),
-            "parts": job.get("parts") if isinstance(job.get("parts"), int) and 0 < job["parts"] <= 40 else None}
+            "parts": job.get("parts") if isinstance(job.get("parts"), int) and 0 < job["parts"] <= 40 else None,
+            "light_parts": job.get("light_parts") if isinstance(job.get("light_parts"), int) and 0 < job["light_parts"] <= 40 else None}
 
 
 async def start_video(prompt: str, *, portrait: bool = False, seconds: int = 5, title: str = "") -> dict[str, Any]:
@@ -241,11 +242,12 @@ async def video_status(job_id: str) -> dict[str, Any]:
     return public_job(await asyncio.to_thread(_call, "GET", f"/jobs/{job_id}", None, 15))
 
 
-async def video_file(job_id: str, part: int | None = None) -> tuple[bytes, int]:
-    """(bytes, total parts). Without `part` the whole file (short clips only)."""
+async def video_file(job_id: str, part: int | None = None, light: bool = False) -> tuple[bytes, int]:
+    """(bytes, total parts). Without `part` the whole file (short clips only). `light`: the 720p copy for phones."""
     if not JOB_ID.fullmatch(job_id) or (part is not None and not 0 <= part < 40):
         raise ValueError("invalid_job")
-    path = f"/jobs/{job_id}/file" + (f"?part={part}" if part is not None else "")
+    query = "&".join(item for item in (f"part={part}" if part is not None else "", "variant=light" if light else "") if item)
+    path = f"/jobs/{job_id}/file" + (f"?{query}" if query else "")
     data, parts = await asyncio.to_thread(_call, "GET", path, None, 60, MAX_VIDEO_BYTES, True)
     if not isinstance(data, bytes):
         raise RuntimeError("video_not_ready")

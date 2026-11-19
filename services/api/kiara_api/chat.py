@@ -194,6 +194,7 @@ class VideoRequest(BaseModel):
     job_id: str = Field(default="", max_length=32)
     part: int | None = Field(default=None, ge=0, le=39)
     raw: bool = False  # download: the part as plain MP4 bytes (no base64), so phones fetch less and decode nothing
+    light: bool = False  # download: the 720p copy made for watching in the chat
 
     @model_validator(mode="after")
     def complete(self):
@@ -1090,7 +1091,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
             if body.action == "status":
                 return {"video": await chat_video.video_status(body.job_id)}
             if body.action == "download":
-                data, parts = await chat_video.video_file(body.job_id, body.part)
+                data, parts = await chat_video.video_file(body.job_id, body.part, body.light)
                 if body.raw:
                     return Response(content=data, media_type="video/mp4", headers={
                         "Cache-Control": "no-store, private", "X-Kiara-Part": str(body.part or 0), "X-Kiara-Parts": str(parts)})

@@ -199,9 +199,28 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
     })
   }, [initial.id, initial.status, transport, pollAttempt])
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+  // The chat plays the light 720p copy (quick on a phone); "Baixar" then fetches the full-quality file for posting.
+  const [light, setLight] = useState(false)
+  const [loading, setLoading] = useState<"" | "watch" | "download">("")
   async function load() {
-    setError("")
-    try { setUrl(URL.createObjectURL(await fetchVideo(job.id, transport, job.parts))) } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
+    setError(""); setLoading("watch")
+    const useLight = transport === "cloud" && Boolean(job.lightParts)
+    try {
+      setUrl(URL.createObjectURL(await fetchVideo(job.id, transport, useLight ? job.lightParts : job.parts, useLight)))
+      setLight(useLight)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
+    finally { setLoading("") }
+  }
+  async function downloadFull() {
+    setError(""); setLoading("download")
+    try {
+      const full = URL.createObjectURL(await fetchVideo(job.id, transport, job.parts))
+      const anchor = document.createElement("a")
+      anchor.href = full; anchor.download = name
+      document.body.append(anchor); anchor.click(); anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(full), 60_000)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível baixar o vídeo.") }
+    finally { setLoading("") }
   }
   const name = `kiara-video-${job.id.slice(0, 8)}.mp4`
   return <section className="mt-3 overflow-hidden rounded-2xl border" aria-label="Vídeo da Kiara">
@@ -211,9 +230,10 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
         <p className="truncate text-sm font-medium">{job.title || "Vídeo da Kiara"}</p>
         <p className="text-xs text-muted-foreground" role="status">{job.status === "failed" ? job.error : job.status === "done" ? `Pronto${job.duration ? ` · ${job.duration < 60 ? `${Math.round(job.duration)}s` : `${Math.floor(job.duration / 60)}min${String(Math.round(job.duration % 60)).padStart(2, "0")}`}` : ""}${transport === "local" ? " · gerado neste computador" : ""}` : job.message}</p>
       </div>
-      {job.status === "done" && !url ? <Button type="button" size="sm" variant="outline" onClick={() => void load()}><Video aria-hidden="true" />Assistir</Button> : null}
+      {job.status === "done" && !url ? <Button type="button" size="sm" variant="outline" disabled={loading === "watch"} onClick={() => void load()}><Video aria-hidden="true" />{loading === "watch" ? "Abrindo…" : "Assistir"}</Button> : null}
       {pollPaused && job.status === "running" ? <Button type="button" size="sm" variant="outline" onClick={() => { setPollPaused(false); setError(""); setPollAttempt((attempt) => attempt + 1) }}><RefreshCw aria-hidden="true" />Retomar acompanhamento</Button> : null}
-      {url ? <Button type="button" size="sm" variant="outline" asChild><a href={url} download={name}><Download aria-hidden="true" />Baixar</a></Button> : null}
+      {url && light ? <Button type="button" size="sm" variant="outline" disabled={loading === "download"} onClick={() => void downloadFull()}><Download aria-hidden="true" />{loading === "download" ? "Baixando…" : "Baixar"}</Button> : null}
+      {url && !light ? <Button type="button" size="sm" variant="outline" asChild><a href={url} download={name}><Download aria-hidden="true" />Baixar</a></Button> : null}
     </div>
     {job.status === "running" ? <div className="h-1 bg-muted"><div className="h-full bg-primary transition-[width] duration-700" style={{ width: `${Math.max(3, job.progress * 100)}%` }} /></div> : null}
     {url ? <video className="max-h-[70vh] w-full border-t bg-black object-contain" src={url} controls autoPlay loop playsInline /> : null}
