@@ -6,7 +6,7 @@ export type ChatStatus = { connected: boolean; provider: string; model: string; 
 export type ChatMessage = { role: "user" | "assistant"; content: string; file_context?: string; attachments?: { name: string; mime: ChatAttachment["mime"]; data_base64: string }[] }
 export type ChatArtifact = { name: string; mime: "text/html"; content: string }
 export type ChatPlan = { id: string; steps: string[]; requires_approval: true }
-export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null }
+export type ChatVideoJob = { id: string; status: "running" | "done" | "failed"; progress: number; message: string; title: string; duration: number | null; warnings: string[]; error: string | null; parts?: number }
 /** `src` is a data URL; `thumb` is the small copy kept in this browser's history. */
 export type ChatImage = { src: string; prompt: string; thumb?: string }
 export type ChatSource = { title: string; url: string; site: string }
@@ -214,6 +214,7 @@ export function parseVideoJob(value: unknown): ChatVideoJob {
     duration: typeof data.duration === "number" ? data.duration : null,
     warnings: Array.isArray(data.warnings) ? data.warnings.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
     error: typeof data.error === "string" ? data.error.slice(0, 400) : null,
+    ...(typeof data.parts === "number" && Number.isInteger(data.parts) && data.parts >= 1 && data.parts <= 40 ? { parts: data.parts } : {}),
   }
 }
 
@@ -236,14 +237,20 @@ export function chatServerUrl(value = process.env.NEXT_PUBLIC_KIARA_CHAT_URL): s
 }
 
 /** Downloads a finished video from the local bridge (videos are produced on this computer). */
-export async function fetchVideo(jobId: string, transport: ChatTransport = "local"): Promise<Blob> {
+export async function fetchVideo(jobId: string, transport: ChatTransport = "local", knownParts?: number | null): Promise<Blob> {
   if (transport === "cloud") {
     // Kiara's server keeps the finished video; it arrives in parts of up to 2.5 MB (a whole narrated video would
-    // pass the hosting's response limit). Parts come as plain bytes and, after the first, several at once —
-    // on a phone the old one-by-one base64 download took minutes.
-    const first = await fetchVideoPart(jobId, 0)
-    const chunks: BlobPart[] = [first.data]
-    const rest = Array.from({ length: Math.min(40, first.parts) - 1 }, (_, index) => index + 1)
+    // pass the hosting's response limit). Parts come as plain bytes, several at once — on a phone the old
+    // one-by-one base64 download took minutes. When the job already said how many parts there are, all start
+    // together; otherwise the first part tells.
+    const chunks: BlobPart[] = []
+    let parts = knownParts && knownParts >= 1 ? Math.min(40, Math.floor(knownParts)) : 0
+    if (!parts) {
+      const first = await fetchVideoPart(jobId, 0)
+      chunks[0] = first.data
+      parts = Math.min(40, first.parts)
+    }
+    const rest = Array.from({ length: parts }, (_, index) => index).filter((part) => !chunks[part])
     let next = 0
     const worker = async () => {
       while (next < rest.length) {
@@ -251,7 +258,7 @@ export async function fetchVideo(jobId: string, transport: ChatTransport = "loca
         chunks[part] = (await fetchVideoPart(jobId, part).catch(() => fetchVideoPart(jobId, part))).data
       }
     }
-    await Promise.all(Array.from({ length: Math.min(4, rest.length) }, worker))
+    await Promise.all(Array.from({ length: Math.min(5, rest.length) }, worker))
     return new Blob(chunks, { type: "video/mp4" })
   }
   const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store" })))

@@ -201,7 +201,7 @@ function VideoJob({ initial, transport }: { initial: ChatVideoJob; transport: Ch
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
   async function load() {
     setError("")
-    try { setUrl(URL.createObjectURL(await fetchVideo(job.id, transport))) } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
+    try { setUrl(URL.createObjectURL(await fetchVideo(job.id, transport, job.parts))) } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível abrir o vídeo.") }
   }
   const name = `kiara-video-${job.id.slice(0, 8)}.mp4`
   return <section className="mt-3 overflow-hidden rounded-2xl border" aria-label="Vídeo da Kiara">
