@@ -36,7 +36,10 @@ TEMPLATE = Path(__file__).with_name("template.html")
 LIBRARY_SHOTS = ROOT / "app" / "resources" / "video_studio" / "shots"
 FPS = 30
 RATE = 24_000
-LAYOUTS = {"hello", "orb", "shot", "custom", "control", "outro"}
+LAYOUTS = {"hello", "orb", "shot", "custom", "control", "outro", "photo"}
+# Vertical videos (Reels, TikTok, Stories) are composed at 1080x1920; only these layouts are designed for it.
+PORTRAIT_LAYOUTS = {"photo", "outro"}
+PHOTO_NAME = re.compile(r"[a-z0-9-]{1,60}\.(?:jpg|png)")
 ALIASES = {"modules": "custom", "highlight": "control", "intro": "orb", "screen": "shot", "greeting": "hello", "closing": "outro"}
 DEFAULT_VOICE = VOICE
 QUALITIES = {"1080p": 1.0, "720p": 2 / 3}
@@ -96,7 +99,11 @@ def _items(scene: dict, key: str, limit: int, sid: str) -> list[dict]:
     return result
 
 
-def validate_script(script: dict, shots_dir: Path | None = None) -> dict:
+def frame_size(meta: dict) -> tuple[int, int]:
+    return (1080, 1920) if meta.get("portrait") else (1920, 1080)
+
+
+def validate_script(script: dict, shots_dir: Path | None = None, images_dir: Path | None = None) -> dict:
     """Normalize a script (from a person or a model) and reject anything unsafe or broken."""
     if not isinstance(script, dict) or not isinstance(script.get("scenes"), list):
         raise VideoError("O roteiro precisa de uma lista de cenas.")
@@ -116,6 +123,9 @@ def validate_script(script: dict, shots_dir: Path | None = None) -> dict:
         "app_label": _clean(meta_in.get("app_label") or "app.kiara", 40, "meta.app_label"),
         "for_label": _clean(meta_in.get("for_label") or "Apresentação para", 40, "meta.for_label"),
         "pronunciation": {str(k)[:40]: str(v)[:60] for k, v in (meta_in.get("pronunciation") or {}).items()} if isinstance(meta_in.get("pronunciation"), dict) else {},
+        "portrait": bool(meta_in.get("portrait")),
+        # Kiara's animated orb narrates her own presentations; a client's video shows only the client's brand.
+        "presenter": meta_in.get("presenter") is not False,
     }
     scenes, seen = [], set()
     if not 1 <= len(script["scenes"]) <= 16:
@@ -130,6 +140,8 @@ def validate_script(script: dict, shots_dir: Path | None = None) -> dict:
         layout = ALIASES.get(raw.get("layout"), raw.get("layout"))
         if layout not in LAYOUTS:
             raise VideoError(f"[{sid}] layout desconhecido: {raw.get('layout')}.")
+        if meta["portrait"] and layout not in PORTRAIT_LAYOUTS:
+            layout = "photo"  # the other layouts are drawn for 16:9; in a vertical video they become a photo scene
         accent = raw.get("accent") if re.fullmatch(r"#[0-9a-fA-F]{6}", str(raw.get("accent"))) else "#a78bfa"
         scene = {"id": sid, "layout": layout, "accent": accent, "text": _clean(raw.get("text"), 420, f"{sid}.text")}
         speech = _clean(raw.get("speech"), 480, f"{sid}.speech", optional=True)
@@ -141,6 +153,10 @@ def validate_script(script: dict, shots_dir: Path | None = None) -> dict:
         scene["words"] = _items(raw, "words", 3, sid)
         if raw.get("cardsSide") == "left":
             scene["cardsSide"] = "left"
+        photo = raw.get("photo")
+        if layout in {"photo", "outro"} and isinstance(photo, str) and PHOTO_NAME.fullmatch(photo):
+            if images_dir is None or (images_dir / photo).is_file():
+                scene["photo"] = photo  # a missing picture is not an error: the scene keeps its animated background
         if layout == "custom" and raw.get("tiles"):
             scene["tiles"] = [{"text": _clean(tile.get("text") if isinstance(tile, dict) else tile, 24, f"{sid}.tiles"),
                                "color": tile.get("color") if isinstance(tile, dict) and re.fullmatch(r"#[0-9a-fA-F]{6}", str(tile.get("color"))) else accent}
@@ -204,7 +220,7 @@ def _cue_time(words: list[dict], cue: str) -> float | None:
 
 def narrate(project: Path, *, progress: Progress | None = None) -> dict:
     """Synthesize each scene, build narration.wav and timeline.js. Clips are cached by text."""
-    script = validate_script(json.loads((project / "script.json").read_text(encoding="utf-8")), project / "shots")
+    script = validate_script(json.loads((project / "script.json").read_text(encoding="utf-8")), project / "shots", project / "images")
     ffmpeg = find_ffmpeg()
     build = project / "build"
     (build / "audio").mkdir(parents=True, exist_ok=True)
@@ -289,13 +305,16 @@ def render_range(build: Path, first: int, last: int, scale: float, output: Path)
 
     timeline = json.loads((build / "timeline.json").read_text(encoding="utf-8"))
     fps = timeline["fps"]
+    width, height = frame_size(timeline.get("meta") or {})
+    # KIARA_VIDEO_CRF / _PRESET: the server renders chat videos smaller and faster than the local studio.
     encoder = subprocess.Popen([
         find_ffmpeg(), "-y", "-v", "error", "-f", "image2pipe", "-framerate", str(fps), "-c:v", "mjpeg", "-i", "-",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(fps), str(output),
+        "-c:v", "libx264", "-preset", os.getenv("KIARA_VIDEO_PRESET", "medium"), "-crf", os.getenv("KIARA_VIDEO_CRF", "18"),
+        "-pix_fmt", "yuv420p", "-r", str(fps), str(output),
     ], stdin=subprocess.PIPE)
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        page = browser.new_page(viewport={"width": 1920, "height": 1080}, device_scale_factor=scale)
+        browser = playwright.chromium.launch(args=["--disable-dev-shm-usage"])
+        page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=scale)
         page.goto((build / "composition.html").as_uri())
         page.wait_for_function("typeof window.renderAt === 'function'")
         page.evaluate("document.fonts.ready")
@@ -373,9 +392,11 @@ def preview_frames(project: Path, moments: list[float], target: Path) -> list[Pa
 
     target.mkdir(parents=True, exist_ok=True)
     paths = []
+    timeline = json.loads((project / "build" / "timeline.json").read_text(encoding="utf-8"))
+    width, height = frame_size(timeline.get("meta") or {})
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        page = browser.new_page(viewport={"width": 1920, "height": 1080})
+        browser = playwright.chromium.launch(args=["--disable-dev-shm-usage"])
+        page = browser.new_page(viewport={"width": width, "height": height})
         page.goto((project / "build" / "composition.html").as_uri())
         page.wait_for_function("typeof window.renderAt === 'function'")
         for moment in moments:

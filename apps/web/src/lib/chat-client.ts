@@ -238,11 +238,17 @@ export function chatServerUrl(value = process.env.NEXT_PUBLIC_KIARA_CHAT_URL): s
 /** Downloads a finished video from the local bridge (videos are produced on this computer). */
 export async function fetchVideo(jobId: string, transport: ChatTransport = "local"): Promise<Blob> {
   if (transport === "cloud") {
-    // Kiara's server keeps the finished clip (at most 3 MB); it arrives as base64 inside JSON.
-    const payload = object(await chatRequest("cloud", "video", { action: "download", job_id: jobId }))
-    if (payload.mime !== "video/mp4" || typeof payload.data_base64 !== "string" || !payload.data_base64) throw new Error("O vídeo não pôde ser baixado.")
-    const bytes = Uint8Array.from(atob(payload.data_base64), (char) => char.charCodeAt(0))
-    return new Blob([bytes], { type: "video/mp4" })
+    // Kiara's server keeps the finished video; it arrives in parts of up to 2.5 MB, each as base64 inside JSON
+    // (a whole narrated video would pass the hosting's response limit).
+    const chunks: Uint8Array[] = []
+    let parts = 1
+    for (let part = 0; part < parts && part < 40; part += 1) {
+      const payload = object(await chatRequest("cloud", "video", { action: "download", job_id: jobId, part }))
+      if (payload.mime !== "video/mp4" || typeof payload.data_base64 !== "string" || !payload.data_base64) throw new Error("O vídeo não pôde ser baixado.")
+      if (typeof payload.parts === "number" && payload.parts >= 1) parts = Math.min(40, Math.floor(payload.parts))
+      chunks.push(Uint8Array.from(atob(payload.data_base64), (char) => char.charCodeAt(0)))
+    }
+    return new Blob(chunks as BlobPart[], { type: "video/mp4" })
   }
   const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store" })))
   if (typeof session.access_token !== "string" || !session.access_token) throw new Error("Não foi possível autorizar o acesso ao serviço local.")

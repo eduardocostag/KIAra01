@@ -91,7 +91,7 @@ const suggestions = [
   { mode: "chat" as const, title: "Organizar prioridades", text: "Ajude a organizar as prioridades da minha operação e sugira próximos passos." },
   { mode: "website" as const, title: "Criar um site", text: "Crie um site institucional responsivo com apresentação, serviços, perguntas frequentes e contato." },
   { mode: "dashboard" as const, title: "Montar um dashboard", text: "Crie um dashboard comercial com indicadores e filtros. Identifique claramente os dados de demonstração." },
-  { mode: "video" as const, title: "Criar um vídeo curto", text: "Crie um vídeo vertical de 6 segundos de ondas do mar ao pôr do sol, com luz dourada, para o Reels." },
+  { mode: "video" as const, title: "Criar um vídeo narrado", text: "Crie um vídeo vertical de 30 segundos para o Reels apresentando minha cafeteria, com tom acolhedor e chamada para visitar a loja." },
   { mode: "automation" as const, title: "Planejar uma tarefa", text: "Prepare um plano revisável para organizar arquivos e automatizar tarefas recorrentes no computador." },
   { mode: "image" as const, title: "Criar uma imagem", text: "Crie uma imagem de divulgação para o Instagram de uma clínica moderna, com luz suave e espaço para texto." },
 ]

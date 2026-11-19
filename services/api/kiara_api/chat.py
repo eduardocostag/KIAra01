@@ -109,7 +109,12 @@ VOICE_STYLE = (
 )
 # OmniRoute (Debian gateway) model chains. Each step is a different account or provider, so when one runs out
 # of quota Kiara moves to a model of the same level instead of degrading. Measured 2026-11-14 via the gateway.
-DEFAULT_VOICE_MODEL = "no-think/claude/claude-haiku-5-5"  # Anthropic account, ~2 s, no thinking step
+# Voice uses the same smartest model as the written chat. Measured 2026-11-18 on the Debian: without the thinking
+# step Sonnet starts writing in ~0.95 s, the same as Haiku, so the person no longer trades intelligence for speed.
+DEFAULT_VOICE_MODEL = "no-think/claude/claude-sonnet-5-5"
+# The free direct model (Gemini Flash Lite) is much weaker: it only joins the race when the server model has not
+# said anything after this many seconds (a hedge for a slow moment, not a rival that often wins).
+VOICE_DIRECT_HEDGE_SECONDS = float(os.getenv("KIARA_VOICE_DIRECT_HEDGE_SECONDS", "2.5") or 2.5)
 GATEWAY_VOICE_FALLBACKS = (
     "ddgw/claude-haiku-4-5",            # DuckDuckGo AI gateway: free, no account, ~2 s
     "ddgw/gpt-5.6-luna",                # DuckDuckGo, ~3 s
@@ -187,6 +192,7 @@ class VideoRequest(BaseModel):
     action: Literal["start", "status", "download"] = "start"
     prompt: str = Field(default="", max_length=3000)
     job_id: str = Field(default="", max_length=32)
+    part: int | None = Field(default=None, ge=0, le=39)
 
     @model_validator(mode="after")
     def complete(self):
@@ -571,8 +577,11 @@ async def _take_ai_slot() -> asyncio.Semaphore:
     return slots
 
 
-async def _first_words(iterator) -> str | None:
-    """The first non-empty piece of a model stream; None when it ends without one."""
+async def _first_words(iterator, delay: float = 0.0) -> str | None:
+    """The first non-empty piece of a model stream; None when it ends without one. `delay` holds a backup
+    contender back (the request only starts when the stream is first read)."""
+    if delay > 0:
+        await asyncio.sleep(delay)
     while True:
         try:
             piece = await iterator.__anext__()
@@ -591,10 +600,11 @@ async def _close(iterator) -> None:
             pass
 
 
-async def _race(contenders: list[tuple[str, object]], timeout: float):
-    """Starts every (name, stream) at once and keeps the first to say something: (name, stream, first piece).
+async def _race(contenders: list[tuple], timeout: float):
+    """Starts every (name, stream[, delay]) and keeps the first to say something: (name, stream, first piece).
     The others are cancelled and closed. None when none of them answers in time."""
-    tasks = {asyncio.ensure_future(_first_words(stream)): (name, stream) for name, stream in contenders}
+    tasks = {asyncio.ensure_future(_first_words(item[1], item[2] if len(item) > 2 else 0.0)): (item[0], item[1])
+             for item in contenders}
     winner = None
     pending = set(tasks)
     end = time.monotonic() + timeout
@@ -648,14 +658,13 @@ async def _stream_conversation(conversation: list[dict], base: str, model: str, 
     routes = [(base, key, candidate) for candidate in _candidates(base, model, fast)]
     direct = _voice_direct() if fast else None
     if direct:
-        routes.insert(0, direct)
-        # Voice: the direct model and the first server model start together and the first to speak wins.
-        # Measured 2026-11-18: the free Gemini answered in 0.8 s to 10 s; the server chain in ~2-2.7 s.
-        contenders = routes[:2]
-        routes = routes[2:]
+        # Voice: the first server model (Claude) starts at once; the free direct model only starts when Claude has
+        # not spoken after VOICE_DIRECT_HEDGE_SECONDS, and the first to speak wins.
+        contenders = [(routes[0], 0.0), (direct, VOICE_DIRECT_HEDGE_SECONDS)] if routes else [(direct, 0.0)]
+        routes = routes[1:]
         budget = min(deadline - time.monotonic(), 12)
-        winner = await _race([(candidate, stream(b, k, candidate, conversation, max_tokens, budget).__aiter__())
-                              for b, k, candidate in contenders], budget)
+        winner = await _race([(candidate, stream(b, k, candidate, conversation, max_tokens, budget).__aiter__(), delay)
+                              for (b, k, candidate), delay in contenders], budget)
         if winner is not None:
             candidate, iterator, piece = winner
             yield "model", candidate
@@ -832,18 +841,40 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 result["image"] = image
                 text = text or "Aqui está a imagem."
             else:
-                text = (text + "\n\n" if text else "") + "Não consegui criar a imagem agora. Tente de novo em instantes."
+                # The model's own sentence announces the picture ("Aqui vai a imagem..."): replace it, never contradict it.
+                text = "Não consegui criar a imagem agora: os geradores de imagem estão ocupados. Tente de novo em alguns minutos."
         clip = chat_video.MARKER.search(text)
         text = chat_video.MARKER.sub("", text).strip()
         if clip and not body.voice and "image" not in result:
             portrait, seconds = chat_video.parse_options(clip.group("options"))
             try:
-                result["video"] = await chat_video.start_video(clip.group("prompt"), portrait=portrait, seconds=seconds,
-                                                               title=_title(body.messages[-1].content))
-                text = text or "Estou preparando o vídeo. Leva cerca de um minuto."
+                result["video"] = await studio_video(clip.group("prompt"), context, portrait=portrait, seconds=seconds,
+                                                     title=_title(body.messages[-1].content))
+                text = text or "Estou produzindo o vídeo. Leva de 2 a 4 minutos."
             except Exception:  # noqa: BLE001 - the video service must never break the chat
-                text = (text + "\n\n" if text else "") + "Não consegui começar o vídeo agora. Tente de novo em instantes."
+                text = "Não consegui começar o vídeo agora. Tente de novo em alguns minutos."
         return text or "Pode repetir o pedido com um pouco mais de detalhe?", result
+
+    async def studio_video(request: str, context: RequestContext, *, portrait: bool, seconds: int, title: str) -> dict:
+        """The smartest chat model writes the full script (scenes, narration, pictures); the Debian studio makes it."""
+        try:
+            company = await business(context, request)
+        except Exception:  # noqa: BLE001 - the script can be written without the company context
+            company = ""
+        prompt = chat_video.studio_prompt(request, portrait=portrait, seconds=seconds, business=company)
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            plan, _model = await complete_conversation([{"role": "system", "content": prompt},
+                                                        {"role": "user", "content": "Escreva o roteiro agora, só o JSON."}],
+                                                       fast=False, provider_factory=provider_factory, max_tokens=3500)
+            try:
+                script = chat_video.parse_script(plan, portrait=portrait)
+                break
+            except ValueError as error:
+                last_error = error
+        else:
+            raise RuntimeError("video_script_failed") from last_error
+        return await chat_video.start_studio(script, title=title)
 
     async def image_payload(prompt: str) -> dict | None:
         picture, _model = await make_image(prompt.strip()[:3000])
@@ -1013,6 +1044,8 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                         yield event("speech", chars=first_voice["chars"])
                 if MARKER.search(text):
                     yield event("status", text="Criando a imagem…")
+                elif chat_video.MARKER.search(text) and not body.voice:
+                    yield event("status", text="Escrevendo o roteiro do vídeo…")
                 final, result = await finish(text, body, context)
                 if sources:
                     result["sources"] = sources
@@ -1056,14 +1089,15 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
             if body.action == "status":
                 return {"video": await chat_video.video_status(body.job_id)}
             if body.action == "download":
-                data = await chat_video.video_file(body.job_id)
-                return {"mime": "video/mp4", "data_base64": base64.b64encode(data).decode("ascii")}
-            plan, _model = await complete_conversation([{"role": "system", "content": chat_video.PLAN_PROMPT},
-                                                       {"role": "user", "content": body.prompt}], fast=True,
-                                                      provider_factory=provider_factory, max_tokens=800)
-            prompt, portrait, seconds, title = chat_video.parse_plan(plan, body.prompt)
-            job = await chat_video.start_video(prompt, portrait=portrait, seconds=seconds, title=title or _title(body.prompt))
-            return {"text": "Estou preparando o vídeo. Leva cerca de um minuto.", "provider": "kiara", "model": "", "video": job}
+                data, parts = await chat_video.video_file(body.job_id, body.part)
+                return {"mime": "video/mp4", "data_base64": base64.b64encode(data).decode("ascii"),
+                        "part": body.part or 0, "parts": parts}
+            portrait = bool(re.search(r"vertical|reels?|tiktok|stor(y|ies)|instagram|celular|9:16", body.prompt, re.IGNORECASE))
+            asked = re.search(r"(\d{1,2})\s*(s\b|seg|segundos)|(\d)\s*min", body.prompt, re.IGNORECASE)
+            seconds = 40 if not asked else int(asked.group(1)) if asked.group(1) else int(asked.group(3)) * 60
+            job = await studio_video(body.prompt, context, portrait=portrait, seconds=max(15, min(90, seconds)),
+                                     title=_title(body.prompt))
+            return {"text": "Estou produzindo o vídeo. Leva de 2 a 4 minutos.", "provider": "kiara", "model": "", "video": job}
         except ValueError:
             raise ApiError(422, "invalid_video_job", "Vídeo não encontrado.") from None
         except Exception:  # noqa: BLE001 - no service details to the browser

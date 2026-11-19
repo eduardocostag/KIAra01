@@ -8,7 +8,8 @@
   html, body { width: 1920px; height: 1080px; overflow: hidden; background: #05040b; }
   body { font-family: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif; color: white; -webkit-font-smoothing: antialiased; }
   #stage { position: absolute; inset: 0; overflow: hidden; background: #05040b; }
-  .blob { position: absolute; width: 1100px; height: 1100px; border-radius: 50%; filter: blur(140px); opacity: .55; }
+  /* Soft colour clouds: a radial gradient looks the same as a heavy blur filter and renders 4-6x faster per frame. */
+  .blob { position: absolute; width: 1500px; height: 1500px; margin: -200px 0 0 -200px; border-radius: 50%; opacity: .5; }
   #grid { position: absolute; left: -50%; right: -50%; top: 46%; height: 120%; background-image: linear-gradient(rgb(170 130 255 / .14) 1px, transparent 1px), linear-gradient(90deg, rgb(170 130 255 / .14) 1px, transparent 1px); background-size: 80px 80px; transform-origin: 50% 0; mask-image: linear-gradient(to bottom, transparent, black 30%, transparent 85%); }
   .particle { position: absolute; left: 0; top: 0; border-radius: 50%; background: #d8c6ff; box-shadow: 0 0 10px #a78bfa; }
   .spark { position: absolute; left: 0; top: 0; width: 6px; height: 6px; border-radius: 50%; background: white; box-shadow: 0 0 12px var(--c, #c4a1ff), 0 0 24px var(--c, #c4a1ff); }
@@ -72,6 +73,23 @@
   .tile.new i { background: none; box-shadow: none; display: grid; place-items: center; font-style: normal; font-size: 44px; color: #f0abfc; }
   .shield { position: absolute; left: 960px; top: 470px; border-radius: 50%; border: 3px solid #7dd3fc; box-shadow: 0 0 40px #7dd3fc, inset 0 0 40px rgb(125 211 252 / .4); }
   .cta { position: absolute; left: 50%; padding: 20px 40px; border-radius: 18px; background: linear-gradient(90deg, #7c4dff, #9f7aff); font-size: 28px; font-weight: 800; box-shadow: 0 24px 70px -10px rgb(124 77 255 / .9); white-space: nowrap; }
+  /* Photo scenes: a generated picture full screen with a slow camera move, headline and cards over it. */
+  .photo { position: absolute; inset: 0; overflow: hidden; background: #05040b; }
+  .photo img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: 50% 50%; }
+  .photo.dim img { filter: blur(10px) brightness(.38) saturate(1.1); }
+  .shade { position: absolute; inset: 0; background: linear-gradient(to bottom, rgb(5 4 11 / .62), transparent 26%, transparent 46%, rgb(5 4 11 / .9) 100%); }
+  .shade.side { background: linear-gradient(to bottom, rgb(5 4 11 / .62), transparent 26%, transparent 46%, rgb(5 4 11 / .9) 100%), linear-gradient(to left, rgb(5 4 11 / .7), transparent 38%); }
+  .headline { position: absolute; left: 96px; right: 600px; bottom: 175px; font-size: 78px; font-weight: 800; letter-spacing: -.035em; line-height: 1.02; text-shadow: 0 6px 40px rgb(0 0 0 / .65); z-index: 30; }
+  .headline::before { content: ""; display: block; width: calc(var(--line, 0) * 150px); height: 7px; border-radius: 4px; margin-bottom: 24px; background: var(--accent); box-shadow: 0 0 22px var(--accent); }
+  .headline.center { left: 140px; right: 140px; bottom: auto; top: 380px; text-align: center; font-size: 96px; }
+  .headline.center::before { margin-left: auto; margin-right: auto; }
+  body.portrait .kicker { top: 130px; font-size: 26px; }
+  body.portrait .headline { left: 72px; right: 72px; bottom: 330px; font-size: 92px; }
+  body.portrait .headline.center { top: 640px; bottom: auto; font-size: 104px; }
+  body.portrait .caption { bottom: 120px; max-width: 960px; width: 960px; font-size: 38px; }
+  body.portrait .card { left: 110px; right: auto; width: 860px; font-size: 30px; padding: 24px 28px; }
+  body.portrait .cta { font-size: 34px; }
+  body.portrait #brand { top: 64px; left: 64px; }
 </style>
 </head>
 <body>
@@ -97,7 +115,10 @@
 </div>
 <script src="timeline.js"></script>
 <script>
-const T = window.TIMELINE, W = 1920, H = 1080
+const T = window.TIMELINE, PORTRAIT = !!(T.meta || {}).portrait, W = PORTRAIT ? 1080 : 1920, H = PORTRAIT ? 1920 : 1080
+const PRESENTER = (T.meta || {}).presenter !== false
+for (const el of [document.documentElement, document.body]) { el.style.width = `${W}px`; el.style.height = `${H}px` }
+if (PORTRAIT) document.body.classList.add("portrait")
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v))
 const ease = (x) => 1 - Math.pow(1 - clamp(x), 3)
 const easeInOut = (x) => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2 }
@@ -108,7 +129,7 @@ const mix = (a, b, k) => { const x = hex(a), y = hex(b); return `rgb(${x.map((v,
 let seed = 11
 const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
 
-const scenes = T.scenes.map((scene, i) => ({ ...scene, vStart: i === 0 ? 0 : scene.start - .4, vEnd: i + 1 < T.scenes.length ? T.scenes[i + 1].start - .4 : T.duration }))
+const scenes = T.scenes.map((scene, i) => ({ ...scene, index: i, vStart: i === 0 ? 0 : scene.start - .4, vEnd: i + 1 < T.scenes.length ? T.scenes[i + 1].start - .4 : T.duration }))
 const root = document.getElementById("scenes")
 const META = T.meta || {}
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]))
@@ -124,9 +145,16 @@ for (const scene of scenes) {
   const words = scene.caption.split(/\s+/)
   // Split into short chunks (sentence / comma boundaries) so captions stay on one or two lines.
   scene.chunkOf = []; let chunk = 0, length = 0
-  words.forEach((w, i) => { scene.chunkOf.push(chunk); length += w.length + 1; if ((/[.!?]$/.test(w) && length > 25) || (/[,:]$/.test(w) && length > 48) || length > 80) { chunk += 1; length = 0 } })
+  words.forEach((w, i) => { scene.chunkOf.push(chunk); length += w.length + 1; if ((/[.!?]$/.test(w) && length > 25) || (/[,:]$/.test(w) && length > 48) || length > (PORTRAIT ? 58 : 80)) { chunk += 1; length = 0 } })
   const caption = `<div class="caption">${words.map((w) => `<span>${esc(w)}</span>`).join(" ")}</div>`
-  if (scene.layout === "shot") {
+  const picture = scene.photo ? `<div class="photo${scene.layout === "outro" ? " dim" : ""}"><img src="../images/${encodeURIComponent(scene.photo)}"></div>` : ""
+  if (scene.layout === "photo") {
+    const cards = scene.cards || [], center = !scene.photo
+    el.innerHTML = picture + (scene.photo ? `<div class="shade${cards.length && !PORTRAIT ? " side" : ""}"></div>` : "") +
+      (scene.kicker ? `<div class="kicker">${esc(scene.kicker)}</div>` : "") +
+      (scene.title ? `<div class="headline${center ? " center" : ""}">${esc(scene.title)}</div>` : "") +
+      cards.map((c, i) => `<div class="card" style="top:${(PORTRAIT ? 300 : 250) + i * (PORTRAIT ? 140 : 124)}px"><b>${i + 1}</b><span>${esc(c.text)}</span><div class="shine"></div></div>`).join("") + caption
+  } else if (scene.layout === "shot") {
     el.innerHTML = `<div class="kicker">${esc(scene.kicker)}</div><div class="reflection"></div>
       <div class="window"><div class="bar"><i></i><i></i><i></i><span>${esc(META.app_label || "app.kiara")} · ${esc(scene.kicker)}</span></div><div class="viewport">
       ${scene.shots.map((s) => `<div class="layer"><img src="../shots/${encodeURIComponent(s.shot)}.png"></div>`).join("")}
@@ -147,8 +175,11 @@ for (const scene of scenes) {
     el.innerHTML = `<div class="kicker">${esc(scene.kicker || scene.title || "")}</div><div class="shield"></div><div class="shield"></div>` + (scene.cards || []).map((c) => `<div class="pill">${esc(c.text)}</div>`).join("") + caption
   } else if (scene.layout === "outro") {
     const lines = String(scene.title || "").split(/(?<=[.!?])\s+/).filter(Boolean), first = lines.slice(0, -1).join(" "), last = lines[lines.length - 1] || ""
-    el.innerHTML = `<div class="big" style="top:${first ? 640 : 700}px;font-size:${Math.max(56, 92 - Math.max(0, String(scene.title || "").length - 32))}px">${first ? esc(first) + "<br>" : ""}<span class="grad">${esc(last)}</span></div>` +
-      (META.cta ? `<div class="cta" style="top:905px">${esc(META.cta)}</div>` : "")
+    // Without the orb above it (client videos, vertical videos) the closing title sits in the middle of the frame.
+    const top = PORTRAIT ? (first ? 760 : 820) : PRESENTER ? (first ? 640 : 700) : (first ? 330 : 390)
+    const size = Math.max(PORTRAIT ? 64 : 56, (PORTRAIT ? 104 : 92) - Math.max(0, String(scene.title || "").length - 32))
+    el.innerHTML = picture + `<div class="big" style="top:${top}px;font-size:${size}px;padding:0 60px">${first ? esc(first) + "<br>" : ""}<span class="grad">${esc(last)}</span></div>` +
+      (META.cta ? `<div class="cta" style="top:${PORTRAIT ? 1320 : PRESENTER ? 905 : 700}px">${esc(META.cta)}</div>` : "")
   }
   scene.captionWords = [...el.querySelectorAll(".caption span")]
   const total = words.reduce((s, w) => s + w.length + 1, 0); let acc = 0
@@ -171,8 +202,10 @@ const eyes = document.getElementById("eyes"), mouth = document.getElementById("m
 const sats = [...document.querySelectorAll(".sat")], shocks = [...document.querySelectorAll(".shock")]
 const NB = 72
 bars.innerHTML = Array.from({ length: NB }, () => `<line stroke-linecap="round" stroke-width="4"></line>`).join(""); const lines = [...bars.querySelectorAll("line")]
-const POSE = { hello: [960, 420, 300], orb: [960, 470, 340], shot: [176, 870, 150], custom: [960, 470, 220], control: [960, 470, 230], outro: [960, 370, 280] }
-const pose = (scene) => POSE[scene.layout] || POSE.shot
+const POSE = PORTRAIT ? { photo: [940, 170, 120], outro: [540, 520, 260] }
+  : { hello: [960, 420, 300], orb: [960, 470, 340], shot: [176, 870, 150], custom: [960, 470, 220], control: [960, 470, 230], outro: [960, 370, 280], photo: [1790, 150, 110] }
+const pose = (scene) => POSE[scene.layout] || POSE.shot || POSE.photo
+if (!PRESENTER) { presenter.style.display = "none"; document.getElementById("sparks").style.display = "none" }
 
 function renderPresenter(t, level, current, previous, accent) {
   const k = easeInOut((t - current.vStart) / 1.1)
@@ -240,7 +273,7 @@ window.renderAt = function renderAt(t) {
   ;[["b1", -200, -250, .23], ["b2", 1100, 300, .17], ["b3", 300, 500, .13]].forEach(([id, bx, by, sp], i) => {
     const b = document.getElementById(id)
     b.style.transform = `translate(${bx + Math.sin(t * sp + i) * 260}px, ${by + Math.cos(t * sp * 1.3 + i) * 180}px)`
-    b.style.background = i === 1 ? accent : i === 0 ? "#3b1d7a" : "#123a6b"
+    b.style.background = `radial-gradient(circle, ${i === 1 ? accent : i === 0 ? "#3b1d7a" : "#123a6b"} 0%, transparent 62%)`
   })
   document.getElementById("grid").style.transform = `perspective(700px) rotateX(64deg) translateY(${(t * 40) % 80}px)`
   for (const p of particles) {
@@ -292,6 +325,20 @@ window.renderAt = function renderAt(t) {
         const pulse = el.querySelector(".spotPulse"), ph = (p * 1.3) % 1
         pulse.style.transform = `scale(${1 + ph * 1.2})`; pulse.style.opacity = (1 - ph).toFixed(2)
       })
+    }
+
+    const photo = scene.el.querySelector(".photo img")
+    if (photo) {
+      // Slow push-in with a drift that alternates direction scene by scene (Ken Burns), light coming up at the start.
+      const k = easeInOut(clamp(local / Math.max(3, span + .5))), dir = scene.index % 2 ? 1 : -1
+      photo.style.transform = `scale(${lerp(1.18, 1.04, k)}) translate(${dir * lerp(-2.4, 2.4, k)}%, ${lerp(1.4, -1.4, k)}%)`
+      if (scene.layout === "photo") photo.style.filter = `brightness(${lerp(.55, 1, ease(local / 1.1)).toFixed(3)}) saturate(1.06)`
+    }
+    const headline = scene.el.querySelector(".headline")
+    if (headline) {
+      const p = (local - .45) / .8
+      headline.style.opacity = ease(p * 1.6).toFixed(3); headline.style.transform = `translateY(${(1 - ease(p)) * 46}px)`
+      headline.style.setProperty("--line", ease((local - .7) / .8).toFixed(3))
     }
 
     const cards = [...scene.el.querySelectorAll(".card")], cues = scene.layout === "orb" ? scene.words : scene.cards

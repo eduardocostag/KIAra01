@@ -15,7 +15,10 @@ import re
 import time
 
 # Measured 2026-11-14 via the gateway: Gemini ~10 s (JPEG), GPT Image 2 ~18 s (PNG ~3 MB).
-DEFAULT_IMAGE_MODELS = ("antigravity/gemini-3.1-flash-image", "codex/gpt-image-2")
+# 2026-11-18 both were out (Gemini quota for 3 h, ChatGPT login expired) and every image failed, so the chain now
+# goes on to the Gemini API account and, last, the free AI Horde network (Flux, ~16 s when its queue is short).
+DEFAULT_IMAGE_MODELS = ("antigravity/gemini-3.1-flash-image", "codex/gpt-image-2", "gemini/gemini-3.1-flash-image",
+                        "aihorde/Flux.1-Schnell fp8 (Compact)")
 IMAGE_DEADLINE_SECONDS = 100
 MAX_IMAGE_BYTES = 12_000_000
 MAX_SIDE = 1536

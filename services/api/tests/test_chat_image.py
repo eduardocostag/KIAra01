@@ -73,7 +73,7 @@ def test_plain_answers_have_no_image(monkeypatch):
 def test_failed_generation_is_said_plainly(monkeypatch):
     api, _ = build(monkeypatch, "[[IMAGEM: um farol]]", picture=b"")
     body = api.post("/v1/chat/messages", json={"messages": ASK}).json()
-    assert "image" not in body and body["text"] == "Não consegui criar a imagem agora. Tente de novo em instantes."
+    assert "image" not in body and body["text"].startswith("Não consegui criar a imagem agora")
 
 
 def test_voice_never_generates_images(monkeypatch):
@@ -104,7 +104,7 @@ def test_generator_falls_back_and_returns_a_small_jpeg(monkeypatch):
         return png()
 
     picture, model = asyncio.run(chat_image.generate_image("um farol", request=request))
-    assert calls == list(chat_image.DEFAULT_IMAGE_MODELS) and model == chat_image.DEFAULT_IMAGE_MODELS[1]
+    assert calls == list(chat_image.DEFAULT_IMAGE_MODELS[:2]) and model == chat_image.DEFAULT_IMAGE_MODELS[1]
     with Image.open(io.BytesIO(picture)) as image:
         assert image.format == "JPEG" and max(image.size) == chat_image.MAX_SIDE
     assert asyncio.run(chat_image.generate_image("x", request=lambda *_: (_ for _ in ()).throw(RuntimeError()))) == (b"", "")

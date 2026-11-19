@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import json
@@ -120,11 +121,27 @@ def test_messages_endpoint_also_searches(monkeypatch):
     assert seen["searches"] == ["dólar hoje"] and body["text"].startswith("O dólar fechou") and body["sources"]
 
 
-def test_without_search_key_the_persona_says_no_internet(monkeypatch):
+def test_search_needs_no_paid_key_and_can_be_turned_off(monkeypatch):
     monkeypatch.delenv("EXA_API_KEY", raising=False)
-    assert chat.site_context() == chat.SITE_CONTEXT and chat.NO_INTERNET in chat.SITE_CONTEXT
-    monkeypatch.setenv("EXA_API_KEY", "x")
+    monkeypatch.delenv("KIARA_WEB_SEARCH", raising=False)
     assert chat.NO_INTERNET not in chat.site_context() and chat_search.SEARCH_STYLE in chat.site_context()
+    monkeypatch.setenv("KIARA_WEB_SEARCH", "off")
+    assert chat.site_context() == chat.SITE_CONTEXT and chat.NO_INTERNET in chat.SITE_CONTEXT
+
+
+def test_free_search_reads_result_pages_and_quotes(monkeypatch):
+    monkeypatch.delenv("EXA_API_KEY", raising=False)
+    monkeypatch.delenv("KIARA_WEB_SEARCH", raising=False)
+    monkeypatch.setattr(chat_search, "_duckduckgo", lambda q: [{"title": "Wise", "url": "https://wise.com/dolar", "date": "", "text": "Conversor"}])
+    monkeypatch.setattr(chat_search, "_bing", lambda q: [{"title": "UOL", "url": "https://economia.uol.com.br/c", "date": "", "text": "Câmbio"},
+                                                         {"title": "Wise", "url": "https://wise.com/dolar/", "date": "", "text": "dup"}])
+    monkeypatch.setattr(chat_search, "_read_page", lambda url: "Menu\nA cotação do dólar hoje é 5,88 reais no câmbio comercial.\nRodapé")
+    monkeypatch.setattr(chat_search, "_quotes", lambda codes: {"title": "Cotação", "url": "https://economia.awesomeapi.com.br/",
+                                                               "date": "", "text": f"{codes[0]} R$ 5,88"})
+    results = asyncio.run(chat_search.web_search("cotação do dólar hoje"))
+    assert [chat_search._host(r["url"]) for r in results] == ["economia.awesomeapi.com.br", "wise.com", "economia.uol.com.br"]
+    assert results[0]["text"] == "USD R$ 5,88" and "5,88 reais" in results[1]["text"]
+    assert chat_search._bing_target("https://www.bing.com/ck/a?!&&p=x&u=a1aHR0cHM6Ly9nMS5nbG9iby5jb20v&ntb=1") == "https://g1.globo.com/"
 
 
 def _pdf(text):

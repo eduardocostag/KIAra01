@@ -8,7 +8,11 @@ normalizes. Engines, best first; each one that fails hands over to the next:
 3. LTX-Video on a Hugging Face ZeroGPU Space: animates Kiara's picture, or straight from the text
 4. Always available: Kiara's picture with a slow camera move (ffmpeg on this machine)
 
-Every result is re-encoded to H.264 MP4 under 3 MB (the Vercel API relays it as base64). Jobs run one at a time.
+Studio jobs ("kind": "studio", the chat's videos since 2026-11-18) are produced like Kiara's presentation video:
+a script written by the chat model, one generated picture per scene, narration in Kiara's voice (Edge TTS) with
+word-synced captions and cards, rendered frame by frame in headless Chromium (app/video_studio, copied into the
+image at build time) and encoded with ffmpeg. The file is handed over in parts of PART_BYTES (the Vercel API relays
+each part as base64). Jobs run one at a time.
 """
 from __future__ import annotations
 
@@ -34,13 +38,18 @@ GATEWAY_TOKEN = os.getenv("KIARA_GATEWAY_TOKEN", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "").strip() or None
 POLLINATIONS_KEY = os.getenv("POLLINATIONS_KEY", "").strip()
 POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "bytedance/seedance-1-pro-fast")
-IMAGE_MODELS = [m.strip() for m in os.getenv("KIARA_IMAGE_MODELS", "antigravity/gemini-3.1-flash-image,codex/gpt-image-2").split(",") if m.strip()]
+IMAGE_MODELS = [m.strip() for m in os.getenv("KIARA_IMAGE_MODELS", "antigravity/gemini-3.1-flash-image,codex/gpt-image-2,"
+                                               "gemini/gemini-3.1-flash-image,aihorde/Flux.1-Schnell fp8 (Compact)").split(",") if m.strip()]
 WAN_SPACE = os.getenv("WAN_SPACE", "zerogpu-aoti/wan2-2-fp8da-aoti-faster")
 LTX_SPACE = os.getenv("LTX_SPACE", "Lightricks/ltx-video-distilled")
 FLUX_SPACE = os.getenv("FLUX_SPACE", "black-forest-labs/FLUX.1-schnell")
 KEEP_HOURS = 72
 MAX_QUEUE = 12
 MAX_BYTES = 3_000_000  # base64 in JSON must stay under Vercel's 4.5 MB response limit
+PART_BYTES = 2_500_000  # studio videos are larger: the API fetches them in parts of this size
+MAX_STUDIO_BYTES = 60_000_000
+STUDIO_QUALITY = os.getenv("KIARA_STUDIO_QUALITY", "1080p")
+STUDIO_WORKERS = int(os.getenv("KIARA_STUDIO_WORKERS", "2") or 2)
 NEGATIVE = "worst quality, inconsistent motion, blurry, jittery, distorted, watermark, text"
 ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -74,7 +83,7 @@ def update(job: dict, **changes) -> None:
 
 
 def public(job: dict) -> dict:
-    keys = ("id", "status", "progress", "message", "title", "duration", "error", "engine", "warnings")
+    keys = ("id", "status", "progress", "message", "title", "duration", "error", "engine", "warnings", "parts")
     return {key: job.get(key) for key in keys}
 
 
@@ -114,18 +123,18 @@ def normalize(source: Path, target: Path, portrait: bool) -> None:
     raise RuntimeError("video_too_large")
 
 
-def gateway_image(prompt: str, folder: Path) -> Path | None:
+def gateway_image(prompt: str, folder: Path, size: str = "1024x1024", name: str = "frame") -> Path | None:
     """A picture from Kiara's own image models (through the gateway)."""
     for model in IMAGE_MODELS:
         try:
-            body = json.dumps({"model": model, "prompt": prompt[:3000], "n": 1, "size": "1024x1024"}).encode()
+            body = json.dumps({"model": model, "prompt": prompt[:3000], "n": 1, "size": size}).encode()
             request = urllib.request.Request(f"{GATEWAY}/ai/v1/images/generations", data=body, method="POST", headers={
                 "Authorization": f"Bearer {GATEWAY_TOKEN}", "Content-Type": "application/json"})
             with urllib.request.urlopen(request, timeout=90) as response:
                 item = (json.load(response).get("data") or [{}])[0]
             raw = base64.b64decode(item.get("b64_json") or "")
             if raw:
-                path = folder / ("frame.png" if raw[:4] == b"\x89PNG" else "frame.jpg")
+                path = folder / (f"{name}.png" if raw[:4] == b"\x89PNG" else f"{name}.jpg")
                 path.write_bytes(raw)
                 return path
         except Exception:  # noqa: BLE001 - next image model
@@ -247,9 +256,92 @@ ENGINES = (("pollinations", engine_pollinations, "Gerando o vídeo"), ("wan", en
            ("ltx", engine_ltx, "Gerando o vídeo"), ("camera", engine_camera, "Montando o vídeo"))
 
 
+# ---------- studio videos (narrated, like Kiara's presentation) ----------
+
+def studio_images(job: dict, project: Path) -> list[str]:
+    """One picture per scene that asks for one, three at a time; returns warnings."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    images = project / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    portrait = bool(job["script"].get("meta", {}).get("portrait"))
+    size = "1024x1536" if portrait else "1536x1024"
+    framing = ("vertical 9:16 composition, subject centered, " if portrait else "wide 16:9 composition, ") + \
+        "photorealistic, cinematic light, high detail, no text, no letters, no logos, no watermark"
+    wanted = [scene for scene in job["script"]["scenes"]
+              if isinstance(scene, dict) and scene.get("layout") in {"photo", "outro"} and str(scene.get("image") or "").strip()]
+    done = [0]
+
+    def make(scene: dict) -> None:
+        name = re.sub(r"[^a-z0-9-]", "-", str(scene.get("id") or uuid.uuid4().hex[:8]).lower())[:30].strip("-") or uuid.uuid4().hex[:8]
+        path = gateway_image(f"{str(scene['image'])[:1500]}. {framing}", images, size, name)
+        if path:
+            scene["photo"] = path.name
+        with lock:
+            done[0] += 1
+        update(job, progress=0.05 + 0.3 * done[0] / max(1, len(wanted)), message=f"Criando as imagens ({done[0]} de {len(wanted)})")
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(make, wanted))
+    made = [scene["photo"] for scene in wanted if scene.get("photo")]
+    # A scene whose picture failed borrows one that worked; the closing scene reuses the first (dimmed).
+    missing = [scene for scene in job["script"]["scenes"] if isinstance(scene, dict) and not scene.get("photo")
+               and (scene.get("layout") == "outro" or (scene.get("layout") == "photo" and scene.get("image")))]
+    for index, scene in enumerate(missing):
+        if made:
+            scene["photo"] = made[0] if scene.get("layout") == "outro" else made[index % len(made)]
+    if wanted and not made:
+        return ["Os geradores de imagem estavam sem cota agora; o vídeo usa fundos animados no lugar das fotos."]
+    return []
+
+
+def process_studio(job: dict) -> None:
+    from app.video_studio.engine import LIBRARY_SHOTS, narrate, render
+
+    project = WORK / job["id"]
+    project.mkdir(parents=True, exist_ok=True)
+    try:
+        update(job, status="running", progress=0.04, message="Criando as imagens")
+        warnings = studio_images(job, project)
+        shots = project / "shots"
+        shots.mkdir(exist_ok=True)
+        for scene in job["script"]["scenes"]:
+            for shot in (scene.get("shots") or []) if isinstance(scene, dict) else []:
+                name = str(shot.get("shot") if isinstance(shot, dict) else shot)
+                source = LIBRARY_SHOTS / f"{name}.png"
+                if re.fullmatch(r"[a-z0-9-]{1,60}", name) and source.is_file():
+                    shutil.copyfile(source, shots / source.name)
+        (project / "script.json").write_text(json.dumps(job["script"], ensure_ascii=False), encoding="utf-8")
+
+        def progress(stage: str, value: float, message: str) -> None:
+            if stage == "narration":
+                update(job, progress=0.36 + 0.06 * value, message="Gravando a narração")
+            elif stage == "render":
+                update(job, progress=0.42 + 0.55 * value, message=message)
+            else:
+                update(job, progress=0.98, message="Finalizando o vídeo")
+
+        timeline = narrate(project, progress=progress)
+        output = render(project, quality=STUDIO_QUALITY, workers=STUDIO_WORKERS, progress=progress)
+        if output.stat().st_size > MAX_STUDIO_BYTES:
+            raise RuntimeError("video_too_large")
+        target = FILES / f"{job['id']}.mp4"
+        shutil.move(str(output), target)
+        update(job, status="done", progress=1.0, message="Pronto", engine="studio", duration=round(timeline["duration"], 1),
+               warnings=warnings, parts=max(1, -(-target.stat().st_size // PART_BYTES)))
+    except Exception as error:  # noqa: BLE001 - the reason stays in the job file, the person gets a plain message
+        job.setdefault("tries", []).append(f"studio: {type(error).__name__}: {str(error)[:300]}")
+        update(job, status="failed", progress=1.0, message="Falhou",
+               error="Não consegui montar o vídeo agora. Tente de novo em alguns minutos.")
+    finally:
+        shutil.rmtree(project, ignore_errors=True)
+
+
 # ---------- worker ----------
 
 def process(job: dict) -> None:
+    if job.get("kind") == "studio":
+        return process_studio(job)
     folder = WORK / job["id"]
     folder.mkdir(parents=True, exist_ok=True)
     try:
@@ -322,10 +414,28 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2:
                 return self.send(200, public(job))
             if parts[2:] == ["file"] and job.get("status") == "done":
-                data = (FILES / f"{parts[1]}.mp4").read_bytes()
+                path = FILES / f"{parts[1]}.mp4"
+                size = path.stat().st_size
+                total = max(1, -(-size // PART_BYTES))
+                query = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                try:
+                    part = int((query.get("part") or ["-1"])[0])
+                except ValueError:
+                    part = -1
+                if part < 0 and size > MAX_BYTES:
+                    return self.send(409, {"error": "use_parts", "parts": total})
+                with path.open("rb") as handle:
+                    if part >= 0:
+                        if part >= total:
+                            return self.send(404, {"error": "no_such_part"})
+                        handle.seek(part * PART_BYTES)
+                        data = handle.read(PART_BYTES)
+                    else:
+                        data = handle.read()
                 self.send_response(200)
                 self.send_header("Content-Type", "video/mp4")
                 self.send_header("Content-Length", str(len(data)))
+                self.send_header("X-Kiara-Parts", str(total))
                 self.end_headers()
                 self.wfile.write(data)
                 return
@@ -335,13 +445,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0].strip("/") != "jobs":
             return self.send(404, {"error": "not_found"})
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 16000)) or b"{}")
-            prompt = str(body.get("prompt", "")).strip()[:2000]
-            assert len(prompt) >= 3
-        except (ValueError, AssertionError):
-            return self.send(400, {"error": "invalid_prompt"})
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 64000)) or b"{}")
+        except ValueError:
+            return self.send(400, {"error": "invalid_body"})
         if pending.qsize() >= MAX_QUEUE:
             return self.send(429, {"error": "queue_full"})
+        if body.get("kind") == "studio":
+            return self.start_studio(body)
+        prompt = str(body.get("prompt", "")).strip()[:2000]
+        if len(prompt) < 3:
+            return self.send(400, {"error": "invalid_prompt"})
         job = {"id": uuid.uuid4().hex, "status": "queued", "progress": 0.0, "message": "Na fila", "error": None,
                "title": str(body.get("title") or "Vídeo da Kiara")[:120], "duration": None, "engine": None, "warnings": [],
                "prompt": prompt, "image_prompt": str(body.get("image_prompt") or prompt)[:3000],
@@ -349,11 +462,30 @@ class Handler(BaseHTTPRequestHandler):
                "created_at": time.time()}
         with lock:
             save(job)
+        return self.enqueue(job)
+
+    def enqueue(self, job: dict):
         pending.put(job["id"])
         ahead = pending.qsize() - 1
         if ahead > 0:
             update(job, message=f"Na fila ({ahead} na frente)")
         return self.send(202, public(job))
+
+    def start_studio(self, body: dict):
+        from app.video_studio.engine import VideoError, validate_script
+
+        script = body.get("script")
+        try:
+            validate_script(script)  # rejects a broken script now instead of after the pictures are made
+        except (VideoError, TypeError, ValueError, AttributeError) as error:
+            return self.send(400, {"error": "invalid_script", "detail": str(error)[:200]})
+        job = {"id": uuid.uuid4().hex, "kind": "studio", "status": "queued", "progress": 0.0, "message": "Na fila",
+               "error": None, "title": str(body.get("title") or "Vídeo da Kiara")[:120], "duration": None, "engine": None,
+               "warnings": [], "script": script, "portrait": bool((script.get("meta") or {}).get("portrait")),
+               "created_at": time.time()}
+        with lock:
+            save(job)
+        return self.enqueue(job)
 
 
 def main() -> None:
