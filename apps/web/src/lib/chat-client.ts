@@ -238,23 +238,42 @@ export function chatServerUrl(value = process.env.NEXT_PUBLIC_KIARA_CHAT_URL): s
 /** Downloads a finished video from the local bridge (videos are produced on this computer). */
 export async function fetchVideo(jobId: string, transport: ChatTransport = "local"): Promise<Blob> {
   if (transport === "cloud") {
-    // Kiara's server keeps the finished video; it arrives in parts of up to 2.5 MB, each as base64 inside JSON
-    // (a whole narrated video would pass the hosting's response limit).
-    const chunks: Uint8Array[] = []
-    let parts = 1
-    for (let part = 0; part < parts && part < 40; part += 1) {
-      const payload = object(await chatRequest("cloud", "video", { action: "download", job_id: jobId, part }))
-      if (payload.mime !== "video/mp4" || typeof payload.data_base64 !== "string" || !payload.data_base64) throw new Error("O vídeo não pôde ser baixado.")
-      if (typeof payload.parts === "number" && payload.parts >= 1) parts = Math.min(40, Math.floor(payload.parts))
-      chunks.push(Uint8Array.from(atob(payload.data_base64), (char) => char.charCodeAt(0)))
+    // Kiara's server keeps the finished video; it arrives in parts of up to 2.5 MB (a whole narrated video would
+    // pass the hosting's response limit). Parts come as plain bytes and, after the first, several at once —
+    // on a phone the old one-by-one base64 download took minutes.
+    const first = await fetchVideoPart(jobId, 0)
+    const chunks: BlobPart[] = [first.data]
+    const rest = Array.from({ length: Math.min(40, first.parts) - 1 }, (_, index) => index + 1)
+    let next = 0
+    const worker = async () => {
+      while (next < rest.length) {
+        const part = rest[next++]
+        chunks[part] = (await fetchVideoPart(jobId, part).catch(() => fetchVideoPart(jobId, part))).data
+      }
     }
-    return new Blob(chunks as BlobPart[], { type: "video/mp4" })
+    await Promise.all(Array.from({ length: Math.min(4, rest.length) }, worker))
+    return new Blob(chunks, { type: "video/mp4" })
   }
   const session = object(await jsonResponse(await fetch("/api/chat/session", { method: "POST", cache: "no-store" })))
   if (typeof session.access_token !== "string" || !session.access_token) throw new Error("Não foi possível autorizar o acesso ao serviço local.")
   const response = await fetch(`${chatServerUrl()}/api/video`, { method: "POST", mode: "cors", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ action: "download", job_id: jobId }), signal: AbortSignal.timeout(300_000) })
   if (!response.ok || response.headers.get("Content-Type") !== "video/mp4") { await jsonResponse(response); throw new Error("O vídeo não pôde ser baixado.") }
   return await response.blob()
+}
+
+async function fetchVideoPart(jobId: string, part: number): Promise<{ data: Blob; parts: number }> {
+  const response = await fetch("/api/chat/video", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "download", job_id: jobId, part, raw: true }), signal: AbortSignal.timeout(120_000) })
+  const count = (value: unknown) => typeof value === "number" && value >= 1 ? Math.floor(value) : Number.parseInt(String(value ?? ""), 10) || 1
+  if (response.ok && (response.headers.get("Content-Type") ?? "").startsWith("video/mp4")) {
+    return { data: await response.blob(), parts: count(response.headers.get("X-Kiara-Parts")) }
+  }
+  // An older server answers with base64 inside JSON.
+  const payload = object(await jsonResponse(response))
+  if (payload.mime !== "video/mp4" || typeof payload.data_base64 !== "string" || !payload.data_base64) throw new Error("O vídeo não pôde ser baixado.")
+  const binary = atob(payload.data_base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return { data: new Blob([bytes], { type: "video/mp4" }), parts: count(payload.parts) }
 }
 
 export function validateChatAudio(file: Pick<File, "size" | "type">): string {

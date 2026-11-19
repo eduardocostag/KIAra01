@@ -21,8 +21,9 @@ function upstreamFormatError(status: number, contentType: string, requestId: str
   return errorResponse(502, "upstream_invalid_response", "A API respondeu em formato inválido (" + (contentType || "tipo não informado") + ", HTTP " + status + "). KIARA_API_URL pode estar apontando para uma página em vez do backend.", requestId, { upstream_status: status })
 }
 
-/** `stream`: pass a server-sent event stream through as it arrives (the chat answer being written). */
-export async function kiaraApi(path: string, init: RequestInit = {}, options: { stream?: boolean } = {}) {
+/** `stream`: pass a server-sent event stream through as it arrives (the chat answer being written).
+ *  `video`: pass an MP4 body through untouched (a part of a finished video). */
+export async function kiaraApi(path: string, init: RequestInit = {}, options: { stream?: boolean; video?: boolean } = {}) {
   const requestId = crypto.randomUUID()
   const startedAt = Date.now()
   const method = init.method ?? "GET"
@@ -96,6 +97,15 @@ export async function kiaraApi(path: string, init: RequestInit = {}, options: { 
         "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no",
         "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId,
       } })
+    }
+    if (options.video && response.ok && (response.headers.get("content-type") ?? "").startsWith("video/mp4")) {
+      log("info", "kiara_api.request_completed", { upstream_status: response.status })
+      const headers = new Headers({ "Content-Type": "video/mp4", "Cache-Control": "no-store, private", "X-Correlation-ID": response.headers.get("x-correlation-id") || requestId })
+      for (const name of ["x-kiara-part", "x-kiara-parts"]) {
+        const value = response.headers.get(name)
+        if (value && /^\d{1,2}$/.test(value)) headers.set(name, value)
+      }
+      return new Response(response.body, { status: 200, headers })
     }
     if (response.status === 204 || response.status === 205) {
       log("info", "kiara_api.request_completed", { upstream_status: response.status })

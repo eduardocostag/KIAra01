@@ -109,6 +109,9 @@ def test_video_mode_start_status_and_download_in_parts(monkeypatch):
     download = api.post("/v1/chat/video", json={"action": "download", "job_id": JOB, "part": 2}).json()
     assert download == {"mime": "video/mp4", "data_base64": base64.b64encode(b"mp4-part").decode(), "part": 2, "parts": 3}
     assert seen["paths"][-1] == f"/jobs/{JOB}/file?part=2"
+    raw = api.post("/v1/chat/video", json={"action": "download", "job_id": JOB, "part": 1, "raw": True})
+    assert raw.status_code == 200 and raw.content == b"mp4-part" and raw.headers["content-type"] == "video/mp4"
+    assert raw.headers["x-kiara-parts"] == "3" and raw.headers["x-kiara-part"] == "1"
     assert api.post("/v1/chat/video", json={"action": "download", "job_id": JOB, "part": 99}).status_code == 422
     assert api.post("/v1/chat/video", json={"action": "status", "job_id": "../etc"}).status_code == 422
     assert api.post("/v1/chat/video", json={"action": "start", "prompt": ""}).status_code == 422

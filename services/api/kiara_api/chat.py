@@ -193,6 +193,7 @@ class VideoRequest(BaseModel):
     prompt: str = Field(default="", max_length=3000)
     job_id: str = Field(default="", max_length=32)
     part: int | None = Field(default=None, ge=0, le=39)
+    raw: bool = False  # download: the part as plain MP4 bytes (no base64), so phones fetch less and decode nothing
 
     @model_validator(mode="after")
     def complete(self):
@@ -1090,6 +1091,9 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
                 return {"video": await chat_video.video_status(body.job_id)}
             if body.action == "download":
                 data, parts = await chat_video.video_file(body.job_id, body.part)
+                if body.raw:
+                    return Response(content=data, media_type="video/mp4", headers={
+                        "Cache-Control": "no-store, private", "X-Kiara-Part": str(body.part or 0), "X-Kiara-Parts": str(parts)})
                 return {"mime": "video/mp4", "data_base64": base64.b64encode(data).decode("ascii"),
                         "part": body.part or 0, "parts": parts}
             portrait = bool(re.search(r"vertical|reels?|tiktok|stor(y|ies)|instagram|celular|9:16", body.prompt, re.IGNORECASE))
