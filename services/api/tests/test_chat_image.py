@@ -104,7 +104,20 @@ def test_generator_falls_back_and_returns_a_small_jpeg(monkeypatch):
         return png()
 
     picture, model = asyncio.run(chat_image.generate_image("um farol", request=request))
-    assert calls == list(chat_image.DEFAULT_IMAGE_MODELS[:2]) and model == chat_image.DEFAULT_IMAGE_MODELS[1]
+    chain = chat_image.image_models()
+    assert calls == chain[:2] and model == chain[1]
     with Image.open(io.BytesIO(picture)) as image:
         assert image.format == "JPEG" and max(image.size) == chat_image.MAX_SIDE
     assert asyncio.run(chat_image.generate_image("x", request=lambda *_: (_ for _ in ()).throw(RuntimeError()))) == (b"", "")
+
+
+def test_cloudflare_models_join_the_chain_only_when_its_account_is_set(monkeypatch):
+    from kiara_api import chat_image
+    monkeypatch.delenv("KIARA_IMAGE_MODELS", raising=False)
+    monkeypatch.delenv("KIARA_CLOUDFLARE_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("KIARA_CLOUDFLARE_API_TOKEN", raising=False)
+    assert not any(model.startswith("cloudflare/") for model in chat_image.image_models())
+    assert "codex/gpt-image-2" not in chat_image.image_models()
+    monkeypatch.setenv("KIARA_CLOUDFLARE_ACCOUNT_ID", "acc")
+    monkeypatch.setenv("KIARA_CLOUDFLARE_API_TOKEN", "tok")
+    assert chat_image.image_models()[1] == "cloudflare/@cf/black-forest-labs/flux-2-klein-4b"

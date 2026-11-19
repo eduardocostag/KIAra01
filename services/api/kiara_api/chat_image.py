@@ -17,8 +17,12 @@ import time
 # Measured 2026-11-14 via the gateway: Gemini ~10 s (JPEG), GPT Image 2 ~18 s (PNG ~3 MB).
 # 2026-11-18 both were out (Gemini quota for 3 h, ChatGPT login expired) and every image failed, so the chain now
 # goes on to the Gemini API account and, last, the free AI Horde network (Flux, ~16 s when its queue is short).
-DEFAULT_IMAGE_MODELS = ("antigravity/gemini-3.1-flash-image", "codex/gpt-image-2", "gemini/gemini-3.1-flash-image",
+# 2026-11-19: no ChatGPT plan, so codex is out; Cloudflare Workers AI (FLUX.2 klein, ~104 of the 10k free daily neurons
+# per 1024px image, ~95 a day) comes right after Gemini. Cloudflare models are skipped while its account is not set.
+DEFAULT_IMAGE_MODELS = ("antigravity/gemini-3.1-flash-image", "cloudflare/@cf/black-forest-labs/flux-2-klein-4b",
+                        "gemini/gemini-3.1-flash-image", "cloudflare/@cf/black-forest-labs/flux-1-schnell",
                         "aihorde/Flux.1-Schnell fp8 (Compact)")
+CLOUDFLARE = "cloudflare/"
 IMAGE_DEADLINE_SECONDS = 100
 MAX_IMAGE_BYTES = 12_000_000
 MAX_SIDE = 1536
@@ -35,9 +39,42 @@ IMAGE_STYLE = (
 )
 
 
+def cloudflare_configuration() -> tuple[str, str]:
+    return os.getenv("KIARA_CLOUDFLARE_ACCOUNT_ID", "").strip(), os.getenv("KIARA_CLOUDFLARE_API_TOKEN", "").strip()
+
+
 def image_models() -> list[str]:
     configured = [item.strip() for item in os.getenv("KIARA_IMAGE_MODELS", "").split(",") if item.strip()]
-    return configured or list(DEFAULT_IMAGE_MODELS)
+    models = configured or list(DEFAULT_IMAGE_MODELS)
+    if not all(cloudflare_configuration()):
+        models = [model for model in models if not model.startswith(CLOUDFLARE)]
+    return models
+
+
+def cloudflare_image(model: str, prompt: str, timeout: float, width: int = 1024, height: int = 1024) -> bytes:
+    """Workers AI REST: FLUX.2 models take a multipart form, the older ones JSON; both answer result.image (base64)."""
+    import urllib.request
+    import uuid
+
+    account, token = cloudflare_configuration()
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if "/flux-2" in model:
+        boundary = uuid.uuid4().hex
+        fields = {"prompt": prompt[:2000], "width": str(width), "height": str(height)}
+        body = b"".join(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+                        for name, value in fields.items()) + f"--{boundary}--\r\n".encode()
+        headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+    else:
+        body = json.dumps({"prompt": prompt[:2000], "steps": 6, "width": width, "height": height}).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=body, method="POST", headers=headers)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        answer = json.loads(response.read(MAX_IMAGE_BYTES * 2))
+    raw = base64.b64decode((answer.get("result") or {}).get("image") or "")
+    if not raw or len(raw) > MAX_IMAGE_BYTES:
+        raise RuntimeError("image_invalid")
+    return raw
 
 
 def image_available() -> bool:
@@ -60,6 +97,8 @@ def to_jpeg(raw: bytes) -> bytes:
 def _request(model: str, prompt: str, timeout: float) -> bytes:
     import urllib.request
 
+    if model.startswith(CLOUDFLARE):
+        return cloudflare_image(model[len(CLOUDFLARE):], prompt, timeout)
     from .server_gateway import _opener, gateway_configuration
     base, token = gateway_configuration()
     if not base:

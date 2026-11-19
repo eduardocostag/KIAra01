@@ -264,6 +264,7 @@ function renderPresenter(t, level, current, previous, accent) {
 
 // ---------- Frame ----------
 window.renderAt = function renderAt(t) {
+  const waits = []  // clip frames still decoding; the screenshot waits for them
   const level = T.envelope[Math.min(T.envelope.length - 1, Math.floor(t * T.fps))] || 0
   let index = scenes.findIndex((s) => t >= s.vStart && t < s.vEnd); if (index < 0) index = scenes.length - 1
   const current = scenes[index], previous = scenes[index - 1] || current
@@ -328,7 +329,17 @@ window.renderAt = function renderAt(t) {
     }
 
     const photo = scene.el.querySelector(".photo img")
-    if (photo) {
+    if (photo && scene.clip) {
+      // AI motion clip (numbered frames at 24 fps), played forward then backward so it covers the whole scene.
+      const count = scene.clip_frames, cycle = 2 * count - 2, step = Math.max(0, Math.floor(local * 24)) % cycle
+      const frame = (step < count ? step : cycle - step) + 1
+      if (photo.dataset.frame !== String(frame)) {
+        photo.dataset.frame = String(frame)
+        photo.src = `../images/${scene.clip}/${String(frame).padStart(4, "0")}.jpg`
+        waits.push(photo.decode().catch(() => {}))
+      }
+      photo.style.transform = `scale(${lerp(1.06, 1.0, easeInOut(clamp(local / Math.max(3, span + .5))))})`
+    } else if (photo) {
       // Slow push-in with a drift that alternates direction scene by scene (Ken Burns), light coming up at the start.
       const k = easeInOut(clamp(local / Math.max(3, span + .5))), dir = scene.index % 2 ? 1 : -1
       photo.style.transform = `scale(${lerp(1.18, 1.04, k)}) translate(${dir * lerp(-2.4, 2.4, k)}%, ${lerp(1.4, -1.4, k)}%)`
@@ -437,7 +448,7 @@ window.renderAt = function renderAt(t) {
   })
   document.getElementById("brand").style.opacity = current.layout === "outro" || current.layout === "hello" ? 0 : .9
   document.getElementById("forWho").style.opacity = current.layout === "shot" ? .9 : 0
-  return true
+  return waits.length ? Promise.all(waits).then(() => true) : true
 }
 window.renderAt(0)
 </script>

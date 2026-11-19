@@ -40,6 +40,8 @@ LAYOUTS = {"hello", "orb", "shot", "custom", "control", "outro", "photo"}
 # Vertical videos (Reels, TikTok, Stories) are composed at 1080x1920; only these layouts are designed for it.
 PORTRAIT_LAYOUTS = {"photo", "outro"}
 PHOTO_NAME = re.compile(r"[a-z0-9-]{1,60}\.(?:jpg|png)")
+CLIP_NAME = re.compile(r"clip-\d{1,2}")
+CLIP_FPS = 24
 ALIASES = {"modules": "custom", "highlight": "control", "intro": "orb", "screen": "shot", "greeting": "hello", "closing": "outro"}
 DEFAULT_VOICE = VOICE
 QUALITIES = {"1080p": 1.0, "720p": 2 / 3}
@@ -157,6 +159,11 @@ def validate_script(script: dict, shots_dir: Path | None = None, images_dir: Pat
         if layout in {"photo", "outro"} and isinstance(photo, str) and PHOTO_NAME.fullmatch(photo):
             if images_dir is None or (images_dir / photo).is_file():
                 scene["photo"] = photo  # a missing picture is not an error: the scene keeps its animated background
+        clip = raw.get("clip")
+        if layout == "photo" and scene.get("photo") and isinstance(clip, str) and CLIP_NAME.fullmatch(clip) and images_dir is not None:
+            frames = len(list((images_dir / clip).glob("*.jpg"))) if (images_dir / clip).is_dir() else 0
+            if frames >= 12:  # an AI motion clip as numbered frames (images/clip-N/0001.jpg...), played over the picture
+                scene["clip"], scene["clip_frames"] = clip, min(frames, 999)
         if layout == "custom" and raw.get("tiles"):
             scene["tiles"] = [{"text": _clean(tile.get("text") if isinstance(tile, dict) else tile, 24, f"{sid}.tiles"),
                                "color": tile.get("color") if isinstance(tile, dict) and re.fullmatch(r"#[0-9a-fA-F]{6}", str(tile.get("color"))) else accent}

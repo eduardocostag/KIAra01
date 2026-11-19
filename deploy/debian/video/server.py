@@ -38,8 +38,16 @@ GATEWAY_TOKEN = os.getenv("KIARA_GATEWAY_TOKEN", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "").strip() or None
 POLLINATIONS_KEY = os.getenv("POLLINATIONS_KEY", "").strip()
 POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "bytedance/seedance-1-pro-fast")
-IMAGE_MODELS = [m.strip() for m in os.getenv("KIARA_IMAGE_MODELS", "antigravity/gemini-3.1-flash-image,codex/gpt-image-2,"
-                                               "gemini/gemini-3.1-flash-image,aihorde/Flux.1-Schnell fp8 (Compact)").split(",") if m.strip()]
+IMAGE_MODELS = [m.strip() for m in os.getenv("KIARA_IMAGE_MODELS", "antigravity/gemini-3.1-flash-image,"
+                                               "cloudflare/@cf/black-forest-labs/flux-2-klein-4b,gemini/gemini-3.1-flash-image,"
+                                               "cloudflare/@cf/black-forest-labs/flux-1-schnell,"
+                                               "aihorde/Flux.1-Schnell fp8 (Compact)").split(",") if m.strip()]
+CLOUDFLARE_ACCOUNT = os.getenv("KIARA_CLOUDFLARE_ACCOUNT_ID", "").strip()
+CLOUDFLARE_TOKEN = os.getenv("KIARA_CLOUDFLARE_API_TOKEN", "").strip()
+# Real AI motion inside narrated videos: the first scenes' pictures are animated by Wan 2.2 (image-to-video).
+STUDIO_CLIPS = int(os.getenv("KIARA_STUDIO_CLIPS", "3") or 0)
+STUDIO_CLIP_BUDGET = int(os.getenv("KIARA_STUDIO_CLIP_SECONDS", "420") or 0)
+CLIP_FPS = 24
 WAN_SPACE = os.getenv("WAN_SPACE", "zerogpu-aoti/wan2-2-fp8da-aoti-faster")
 LTX_SPACE = os.getenv("LTX_SPACE", "Lightricks/ltx-video-distilled")
 FLUX_SPACE = os.getenv("FLUX_SPACE", "black-forest-labs/FLUX.1-schnell")
@@ -124,8 +132,13 @@ def normalize(source: Path, target: Path, portrait: bool) -> None:
 
 
 def gateway_image(prompt: str, folder: Path, size: str = "1024x1024", name: str = "frame") -> Path | None:
-    """A picture from Kiara's own image models (through the gateway)."""
+    """A picture from Kiara's own image models (through the gateway, or Cloudflare Workers AI directly)."""
     for model in IMAGE_MODELS:
+        if model.startswith("cloudflare/"):
+            path = cloudflare_image(model[len("cloudflare/"):], prompt, folder, size, name)
+            if path:
+                return path
+            continue
         try:
             body = json.dumps({"model": model, "prompt": prompt[:3000], "n": 1, "size": size}).encode()
             request = urllib.request.Request(f"{GATEWAY}/ai/v1/images/generations", data=body, method="POST", headers={
@@ -140,6 +153,34 @@ def gateway_image(prompt: str, folder: Path, size: str = "1024x1024", name: str 
         except Exception:  # noqa: BLE001 - next image model
             continue
     return None
+
+
+def cloudflare_image(model: str, prompt: str, folder: Path, size: str, name: str) -> Path | None:
+    """Workers AI REST (10k free neurons a day): FLUX.2 takes a multipart form, FLUX.1 JSON; both answer result.image."""
+    if not (CLOUDFLARE_ACCOUNT and CLOUDFLARE_TOKEN):
+        return None
+    try:
+        width, height = (int(side) for side in size.split("x"))
+        url = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT}/ai/run/{model}"
+        headers = {"Authorization": f"Bearer {CLOUDFLARE_TOKEN}", "Accept": "application/json"}
+        if "/flux-2" in model:
+            boundary = uuid.uuid4().hex
+            fields = {"prompt": prompt[:2000], "width": str(width), "height": str(height)}
+            body = b"".join(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+                            for key, value in fields.items()) + f"--{boundary}--\r\n".encode()
+            headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+        else:
+            body = json.dumps({"prompt": prompt[:2000], "steps": 6, "width": width, "height": height}).encode()
+            headers["Content-Type"] = "application/json"
+        with urllib.request.urlopen(urllib.request.Request(url, data=body, method="POST", headers=headers), timeout=90) as response:
+            raw = base64.b64decode((json.load(response).get("result") or {}).get("image") or "")
+        if len(raw) < 1000:
+            return None
+        path = folder / (f"{name}.png" if raw[:4] == b"\x89PNG" else f"{name}.jpg")
+        path.write_bytes(raw)
+        return path
+    except Exception:  # noqa: BLE001 - next image model
+        return None
 
 
 def flux_image(prompt: str, folder: Path, portrait: bool) -> Path | None:
@@ -295,6 +336,65 @@ def studio_images(job: dict, project: Path) -> list[str]:
     return []
 
 
+def wan_clip(prompt: str, image: Path, folder: Path) -> Path:
+    """A 5 s image-to-video clip from Wan 2.2 on a Hugging Face ZeroGPU Space (the HF token's GPU minutes)."""
+    from gradio_client import handle_file
+    job = _client(WAN_SPACE, folder).submit(
+        input_image=handle_file(str(image)), prompt=prompt[:1200], steps=6, duration_seconds=5.0, api_name="/generate_video")
+    return video_from(job.result(timeout=300))
+
+
+# Each entry animates one picture; the first that answers wins. A future paid GPU engine goes before Wan.
+MOTION_ENGINES = (("wan", wan_clip),) if HF_TOKEN else ()
+
+
+def studio_clips(job: dict, project: Path) -> None:
+    """Real motion for the first photo scenes; a scene whose clip fails keeps its picture with the slow camera move."""
+    if not STUDIO_CLIPS or not MOTION_ENGINES:
+        return
+    portrait = bool(job["script"].get("meta", {}).get("portrait"))
+    width, height = (1080, 1920) if portrait else (1920, 1080)
+    images, seen, chosen = project / "images", set(), []
+    for scene in job["script"]["scenes"]:
+        if isinstance(scene, dict) and scene.get("layout") == "photo" and scene.get("photo") and scene["photo"] not in seen:
+            seen.add(scene["photo"])
+            chosen.append(scene)
+    chosen = chosen[:STUDIO_CLIPS]
+    deadline = time.monotonic() + STUDIO_CLIP_BUDGET
+    for number, scene in enumerate(chosen):
+        if time.monotonic() > deadline - 60:
+            break
+        update(job, progress=0.35, message=f"Animando as cenas ({number + 1} de {len(chosen)})")
+        prompt = f"{str(scene.get('image') or '')[:900]}. Natural, subtle motion, slow cinematic camera movement, realistic, smooth."
+        work = project / f"clipwork-{number}"
+        work.mkdir(exist_ok=True)
+        clip, out_of_quota = None, False
+        for name, engine in MOTION_ENGINES:
+            try:
+                clip = engine(prompt, images / scene["photo"], work)
+                break
+            except Exception as error:  # noqa: BLE001 - next engine; the reason stays in the job file
+                job.setdefault("tries", []).append(f"clip {name}: {type(error).__name__}: {str(error)[:200]}")
+                out_of_quota = out_of_quota or any(word in str(error).lower() for word in ("quota", "limit"))
+        if clip is None:
+            if out_of_quota:
+                break
+            continue
+        folder = images / f"clip-{number}"
+        folder.mkdir(exist_ok=True)
+        try:
+            run(["ffmpeg", "-y", "-v", "error", "-i", str(clip), "-vf",
+                 f"fps={CLIP_FPS},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}",
+                 "-q:v", "3", str(folder / "%04d.jpg")], timeout=240)
+        except Exception:  # noqa: BLE001 - keep the still picture
+            shutil.rmtree(folder, ignore_errors=True)
+            continue
+        if len(list(folder.glob("*.jpg"))) >= 12:
+            scene["clip"] = folder.name
+        else:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 def process_studio(job: dict) -> None:
     from app.video_studio.engine import LIBRARY_SHOTS, narrate, render
 
@@ -303,6 +403,7 @@ def process_studio(job: dict) -> None:
     try:
         update(job, status="running", progress=0.04, message="Criando as imagens")
         warnings = studio_images(job, project)
+        studio_clips(job, project)
         shots = project / "shots"
         shots.mkdir(exist_ok=True)
         for scene in job["script"]["scenes"]:
