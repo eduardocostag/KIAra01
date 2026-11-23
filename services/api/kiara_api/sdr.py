@@ -18,6 +18,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
@@ -30,11 +31,65 @@ from .memory import merge_contact_memory
 
 BRASILIA = timezone(timedelta(hours=-3))
 REPLY_WINDOW_HOURS = 6          # never answer a message older than this (no replies to old history)
-FOLLOWUP_MAX = 3                # follow-ups per silence, then the SDR gives up politely
+FOLLOWUP_MAX = 2                # follow-ups per silence, then the SDR gives up politely (more = reports and blocks)
 MAX_ANALYSES, MAX_DRAFTS, MAX_SENDS = 4, 4, 3   # per tick, so a tick stays short and gentle
 TICK_DEADLINE_SECONDS = 150
 STAGE_ORDER = {"new": 0, "contacted": 1, "qualified": 2, "opportunity": 3}
 Ask = Callable[[list[dict[str, str]]], Awaitable[str]]
+
+# ---- Protecting the number (WhatsApp Web / QR code) ----------------------------------------------------------
+# What gets numbers banned is people blocking and reporting them, sudden volume from a number that never sent
+# much, and sending on through delivery errors. So: an explicit "stop" is obeyed at once (before any AI), the
+# daily volume grows with the time the automation has been on, and repeated delivery failures pause the
+# automation for a while and tell the owner.
+WARMUP = ((3, 20), (7, 40), (14, 80), (21, 150))   # (automation age below N days, max automatic sends that day)
+HEALTH_WINDOW_HOURS = 6
+HEALTH_MIN_FAILURES, HEALTH_MAX_FAILURE_SHARE = 3, 0.3
+PAUSE_HOURS = 12
+PAUSE_NODE = "sdr:pause"
+_OPTOUT_PHRASES = re.compile(
+    r"\b(nao (quero|desejo) (mais )?(receber|mensage(m|ns)|contato|que (me )?(mande|mandem|envie|enviem|chame|chamem))"
+    r"|nao (me )?(mande|mandem|envie|enviem|chame|chamem) mais|(pare|para|parem) de (me )?(mandar|enviar|chamar|encher)"
+    r"|(me )?(tira|tire|remove|remova|exclui|exclua) (da|dessa|desta|de sua|da sua) lista|descadastr\w*|nao me perturb\w*"
+    r"|isso e spam|vou (te )?(bloquear|denunciar))\b")
+# Alone ("não quero" or "chega" alone may just answer a question, so they stay with the model's judgement).
+_OPTOUT_ALONE = {"pare", "parar", "parem", "stop", "sair", "descadastrar", "bloquear", "spam",
+                 "pode parar", "para ai", "chega disso"}
+_POLITE = {"por", "favor", "pfv", "pf", "pls", "obrigado", "obrigada", "ok", "ja", "agora", "mais", "moca", "moco"}
+_LINK = re.compile(r"(https?://\S+|www\.\S+|\b[\w-]+\.(com\.br|com|net|org|br|io|app|me|link|ly)(/\S*)?\b)", re.IGNORECASE)
+
+
+def _plain(text: str) -> str:
+    folded = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii").lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", folded).split())
+
+
+def wants_out(text: str) -> bool:
+    """An explicit request to stop receiving messages ("pare", "não quero mais receber", "me tira da lista").
+    Deliberately strict: "quanto sai?", "para quando?" or "cancelar a consulta" are not opt-outs."""
+    plain = _plain(text)
+    if not plain or len(plain) > 300:
+        return False
+    if _OPTOUT_PHRASES.search(plain):
+        return True
+    words = [word for word in plain.split() if word not in _POLITE]
+    return 0 < len(words) <= 2 and " ".join(words) in _OPTOUT_ALONE
+
+
+def without_links(text: str) -> str:
+    """A first message with a link looks like spam: links wait until the customer has heard from the business once."""
+    return " ".join(_LINK.sub("", text).split())
+
+
+def warmup_limit(since: datetime | None, configured: int, now: datetime | None = None) -> int:
+    """Automatic sends allowed today: low while the automation is new on this number, the configured limit later."""
+    if since is None:
+        return min(configured, WARMUP[0][1])
+    age = ((now or datetime.now(UTC)) - since).total_seconds() / 86400
+    for days, limit in WARMUP:
+        if age < days:
+            return min(configured, limit)
+    return configured
 
 
 async def default_ask(conversation: list[dict[str, str]]) -> str:
@@ -276,6 +331,10 @@ class SdrService:
             if auto and not thread["automation_enabled"]:
                 continue  # auto mode: only conversations where the AI is on
             async with self.postgres._transaction(organization_id) as connection:
+                if (thread["last_direction"] == "inbound" and thread["last_inbound"] and thread["last_inbound"] > since
+                        and await self._opt_out(connection, org, thread)):
+                    summary["optouts"] = summary.get("optouts", 0) + 1
+                    continue
                 analysis = None
                 if summary["analyzed"] < MAX_ANALYSES:
                     analysis = await self._analyze(connection, org, thread, config)
@@ -313,6 +372,8 @@ class SdrService:
                     summary["handoffs"] += 1
                     continue
                 text = re.sub(r"[*_#`]", "", str(draft.get("reply") or "")).strip()[:1500]
+                if not any(item["direction"] == "outbound" for item in messages):
+                    text = without_links(text)
                 if not text:
                     continue
                 name = thread["display_name"] or "Cliente"
@@ -324,6 +385,44 @@ class SdrService:
                 summary["followups" if followup else "drafted"] += 1
         await self._send_approved(organization_id, org, config, summary, started)
         return summary
+
+    async def _opt_out(self, connection, org, thread) -> bool:
+        """The customer's last message asks to stop: obey at once (no AI, no reply), drop anything waiting, tell the owner."""
+        last = await (await connection.execute(
+            """SELECT body FROM messages WHERE organization_id=%s AND thread_id=%s AND direction='inbound'
+               ORDER BY sent_at DESC,id DESC LIMIT 1""", (org, thread["id"]))).fetchone()
+        if not last or not wants_out(str(last["body"] or "")):
+            return False
+        await connection.execute("UPDATE consumers SET consent_status='opted_out' WHERE organization_id=%s AND id=%s", (org, thread["consumer_id"]))
+        await connection.execute("UPDATE conversation_threads SET status='blocked',automation_enabled=false WHERE organization_id=%s AND id=%s", (org, thread["id"]))
+        await connection.execute(
+            """UPDATE action_requests SET status='rejected',decided_at=now(),note='O cliente pediu para não receber mais mensagens.',
+               version=version+1,updated_at=now() WHERE organization_id=%s AND source='kiara' AND kind='whatsapp.reply'
+               AND status IN ('pending','approved') AND node_id LIKE %s""", (org, f"sdr:%:{thread['id']}"))
+        name = thread["display_name"] or "Cliente"
+        await self._request(connection, org, kind="notice", node=f"sdr:optout:{thread['id']}", approved=False,
+                            title=f"{name} pediu para não receber mais mensagens"[:200],
+                            payload={"text": f"{name} pediu para parar. A Kiara não escreve mais para esse contato. "
+                                             "Se a pessoa voltar a chamar, responda você mesmo pela caixa de entrada."})
+        return True
+
+    async def _paused(self, connection, org) -> bool:
+        row = await (await connection.execute(
+            """SELECT 1 FROM action_requests WHERE organization_id=%s AND source='kiara' AND kind='notice' AND node_id=%s
+               AND created_at > now() - make_interval(hours => %s) LIMIT 1""", (org, PAUSE_NODE, PAUSE_HOURS))).fetchone()
+        return bool(row)
+
+    async def _unhealthy(self, connection, org) -> str:
+        """Why the number looks at risk right now ("" when fine): many recent sends that WhatsApp did not take."""
+        row = await (await connection.execute(
+            """SELECT count(*) FILTER (WHERE o.status IN ('failed','unknown')) AS bad, count(*) AS total
+               FROM commercial_outbox o JOIN conversation_threads t ON t.organization_id=o.organization_id AND t.id=o.thread_id
+               WHERE o.organization_id=%s AND t.channel='whatsapp' AND o.status IN ('sent','failed','unknown')
+                 AND o.created_at > now() - make_interval(hours => %s)""", (org, HEALTH_WINDOW_HOURS))).fetchone()
+        bad, total = (int(row["bad"] or 0), int(row["total"] or 0)) if row else (0, 0)
+        if bad >= HEALTH_MIN_FAILURES and bad >= total * HEALTH_MAX_FAILURE_SHARE:
+            return f"{bad} de {total} mensagens das últimas {HEALTH_WINDOW_HOURS} horas não foram aceitas pelo WhatsApp."
+        return ""
 
     async def _profile(self, connection, org) -> dict[str, Any]:
         """Sales-profile switches (24h answers, daily summary) and the business knowledge for the prompts."""
@@ -368,11 +467,25 @@ class SdrService:
                 return
         from .unified_inbox import InboxReply
         async with self.postgres._transaction(organization_id) as connection:
+            if await self._paused(connection, org):
+                summary["paused"] = True
+                return  # approvals wait; sending resumes by itself when the pause ends
+            reason = await self._unhealthy(connection, org)
+            if reason:
+                await self._request(connection, org, kind="notice", node=PAUSE_NODE, approved=False,
+                                    title="A Kiara pausou os envios automáticos para proteger seu número",
+                                    payload={"text": f"{reason} Para evitar um bloqueio, os envios automáticos ficam pausados por "
+                                                     f"{PAUSE_HOURS} horas e voltam sozinhos. Confira se o WhatsApp do número está "
+                                                     "conectado e funcionando no celular. As respostas continuam esperando aqui."})
+                summary["paused"] = True
+                return
             today = datetime.now(BRASILIA).replace(hour=0, minute=0, second=0, microsecond=0)
             sent = await (await connection.execute(
                 """SELECT count(*) AS total FROM action_requests WHERE organization_id=%s AND source='kiara'
                    AND kind='whatsapp.reply' AND status='done' AND updated_at >= %s""", (org, today))).fetchone()
-            budget = max(0, int(config.get("daily_limit") or 50) - int(sent["total"] if sent else 0))
+            since = datetime.fromisoformat(config["sdr_since"]) if config.get("sdr_since") else None
+            limit = warmup_limit(since, int(config.get("daily_limit") or 50))  # new automation on a number starts slow
+            budget = max(0, limit - int(sent["total"] if sent else 0))
             rows = await (await connection.execute(
                 """SELECT id,node_id,payload FROM action_requests WHERE organization_id=%s AND source='kiara'
                    AND kind='whatsapp.reply' AND status='approved' AND (%s OR left(node_id,10)='sdr:reply:')

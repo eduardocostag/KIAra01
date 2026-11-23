@@ -22,8 +22,9 @@ class Cursor:
 
 
 class FakeDB:
-    def __init__(self, config, threads, messages, followups_done=0):
+    def __init__(self, config, threads, messages, followups_done=0, outbox=(0, 0), paused=False):
         self.config, self.threads, self.messages, self.followups_done = config, threads, messages, followups_done
+        self.outbox, self.paused = outbox, paused  # (failed, total) recent sends; a pause notice in the last hours
         self.requests, self.updates = [], []
 
     @asynccontextmanager
@@ -37,6 +38,18 @@ class FakeDB:
             return Cursor(self.threads)
         if sql.startswith("SELECT direction,body,sent_at FROM messages"):
             return Cursor(self.messages[str(params[1])])
+        if sql.startswith("SELECT body FROM messages"):
+            inbound = [row for row in self.messages.get(str(params[1]), []) if row["direction"] == "inbound"]
+            return Cursor([{"body": inbound[-1]["body"]}] if inbound else [])
+        if "kind='notice' AND node_id=%s" in sql:
+            return Cursor([{"?": 1}] if self.paused else [])
+        if "AS bad" in sql:
+            return Cursor([{"bad": self.outbox[0], "total": self.outbox[1]}])
+        if sql.startswith("UPDATE action_requests SET status='rejected'"):
+            for r in self.requests:
+                if r["status"] in {"pending", "approved"} and r["kind"] == "whatsapp.reply":
+                    r["status"] = "rejected"
+            return Cursor([])
         if "node_id LIKE" in sql:
             return Cursor([{"?": 1}] if any(r["status"] in {"pending", "approved"} and r["node"].endswith(str(params[1]).rsplit(":", 1)[-1]) and r["kind"] == "whatsapp.reply" for r in self.requests) else [])
         if "count(*) AS total" in sql and "node_id=%s" in sql:
@@ -148,15 +161,62 @@ def test_handoff_stops_the_ai_and_warns_the_attendant():
     assert "UPDATE conversation_threads SET" in db.updates
 
 
-def test_follow_up_after_silence_then_gives_up_after_three():
+def test_follow_up_after_silence_then_gives_up_after_two():
     t = thread(last_direction="outbound", last_inbound=NOW - timedelta(hours=40), last_at=NOW - timedelta(hours=30))
     rows = messages_for(t, ("inbound", "Vou pensar", NOW - timedelta(hours=40)), ("outbound", "Combinado!", NOW - timedelta(hours=30)))
     since = (NOW - timedelta(days=3)).isoformat()  # the quiet conversation happened while the SDR was on
     db = FakeDB(config("approval", sdr_since=since), [t], rows)
     summary, _ = run(db, model(reply="Oi Maria, conseguiu pensar sobre a limpeza de pele?"))
-    assert summary["followups"] == 1 and db.requests[-1]["payload"]["motivo"] == "Follow-up 1 de 3"
-    db = FakeDB(config("approval", sdr_since=since), [t], rows, followups_done=3)
+    assert summary["followups"] == 1 and db.requests[-1]["payload"]["motivo"] == "Follow-up 1 de 2"
+    db = FakeDB(config("approval", sdr_since=since), [t], rows, followups_done=2)
     assert run(db, model())[0]["followups"] == 0
+
+
+def test_an_explicit_stop_is_obeyed_before_any_ai():
+    t = thread()
+    db = FakeDB(config("auto"), [t], messages_for(t, ("inbound", "Por favor, não quero mais receber mensagens!", NOW - timedelta(minutes=5))))
+
+    async def never(_conversation):
+        raise AssertionError("the model must not run for an opt-out")
+    summary, inbox = run(db, never)
+    assert summary["optouts"] == 1 and summary["drafted"] == 0 and inbox.sent == []
+    assert [(r["kind"], r["node"]) for r in db.requests] == [("notice", f"sdr:optout:{t['id']}")]
+    assert "UPDATE consumers SET" in db.updates and "UPDATE conversation_threads SET" in db.updates
+
+
+def test_first_replies_carry_no_links():
+    t = thread()
+    db = FakeDB(config("approval"), [t], messages_for(t, ("inbound", "Oi, vi o anúncio", NOW - timedelta(minutes=5))))
+    run(db, model(reply="Oi Maria! Veja os valores em https://clinica.com.br/precos e me diga."))
+    assert db.requests[0]["payload"]["text"] == "Oi Maria! Veja os valores em e me diga."
+
+
+def test_failed_sends_pause_the_automation_and_tell_the_owner():
+    t = thread()
+    rows = messages_for(t, ("inbound", "Quanto custa?", NOW - timedelta(minutes=5)))
+    db = FakeDB(config("auto"), [t], rows, outbox=(4, 6))
+    summary, inbox = run(db, model())
+    assert summary["paused"] is True and inbox.sent == []
+    assert any(r["kind"] == "notice" and r["node"] == sdr.PAUSE_NODE for r in db.requests)
+    db = FakeDB(config("auto"), [t], rows, paused=True)  # while the pause lasts, nothing leaves
+    summary, inbox = run(db, model())
+    assert summary["paused"] is True and inbox.sent == [] and not any(r["node"] == sdr.PAUSE_NODE for r in db.requests)
+    db = FakeDB(config("auto"), [t], rows, outbox=(2, 40))  # a couple of failures in many sends is normal
+    assert run(db, model())[0]["sent"] == 1
+
+
+def test_number_protection_helpers():
+    for text in ("Pare", "PARE!!", "pode parar por favor", "não quero mais receber", "Não me mandem mais nada",
+                 "me tira da lista", "Descadastrar", "para de me mandar mensagem", "isso é spam", "vou te denunciar", "STOP"):
+        assert sdr.wants_out(text), text
+    for text in ("Quanto sai?", "Para quando tem horário?", "Quero cancelar a consulta de amanhã", "não quero agora, obrigado",
+                 "Chega amanhã?", "Pode parar o carro na frente?", "Quero remover a tatuagem", "não"):
+        assert not sdr.wants_out(text), text
+    assert sdr.without_links("Veja www.loja.com e https://x.io/a?b=1 ou loja.com.br/p hoje") == "Veja e ou hoje"
+    start = NOW - timedelta(days=1)
+    assert sdr.warmup_limit(start, 50, NOW) == 20 and sdr.warmup_limit(NOW - timedelta(days=10), 50, NOW) == 50
+    assert sdr.warmup_limit(NOW - timedelta(days=10), 300, NOW) == 80 and sdr.warmup_limit(NOW - timedelta(days=30), 300, NOW) == 300
+    assert sdr.warmup_limit(None, 300) == 20
 
 
 def test_old_history_and_off_mode_are_never_answered():

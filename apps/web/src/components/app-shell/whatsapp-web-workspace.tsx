@@ -237,7 +237,7 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
       <fieldset disabled={saving} className="min-w-0 space-y-5 disabled:opacity-60">
         <legend className="sr-only">Configuração da Kiara no WhatsApp</legend>
 
-        <Section icon={Sparkles} title="Kiara SDR (24h no servidor)" description="Entende cada conversa e atualiza o lead e o funil, responde quem escreve, faz até 3 follow-ups e passa para o atendente quando o lead está pronto, pede uma pessoa ou pergunta algo que ela não sabe. Usa o que você escrever em Responder, os horários e o limite diário abaixo.">
+        <Section icon={Sparkles} title="Kiara SDR (24h no servidor)" description="Entende cada conversa e atualiza o lead e o funil, responde quem escreve, faz até 2 follow-ups e passa para o atendente quando o lead está pronto, pede uma pessoa ou pergunta algo que ela não sabe. Usa o que você escrever em Responder, os horários e o limite diário abaixo. Para proteger seu número: quem pedir para parar não recebe mais nada, o volume diário começa baixo e cresce em 3 semanas, e se o WhatsApp recusar várias mensagens os envios pausam por 12 horas com um aviso para você.">
           <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Modo da Kiara SDR">
             {sdrModes.map((mode) => {
               const active = (config.sdr_mode ?? "off") === mode.id
