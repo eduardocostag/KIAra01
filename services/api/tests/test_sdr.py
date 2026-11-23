@@ -272,3 +272,35 @@ def test_simulator_follow_up_only_after_a_kiara_message():
         raise AssertionError("follow-up without a Kiara message")
     except sdr.ApiError as error:
         assert error.code == "followup_not_due"
+
+
+def test_reply_prompt_knows_origin_profile_and_avoids_a_questionnaire():
+    hunted = {"hunter": {"search_id": "s1", "research_query": "clínicas de estética", "website_status": "not_listed", "rating": 4.8, "user_rating_count": 120},
+              "company": {"trade_name": "Clínica Bela", "city": "CAMPINAS", "state": "SP"}, "notes": "Prefere contato à tarde"}
+    assert sdr.contact_origin(hunted) == "hunted"
+    assert sdr.contact_origin({}, [{"direction": "outbound"}, {"direction": "inbound"}]) == "hunted"
+    assert sdr.contact_origin({"hunter": {"source": "whatsapp_web"}}, [{"direction": "inbound"}]) == "inbound"
+    profile = sdr.contact_profile(hunted)
+    assert "Empresa: Clínica Bela" in profile and "Local: Campinas, SP" in profile and "Site: não encontramos site próprio" in profile
+    system = sdr.reply_prompt("Lume, sites", "Ana", "Ana: oi", 0, ["Quer agenda online"], profile, "hunted")[0]["content"]
+    assert "prospecção" in system and "Clínica Bela" in system and "Prefere contato à tarde" in system
+    assert "Nem toda mensagem precisa terminar com pergunta" in system and '"pending"' in system
+    assert "procurou a empresa" in sdr.reply_prompt("Lume", "Ana", "Ana: oi")[0]["content"]
+    analysis = sdr.analysis_prompt("Lume", "Ana", "Ana: oi", ["Quer agenda online"])
+    assert "Já sabido: Quer agenda online" in analysis[1]["content"] and "fatos NOVOS" in analysis[0]["content"]
+
+
+def test_unknown_answers_raise_one_pending_question_for_the_owner():
+    t = thread()
+    db = FakeDB(config("approval"), [t], messages_for(t, ("inbound", "Quanto custa o plano anual?", NOW - timedelta(minutes=5))))
+
+    async def ask(conversation):
+        if "analista comercial" in conversation[0]["content"]:
+            return json.dumps({"stage": "contacted", "handoff": False, "optout": False})
+        return json.dumps({"reply": "Vou confirmar o valor do anual e já te retorno.", "pending": "valor do plano anual", "handoff": False})
+    summary, _ = run(db, ask)
+    notices = [r for r in db.requests if r["kind"] == "notice"]
+    assert summary["pending"] == 1 and len(notices) == 1 and "valor do plano anual" in notices[0]["payload"]["text"]
+    assert any(r["kind"] == "whatsapp.reply" for r in db.requests)  # the AI keeps the conversation going
+    result = simulate(ask, ("inbound", "Quanto custa o plano anual?"))
+    assert any("Pergunta pendente" in note for note in result["notes"])
