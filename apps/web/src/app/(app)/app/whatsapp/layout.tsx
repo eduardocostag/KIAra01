@@ -1,8 +1,9 @@
-import { ComingSoon } from "@/components/early-access/coming-soon"
+import { redirect } from "next/navigation"
 import { requireWorkspace } from "@/lib/auth"
 
-/** Early access: only the system administrator uses this module until launch. */
+/** Only accounts the administrator gave KIARA WhatsApp (the proxy already redirects the others; this is the backstop). */
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const { isSystemAdmin } = await requireWorkspace()
-  return isSystemAdmin ? children : <ComingSoon module="whatsapp" />
+  const { modules } = await requireWorkspace()
+  if (!modules.includes("whatsapp")) redirect("/app")
+  return children
 }

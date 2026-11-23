@@ -7,6 +7,8 @@ import { ComingSoon } from "@/components/early-access/coming-soon"
 import { LaunchBadge } from "@/components/early-access/launch-badge"
 import { ChatWorkspace } from "@/components/chat/chat-workspace"
 import ModuleSelectorPage from "@/app/(app)/app/page"
+import { ModuleChoice } from "@/components/app-shell/module-choice"
+import { MODULES } from "@/lib/modules"
 import { LeadsDashboard } from "@/components/app-shell/leads-dashboard"
 import { LeadDetail } from "@/components/app-shell/lead-detail"
 import { WelcomeTour } from "@/components/app-shell/welcome-tour"
@@ -41,20 +43,26 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   // Conversation modules own their full-height shell, like in the real routes.
   if (workspace === "chat") return <ChatWorkspace isAdmin />
   if (workspace === "admin") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-7xl"><AdminConsole initialSnapshot={{ generatedAt: new Date().toISOString(), services: [], auditEvents: [], notices: [], users: [
-    { id: "11111111-1111-4111-8111-111111111111", email: "eduardocgonsalves@hotmail.com", name: "Eduardo", provider: "E-mail e senha", createdAt: "2026-09-01T10:00:00Z", lastSignInAt: "2026-11-17T20:00:00Z", isAdmin: true, blocked: false },
-    { id: "22222222-2222-4222-8222-222222222222", email: "kiara01@kiara.local", name: "Kiara01", provider: "E-mail e senha", createdAt: "2026-11-17T21:00:00Z", lastSignInAt: null, isAdmin: false, blocked: false },
-    { id: "33333333-3333-4333-8333-333333333333", email: "cliente@empresa.com", name: "Ana Julia", provider: "Google", createdAt: "2026-10-02T10:00:00Z", lastSignInAt: "2026-11-10T09:00:00Z", isAdmin: false, blocked: true },
+    { id: "11111111-1111-4111-8111-111111111111", email: "eduardocgonsalves@hotmail.com", name: "Eduardo", provider: "E-mail e senha", createdAt: "2026-09-01T10:00:00Z", lastSignInAt: "2026-11-17T20:00:00Z", isAdmin: true, blocked: false, modules: ["leads", "whatsapp", "chat", "automation"] },
+    { id: "22222222-2222-4222-8222-222222222222", email: "kiara01@kiara.local", name: "Kiara01", provider: "E-mail e senha", createdAt: "2026-11-17T21:00:00Z", lastSignInAt: null, isAdmin: false, blocked: false, modules: ["leads", "chat"] },
+    { id: "33333333-3333-4333-8333-333333333333", email: "cliente@empresa.com", name: "Ana Julia", provider: "Google", createdAt: "2026-10-02T10:00:00Z", lastSignInAt: "2026-11-10T09:00:00Z", isAdmin: false, blocked: true, modules: [] },
   ] }} /></div></AppShell>
   if (workspace === "leads") return <AppShell previewModule="/app/leads"><LeadsDashboard pipeline={{ entries: previewEntries, available: true }} /></AppShell>
   if (workspace === "lead") return <AppShell previewModule="/app/leads"><LeadDetail entry={previewEntries[0]} /></AppShell>
   if (workspace === "pipeline") return <AppShell previewModule="/app/leads"><div className="space-y-4"><InboxHub entries={previewEntries} prospectError="" initialView="contacts" initialContactId="" /></div></AppShell>
   if (workspace === "modules") return <ModuleSelectorPage />
+  if (workspace === "module-choice") {
+    // ?view=0..6: the selector with that many modules (beyond the four real ones, sample modules show the grid scaling).
+    const extra = [{ key: "voz", label: "KIARA Voz", description: "Atendimento por telefone.", href: "/app/voz" }, { key: "video", label: "KIARA Vídeo", description: "Vídeos narrados.", href: "/app/video" }]
+    const items = [...MODULES, ...extra].slice(0, Math.max(0, Math.min(6, Number(view) || 0)))
+    return <div className="relative flex min-h-dvh flex-col items-center justify-center bg-[#07060d] p-4 sm:p-8"><ModuleChoice modules={items} /></div>
+  }
   if (workspace === "fila") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-6xl"><TodayQueue entries={previewEntries} /></div></AppShell>
   if (workspace === "empresa") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><CompanyWorkspace /></div></AppShell>
   if (workspace === "equipe") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl"><TeamWorkspace /></div></AppShell>
   if (workspace === "plano") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-5xl"><PlanWorkspace /></div></AppShell>
   if (workspace === "resultados") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-6xl"><ResultsPanel /></div></AppShell>
-  if (workspace === "welcome") return <div className="min-h-dvh"><WelcomeTour userId={`preview-${view ?? "x"}`} fullAccess={view !== "client"} /></div>
+  if (workspace === "welcome") return <div className="min-h-dvh"><WelcomeTour userId={`preview-${view ?? "x"}`} modules={view === "client" ? ["leads"] : ["leads", "chat"]} /></div>
   if (workspace === "skeleton") return <AppShell previewModule="/app/leads"><PageSkeleton variant={(view as "list" | "board" | "detail" | "inbox" | "cards") ?? "list"} /></AppShell>
   if (workspace === "automation-flow") return <AutomationWorkspace />
   if (workspace === "fx") return <FxPreview view={view} />

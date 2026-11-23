@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import type { ModuleKey } from "@/lib/modules"
 import Link from "next/link"
 import { ArrowLeft, ArrowRight, KanbanSquare, MessageCircle, Search, Sparkles, Target } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,8 @@ const EXAMPLE = { q: "Clínicas odontológicas sem site", local: "Porto Alegre, 
 const hunterExample = (q: string, local: string) => `/app/hunter?${new URLSearchParams({ q, local })}`
 
 /** Three short steps for someone new: what Kiara does, ready examples and where to start. Shown once per person and browser. */
-export function WelcomeTour({ userId, fullAccess }: { userId: string; fullAccess: boolean }) {
+/** `modules`: the account's modules; the tour is about prospecting, so it only shows with KIARA Leads. */
+export function WelcomeTour({ userId, modules }: { userId: string; modules: readonly ModuleKey[] }) {
   const key = `kiara-welcome:v1:${userId}`
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(0)
@@ -34,7 +36,7 @@ export function WelcomeTour({ userId, fullAccess }: { userId: string; fullAccess
   const examples = [
     { icon: Search, title: "Encontrar clientes", text: "“Clínicas odontológicas sem site em Porto Alegre”: a Kiara busca, confere telefone e endereço e dá uma nota para cada lead.", href: hunterExample(EXAMPLE.q, EXAMPLE.local) },
     { icon: KanbanSquare, title: "Organizar o funil", text: "Os leads que você aprova entram no funil, do primeiro contato ao fechamento.", href: "/app/pipeline" },
-    ...(fullAccess ? [{ icon: MessageCircle, title: "Perguntar à Kiara", text: "Converse, anexe uma planilha ou um contrato, peça uma imagem ou um vídeo curto.", href: "/app/chat" }] : []),
+    ...(modules.includes("chat") ? [{ icon: MessageCircle, title: "Perguntar à Kiara", text: "Converse, anexe uma planilha ou um contrato, peça uma imagem ou um vídeo curto.", href: "/app/chat" }] : []),
   ]
   const steps = [
     {
@@ -63,6 +65,7 @@ export function WelcomeTour({ userId, fullAccess }: { userId: string; fullAccess
       </div>,
     },
   ]
+  if (!modules.includes("leads")) return null
   const current = steps[step]
   const last = step === steps.length - 1
 

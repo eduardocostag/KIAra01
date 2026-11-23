@@ -1,6 +1,7 @@
 import "server-only"
 
 import { isSystemAdminEmail } from "@/lib/auth"
+import { modulesFor } from "@/lib/modules"
 import { kiaraApi } from "@/lib/api/server-client"
 import { createAdminClient, hasSupabaseAdminConfig } from "@/lib/supabase/admin"
 import type { AdminAuditEvent, AdminService, AdminSnapshot, AdminUser } from "./types"
@@ -54,6 +55,7 @@ async function loadUsers(notices: string[]): Promise<AdminUser[]> {
         lastSignInAt: user.last_sign_in_at ?? null,
         isAdmin: isSystemAdminEmail(user.email),
         blocked: Boolean(user.banned_until && new Date(user.banned_until).getTime() > Date.now()),
+        modules: modulesFor(user.email, user.app_metadata),
       }
     })
   } catch (error) {

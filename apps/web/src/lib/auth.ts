@@ -1,19 +1,19 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { isSystemAdminEmail, modulesFor, type ModuleKey } from "@/lib/modules";
 
 export type WorkspaceRole = "admin" | "member";
 export const SYSTEM_ADMIN_EMAIL = "admin@kiara.local";
-/** Every system administrator (full access); keep in sync with services/api/kiara_api/admins.py. */
-export const SYSTEM_ADMIN_EMAILS: readonly string[] = ["admin@kiara.local", "eduardocgonsalves@hotmail.com"];
-export function isSystemAdminEmail(email: string | null | undefined): boolean {
-  return Boolean(email) && SYSTEM_ADMIN_EMAILS.includes(email!.trim().toLowerCase());
-}
+// The administrator list lives in lib/modules.ts (the proxy needs it too); kept exported here for callers.
+export { isSystemAdminEmail, SYSTEM_ADMIN_EMAILS } from "@/lib/modules";
 export type WorkspaceContext = Readonly<{
   userId: string;
   workspaceId: string;
   role: WorkspaceRole;
   email: string | null;
   isSystemAdmin: boolean;
+  /** Modules this account may open (administrators: all; others: what the administrator chose). */
+  modules: ModuleKey[];
 }>;
 export class AuthenticationRequiredError extends Error {}
 export class AdministratorRequiredError extends Error {}
@@ -26,7 +26,8 @@ export async function requireWorkspace(): Promise<WorkspaceContext> {
   if (error || !userId) throw new AuthenticationRequiredError("Authentication required")
   const email = typeof data?.claims?.email === "string" ? data.claims.email.trim().toLowerCase() : null
   const isSystemAdmin = isSystemAdminEmail(email)
-  return { userId, workspaceId: userId, role: isSystemAdmin ? "admin" : "member", email, isSystemAdmin }
+  const modules = modulesFor(email, data?.claims?.app_metadata)
+  return { userId, workspaceId: userId, role: isSystemAdmin ? "admin" : "member", email, isSystemAdmin, modules }
 }
 
 export async function requireSystemAdmin(): Promise<WorkspaceContext> {

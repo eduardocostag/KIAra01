@@ -1,6 +1,6 @@
 import "server-only"
-import { AdministratorRequiredError, AuthenticationRequiredError, requireAccessToken, requireSystemAdmin } from "@/lib/auth"
-import { EARLY_ACCESS_API_PREFIXES } from "@/lib/early-access"
+import { AdministratorRequiredError, AuthenticationRequiredError, requireAccessToken, requireSystemAdmin, requireWorkspace } from "@/lib/auth"
+import { moduleForApiPath } from "@/lib/modules"
 
 type ApiErrorPayload = {
   error: { code: string; message: string; request_id: string; details?: Record<string, unknown> }
@@ -37,8 +37,11 @@ export async function kiaraApi(path: string, init: RequestInit = {}, options: { 
   let token: string
   try {
     if (path === "/v1/integrations" || path.startsWith("/v1/integrations/")) await requireSystemAdmin()
-    // Early-access modules (Chat, WhatsApp) stay administrator-only until launch.
-    if (EARLY_ACCESS_API_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) await requireSystemAdmin()
+    // Chat, WhatsApp and Automation routes only reach the backend for accounts the administrator gave that module.
+    const routeModule = moduleForApiPath(path)
+    if (routeModule && !(await requireWorkspace()).modules.includes(routeModule)) {
+      return errorResponse(403, "module_not_enabled", "Este módulo não está liberado para sua conta. Fale com o administrador.", requestId)
+    }
     token = await requireAccessToken()
   } catch (error) {
     if (error instanceof AdministratorRequiredError) return errorResponse(403, "system_admin_required", "Acesso exclusivo do administrador.", requestId)

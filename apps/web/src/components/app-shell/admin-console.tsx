@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import {
   Activity, AlertTriangle, Ban, CheckCircle2, CircleHelp, ExternalLink, Eye, EyeOff, FileClock,
-  KeyRound, LoaderCircle, LockOpen, LogOut, Mail, MoreHorizontal, RefreshCw, ServerCog, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle,
+  Check, Inbox, KeyRound, LayoutGrid, LoaderCircle, LockOpen, LogOut, Mail, MessageCircle, MoreHorizontal, RefreshCw, Search, ServerCog, ShieldCheck, Trash2, UserPlus, UsersRound, Workflow, XCircle,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AdminService, AdminSnapshot, AdminUser } from "@/lib/admin/types"
+import { MODULES, type ModuleKey } from "@/lib/modules"
 import { cn } from "@/lib/utils"
 
 const statusPresentation = {
@@ -45,7 +46,8 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
   const [confirmEmail, setConfirmEmail] = useState("")
   const [acting, setActing] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [newUser, setNewUser] = useState({ open: false, name: "", login: "", password: "" })
+  const [newUser, setNewUser] = useState<{ open: boolean; name: string; login: string; password: string; modules: ModuleKey[] }>({ open: false, name: "", login: "", password: "", modules: ["leads"] })
+  const [moduleDialog, setModuleDialog] = useState<{ user: AdminUser; modules: ModuleKey[] } | null>(null)
   const operational = snapshot.services.filter((service) => service.status === "operational").length
   const grouped = useMemo(() => Object.groupBy(snapshot.services, (service) => service.category), [snapshot.services])
 
@@ -94,17 +96,36 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
     } finally { setActing(null) }
   }
 
+  /** Administração → Usuários → Módulos: what this account sees in the module selector. */
+  async function saveModules() {
+    if (!moduleDialog) return
+    const { user, modules } = moduleDialog
+    setActing(user.id); setMessage(null)
+    try {
+      const response = await fetch(`/api/admin/users/${user.id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "modules", modules }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível salvar os módulos.")
+      setSnapshot((current) => ({ ...current, users: current.users.map((item) => item.id === user.id ? { ...item, modules: body.modules } : item) }))
+      setModuleDialog(null)
+      setMessage({ ok: true, text: body.message })
+    } catch (error) {
+      setMessage({ ok: false, text: error instanceof Error ? error.message : "Não foi possível salvar os módulos." })
+    } finally { setActing(null) }
+  }
+
   async function createUser() {
     setCreating(true); setMessage(null)
     try {
       const response = await fetch("/api/admin/users", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newUser.name, login: newUser.login, password: newUser.password }),
+        body: JSON.stringify({ name: newUser.name, login: newUser.login, password: newUser.password, modules: newUser.modules }),
       })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error ?? "Não foi possível criar a conta.")
       setSnapshot((current) => ({ ...current, users: [body.user, ...current.users] }))
-      setNewUser({ open: false, name: "", login: "", password: "" }); setShowPassword(false)
+      setNewUser({ open: false, name: "", login: "", password: "", modules: ["leads"] }); setShowPassword(false)
       setMessage({ ok: true, text: body.message })
     } catch (error) {
       setMessage({ ok: false, text: error instanceof Error ? error.message : "Não foi possível criar a conta." })
@@ -141,8 +162,9 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
         {Object.entries(grouped).map(([category, services]) => services?.length ? <Card key={category} className="gap-0 overflow-hidden py-0"><CardHeader className="border-b p-5"><CardTitle className="text-base">{category}</CardTitle><CardDescription>Estado observado em {formatDate(snapshot.generatedAt)}.</CardDescription></CardHeader><CardContent className="divide-y p-0">{services.map((service) => <ServiceRow key={service.id} service={service} />)}</CardContent></Card> : null)}
       </TabsContent>
 
-      <TabsContent value="users"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6"><div><CardTitle>Usuários da aplicação</CardTitle><CardDescription className="mt-1.5">Controle total das contas: criar, trocar a senha, desconectar de todos os aparelhos, bloquear o acesso ou excluir.</CardDescription></div><Button type="button" className="shrink-0" disabled={creating} onClick={() => { setShowPassword(false); setNewUser({ open: true, name: "", login: "", password: "" }) }}>{creating ? <LoaderCircle className="animate-spin" /> : <UserPlus />}Novo usuário</Button></CardHeader><CardContent className="p-0">
-        {snapshot.users.length ? <div className="divide-y">{snapshot.users.map((user) => <div key={user.id} className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-semibold">{user.name}</p>{user.isAdmin && <Badge className="bg-primary/15 text-primary">Administrador</Badge>}{user.blocked && <Badge className="bg-destructive/15 text-destructive">Bloqueado</Badge>}</div><p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{user.provider}</span><span>Último acesso: {formatDate(user.lastSignInAt)}</span><span>Criado em: {formatDate(user.createdAt)}</span></div></div><div className="flex flex-wrap items-center gap-2">
+      <TabsContent value="users"><Card className="gap-0 overflow-hidden py-0"><CardHeader className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6"><div><CardTitle>Usuários da aplicação</CardTitle><CardDescription className="mt-1.5">Controle total das contas: escolher os módulos de cada pessoa, criar, trocar a senha, desconectar de todos os aparelhos, bloquear o acesso ou excluir.</CardDescription></div><Button type="button" className="shrink-0" disabled={creating} onClick={() => { setShowPassword(false); setNewUser({ open: true, name: "", login: "", password: "", modules: ["leads"] }) }}>{creating ? <LoaderCircle className="animate-spin" /> : <UserPlus />}Novo usuário</Button></CardHeader><CardContent className="p-0">
+        {snapshot.users.length ? <div className="divide-y">{snapshot.users.map((user) => <div key={user.id} className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-semibold">{user.name}</p>{user.isAdmin && <Badge className="bg-primary/15 text-primary">Administrador</Badge>}{user.blocked && <Badge className="bg-destructive/15 text-destructive">Bloqueado</Badge>}</div><p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{user.provider}</span><span>Último acesso: {formatDate(user.lastSignInAt)}</span><span>Criado em: {formatDate(user.createdAt)}</span></div><ModuleChips user={user} /></div><div className="flex flex-wrap items-center gap-2">
+          {!user.isAdmin ? <Button type="button" variant="outline" disabled={acting !== null} onClick={() => setModuleDialog({ user, modules: [...user.modules] })}><LayoutGrid />Módulos</Button> : null}
           <Button type="button" variant="outline" disabled={acting !== null} onClick={() => { setPassword(""); setShowPassword(false); setDialog({ kind: "password", user }) }}><KeyRound />Trocar senha</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button type="button" variant="outline" disabled={acting !== null || resetting !== null} aria-label={`Gerenciar ${user.email}`}>{acting === user.id || resetting === user.id ? <LoaderCircle className="animate-spin" /> : <MoreHorizontal />}Gerenciar</Button></DropdownMenuTrigger>
@@ -176,6 +198,7 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
             <Input value={newUser.login} onChange={(event) => setNewUser({ ...newUser, login: event.target.value })} maxLength={254} placeholder="E-mail ou nome de usuário" aria-label="E-mail ou nome de usuário" autoComplete="off" autoCapitalize="none" spellCheck={false} autoFocus />
             <div className="flex items-center gap-2"><Input type={showPassword ? "text" : "password"} value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} minLength={6} maxLength={72} autoComplete="new-password" placeholder="Senha (mínimo 6 caracteres)" aria-label="Senha" />
               <Button type="button" variant="ghost" size="icon" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}>{showPassword ? <EyeOff /> : <Eye />}</Button></div>
+            <ModulePicker value={newUser.modules} onChange={(modules) => setNewUser((current) => ({ ...current, modules }))} />
             <DialogFooter><Button type="button" variant="ghost" onClick={() => setNewUser((current) => ({ ...current, open: false }))}>Cancelar</Button><Button type="submit" disabled={creating || newUser.login.trim().length < 2 || newUser.password.length < 6}>{creating ? <LoaderCircle className="animate-spin" /> : <UserPlus />}Criar conta</Button></DialogFooter>
           </form>
         </DialogContent>
@@ -190,6 +213,15 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
         </form>
       </DialogContent>
     </Dialog>
+    <Dialog open={moduleDialog !== null} onOpenChange={(open) => { if (!open) setModuleDialog(null) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Módulos da conta</DialogTitle><DialogDescription>O que {moduleDialog?.user.email} vê na tela inicial e consegue abrir. Ao tirar um módulo, a pessoa é desconectada para a mudança valer na hora.</DialogDescription></DialogHeader>
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveModules() }}>
+          {moduleDialog ? <ModulePicker value={moduleDialog.modules} onChange={(modules) => setModuleDialog((current) => current && { ...current, modules })} /> : null}
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setModuleDialog(null)}>Cancelar</Button><Button type="submit" disabled={acting !== null}>{acting ? <LoaderCircle className="animate-spin" /> : <Check />}Salvar módulos</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
     <Dialog open={dialog?.kind === "delete"} onOpenChange={(open) => { if (!open) setDialog(null) }}>
       <DialogContent>
         <DialogHeader><DialogTitle>Excluir conta</DialogTitle><DialogDescription>A conta de {dialog?.user.email} é excluída e a pessoa não consegue mais entrar. Isso não pode ser desfeito. Para confirmar, digite o e-mail da conta.</DialogDescription></DialogHeader>
@@ -200,6 +232,32 @@ export function AdminConsole({ initialSnapshot, mailerFindResult }: { initialSna
       </DialogContent>
     </Dialog>
   </div>
+}
+
+const MODULE_ICONS: Record<ModuleKey, typeof Search> = { leads: Search, whatsapp: MessageCircle, chat: Inbox, automation: Workflow }
+
+/** Turns each module on or off for an account; works with any number of modules. */
+function ModulePicker({ value, onChange }: { value: ModuleKey[]; onChange: (modules: ModuleKey[]) => void }) {
+  const toggle = (key: ModuleKey) => onChange(value.includes(key) ? value.filter((item) => item !== key) : MODULES.map((item) => item.key).filter((item) => item === key || value.includes(item)))
+  return <fieldset className="space-y-2">
+    <legend className="mb-2 text-sm font-medium">Módulos liberados</legend>
+    <div className="grid gap-2">{MODULES.map(({ key, label, description }) => {
+      const on = value.includes(key)
+      const Icon = MODULE_ICONS[key]
+      return <button key={key} type="button" role="switch" aria-checked={on} onClick={() => toggle(key)} className={cn("flex min-h-14 items-center gap-3 rounded-xl border p-3 text-left transition-colors", on ? "border-primary/60 bg-primary/10" : "hover:bg-muted/40")}>
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", on ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}><Icon className="size-4" aria-hidden="true" /></span>
+        <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{label}</span><span className="block truncate text-xs text-muted-foreground">{description}</span></span>
+        <span className={cn("grid size-5 shrink-0 place-items-center rounded-md border", on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")} aria-hidden="true">{on ? <Check className="size-3.5" /> : null}</span>
+      </button>
+    })}</div>
+    {!value.length ? <p className="text-xs text-amber-500">Sem nenhum módulo, a conta entra mas não vê nada até você liberar.</p> : null}
+  </fieldset>
+}
+
+function ModuleChips({ user }: { user: AdminUser }) {
+  if (user.isAdmin) return <p className="mt-2 text-xs text-muted-foreground">Todos os módulos</p>
+  if (!user.modules.length) return <p className="mt-2 text-xs text-amber-500">Nenhum módulo liberado</p>
+  return <div className="mt-2 flex flex-wrap gap-1.5">{MODULES.filter(({ key }) => user.modules.includes(key)).map(({ key, label }) => <Badge key={key} variant="outline" className="font-normal">{label.replace("KIARA ", "")}</Badge>)}</div>
 }
 
 function Metric({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: string }) {

@@ -1,3 +1,5 @@
+import type { ModuleKey } from "@/lib/modules"
+
 export type AdminUser = {
   id: string
   email: string
@@ -8,6 +10,8 @@ export type AdminUser = {
   isAdmin: boolean
   /** Access blocked by an administrator (Supabase ban). */
   blocked: boolean
+  /** Modules the account may open (administrators: all of them, not editable). */
+  modules: ModuleKey[]
 }
 
 export type AdminService = {

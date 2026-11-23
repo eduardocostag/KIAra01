@@ -5,7 +5,11 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/lib/api/server-client.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function client(response, { admin = true, signedIn = true } = {}) {
+const modulesSource = readFileSync(new URL("../src/lib/modules.ts", import.meta.url), "utf8");
+const modulesExports = {};
+new Function("exports", ts.transpileModule(modulesSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(modulesExports);
+const ALL = ["leads", "whatsapp", "chat", "automation"];
+function client(response, { admin = true, signedIn = true, modules = admin ? ALL : ["leads"] } = {}) {
   const exports = {};
   class AuthenticationRequiredError extends Error {}
   class AdministratorRequiredError extends Error {}
@@ -14,9 +18,10 @@ function client(response, { admin = true, signedIn = true } = {}) {
     if (name === "@/lib/auth") return {
       requireAccessToken: async () => { if (!signedIn) throw new AuthenticationRequiredError(); return "test-token"; },
       requireSystemAdmin: async () => { if (!signedIn) throw new AuthenticationRequiredError(); if (!admin) throw new AdministratorRequiredError(); },
+      requireWorkspace: async () => { if (!signedIn) throw new AuthenticationRequiredError(); return { modules }; },
       AuthenticationRequiredError, AdministratorRequiredError,
     };
-    if (name === "@/lib/early-access") return { EARLY_ACCESS_API_PREFIXES: ["/v1/chat", "/v1/whatsapp-web"] };
+    if (name === "@/lib/modules") return modulesExports;
     throw new Error(name);
   };
   new Function("require", "exports", "fetch", "process", "console", compiled)(require, exports, async () => response, { env: { KIARA_API_URL: "https://api.example.test", KIARA_COMPETITION_API_URL: "https://api.example.test" } }, { info() {}, warn() {}, error() {}, log() {} });
@@ -40,14 +45,18 @@ test("integration access is rejected before forwarding for ordinary and signed-o
   }
 });
 
-test("early-access modules (Chat, WhatsApp) are administrator-only before forwarding", async () => {
-  for (const path of ["/v1/chat/messages", "/v1/chat/status", "/v1/whatsapp-web/config", "/v1/whatsapp-web/analysis"]) {
+test("Chat, WhatsApp and Automation only reach the backend for accounts given that module", async () => {
+  for (const path of ["/v1/chat/messages", "/v1/chat/status", "/v1/whatsapp-web/config", "/v1/whatsapp-web/analysis", "/v1/automation/flows"]) {
     const denied = await client(Response.json({ text: "must-never-be-returned" }), { admin: false })(path);
     assert.equal(denied.status, 403);
-    assert.equal((await denied.json()).error.code, "system_admin_required");
+    assert.equal((await denied.json()).error.code, "module_not_enabled");
   }
   const allowed = await client(Response.json({ text: "ok" }))("/v1/chat/status");
   assert.equal(allowed.status, 200);
+  const granted = await client(Response.json({ text: "ok" }), { admin: false, modules: ["chat"] })("/v1/chat/status");
+  assert.equal(granted.status, 200);
+  const otherModule = await client(Response.json({ text: "no" }), { admin: false, modules: ["chat"] })("/v1/whatsapp-web/config");
+  assert.equal(otherModule.status, 403);
   const leads = await client(Response.json({ items: [] }), { admin: false })("/v1/leads");
   assert.equal(leads.status, 200);
 });
