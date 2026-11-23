@@ -878,8 +878,21 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
             raise RuntimeError("video_script_failed") from last_error
         return await chat_video.start_studio(script, title=title)
 
-    async def image_payload(prompt: str) -> dict | None:
-        picture, _model = await make_image(prompt.strip()[:3000])
+    async def image_brief(request: str) -> str:
+        """The image mode sends the person's words straight in: a quick model call rewrites them the way the chat's
+        [[IMAGEM]] marker does (rich English description, any written text in exact Brazilian Portuguese)."""
+        try:
+            brief, _model = await asyncio.wait_for(complete_conversation(
+                [{"role": "system", "content": IMAGE_STYLE + " Agora responda SOMENTE com a descrição que iria dentro da "
+                  "marcação, sem a marcação e sem mais nada."}, {"role": "user", "content": request[:2000]}],
+                fast=True, provider_factory=provider_factory, max_tokens=500), timeout=25)
+        except Exception:  # noqa: BLE001 - the picture is made from the person's own words
+            return request
+        brief = MARKER.sub(lambda found: found.group(1), str(brief or "")).strip().strip("[]").strip()
+        return brief[:2000] if len(brief) >= 20 else request
+
+    async def image_payload(prompt: str, rewrite: bool = False) -> dict | None:
+        picture, _model = await make_image((await image_brief(prompt.strip()[:2000]) if rewrite else prompt.strip())[:3000])
         if not picture:
             return None
         return {"mime": "image/jpeg", "data_base64": base64.b64encode(picture).decode("ascii"), "prompt": prompt.strip()[:500]}
@@ -1073,7 +1086,7 @@ def create_chat_router(provider_factory=None, image_generator=None, streamer=Non
         if not (_configuration()[0] and image_available()):
             raise ApiError(503, "image_not_configured", "A criação de imagens não está disponível neste servidor.")
         await charge(context, "images")
-        payload = await image_payload(body.prompt)
+        payload = await image_payload(body.prompt, rewrite=True)
         if not payload:
             raise ApiError(502, "image_unavailable", "Não consegui criar a imagem agora. Tente de novo em instantes.")
         return {"text": "Pronto! Aqui está a imagem.", "provider": "kiara", "model": "", "image": payload}

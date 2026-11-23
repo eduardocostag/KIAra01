@@ -19,7 +19,10 @@ import time
 # goes on to the Gemini API account and, last, the free AI Horde network (Flux, ~16 s when its queue is short).
 # 2026-11-19: no ChatGPT plan, so codex is out; Cloudflare Workers AI (FLUX.2 klein, ~104 of the 10k free daily neurons
 # per 1024px image, ~95 a day) comes right after Gemini. Cloudflare models are skipped while its account is not set.
-DEFAULT_IMAGE_MODELS = ("antigravity/gemini-3.1-flash-image", "cloudflare/@cf/black-forest-labs/flux-2-klein-4b",
+# 2026-11-23: klein 4B misspelled Portuguese text ("Pão quetntho todo dias") and looked plain; klein 9B wrote it exactly
+# with far better photos (~1.37k neurons, ~7 free a day). When its daily share runs out, klein 4B takes over.
+DEFAULT_IMAGE_MODELS = ("antigravity/gemini-3.1-flash-image", "cloudflare/@cf/black-forest-labs/flux-2-klein-9b",
+                        "cloudflare/@cf/black-forest-labs/flux-2-klein-4b",
                         "gemini/gemini-3.1-flash-image", "cloudflare/@cf/black-forest-labs/flux-1-schnell",
                         "aihorde/Flux.1-Schnell fp8 (Compact)")
 CLOUDFLARE = "cloudflare/"
@@ -33,7 +36,14 @@ IMAGE_STYLE = (
     "Você também cria imagens. Quando a pessoa pedir uma imagem, foto, ilustração, desenho, logo ou arte (ou pedir "
     "para ajustar uma imagem que você já criou nesta conversa), escreva uma frase curta e natural e, em seguida, "
     "uma linha exatamente assim: [[IMAGEM: descrição completa e visual da imagem, com assunto, estilo, cores, "
-    "enquadramento e luz]]. Ao ajustar uma imagem anterior, descreva a imagem inteira de novo com a mudança pedida. "
+    "enquadramento e luz]]. Escreva a descrição dentro da marcação EM INGLÊS e bem rica (os geradores entendem melhor "
+    "inglês): tipo de imagem (foto profissional, ilustração, logo, post de Instagram), assunto, composição, luz, "
+    "paleta, materiais e acabamento de alta qualidade. Se a imagem tiver texto escrito (título, slogan, nome, preço), "
+    "o texto fica em português do Brasil, curto (no máximo 6 palavras por bloco), entre aspas duplas e com a grafia "
+    "e os acentos exatos, seguido de: (Brazilian Portuguese, spelled exactly as written). Ex.: Large elegant serif "
+    "headline that reads exactly \"Pão quentinho todo dia\" (Brazilian Portuguese, spelled exactly as written). "
+    "Nunca peça texto em outro idioma e não coloque texto que a pessoa não pediu, além do nome da marca quando "
+    "fizer sentido. Ao ajustar uma imagem anterior, descreva a imagem inteira de novo com a mudança pedida. "
     "Nunca diga que não consegue gerar imagens e nunca invente links. Só use a marcação quando a pessoa realmente "
     "quiser uma imagem (para vídeo, use a marcação de vídeo quando ela existir)."
 )

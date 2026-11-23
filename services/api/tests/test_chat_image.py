@@ -91,6 +91,12 @@ def test_image_mode_endpoint_and_status(monkeypatch):
     assert next(item for item in status["capabilities"] if item["id"] == "image")["available"] is True
     api, _ = build(monkeypatch, "", picture=b"")
     assert api.post("/v1/chat/image", json={"prompt": "um farol"}).status_code == 502
+    # The image mode rewrites the person's words first: rich English, written text kept in exact Portuguese.
+    brief = 'Editorial photo of a lighthouse at dawn, headline that reads exactly "Bom dia" (Brazilian Portuguese, spelled exactly as written)'
+    api, seen = build(monkeypatch, brief)
+    body = api.post("/v1/chat/image", json={"prompt": "farol ao amanhecer escrito bom dia"}).json()
+    assert seen["prompts"] == [brief] and "EM INGLÊS" in seen["system"]
+    assert body["image"]["prompt"] == "farol ao amanhecer escrito bom dia"
 
 
 def test_generator_falls_back_and_returns_a_small_jpeg(monkeypatch):
@@ -120,4 +126,4 @@ def test_cloudflare_models_join_the_chain_only_when_its_account_is_set(monkeypat
     assert "codex/gpt-image-2" not in chat_image.image_models()
     monkeypatch.setenv("KIARA_CLOUDFLARE_ACCOUNT_ID", "acc")
     monkeypatch.setenv("KIARA_CLOUDFLARE_API_TOKEN", "tok")
-    assert chat_image.image_models()[1] == "cloudflare/@cf/black-forest-labs/flux-2-klein-4b"
+    assert chat_image.image_models()[1:3] == ["cloudflare/@cf/black-forest-labs/flux-2-klein-9b", "cloudflare/@cf/black-forest-labs/flux-2-klein-4b"]
