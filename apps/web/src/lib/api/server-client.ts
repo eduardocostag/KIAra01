@@ -36,7 +36,7 @@ export async function kiaraApi(path: string, init: RequestInit = {}, options: { 
 
   let token: string
   try {
-    if (path === "/v1/integrations" || path.startsWith("/v1/integrations/")) await requireSystemAdmin()
+    if (path === "/v1/integrations" || path.startsWith("/v1/integrations/") || path.startsWith("/v1/sdr/")) await requireSystemAdmin()
     // Chat, WhatsApp and Automation routes only reach the backend for accounts the administrator gave that module.
     const routeModule = moduleForApiPath(path)
     if (routeModule && !(await requireWorkspace()).modules.includes(routeModule)) {
@@ -75,7 +75,7 @@ export async function kiaraApi(path: string, init: RequestInit = {}, options: { 
   }
 
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-  const timeoutMs = path === "/v1/chat/messages" || path === "/v1/chat/stream" ? 285_000 : path === "/v1/chat/image" ? 150_000 : path === "/v1/chat/video" ? 100_000 : path === "/v1/chat/speech" ? 40_000 : path === "/v1/whatsapp-server/sync" ? 55_000 : path === "/v1/whatsapp-official/connect" ? 55_000 : path.startsWith("/v1/inbox/threads/") && path.endsWith("/messages") ? 45_000 : path.startsWith("/v1/leads/") && path.endsWith("/company") ? 60_000 : path.endsWith("/confirm") || path.endsWith("/process")
+  const timeoutMs = path === "/v1/chat/messages" || path === "/v1/chat/stream" ? 285_000 : path === "/v1/chat/image" ? 150_000 : path === "/v1/chat/video" ? 100_000 : path === "/v1/chat/speech" ? 40_000 : path === "/v1/sdr/simulate" ? 90_000 : path === "/v1/whatsapp-server/sync" ? 55_000 : path === "/v1/whatsapp-official/connect" ? 55_000 : path.startsWith("/v1/inbox/threads/") && path.endsWith("/messages") ? 45_000 : path.startsWith("/v1/leads/") && path.endsWith("/company") ? 60_000 : path.endsWith("/confirm") || path.endsWith("/process")
     ? 290_000
     : path.startsWith("/v1/competition/kiara/") || path.startsWith("/v1/competition/instagram/")
       ? 55_000

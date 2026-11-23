@@ -235,3 +235,40 @@ def test_helpers():
     assert not sdr.followup_due({"followup_hours": 24}, 1, NOW - timedelta(hours=25), NOW)  # 2nd waits 3 days
     assert sdr.in_contact_hours({"contact_start": "09:00", "contact_end": "18:00"}, datetime(2026, 11, 16, 15, 0, tzinfo=UTC))  # 12:00 BRT
     assert not sdr.in_contact_hours({"contact_start": "09:00", "contact_end": "18:00"}, datetime(2026, 11, 16, 23, 0, tzinfo=UTC))
+
+
+def simulate(ask, *rows, followup=0, **cfg):
+    body = sdr.SimulationRequest(name="Maria Souza", followup=followup,
+                                 messages=[sdr.SimulatedMessage(direction=d, body=b) for d, b in rows])
+    return asyncio.run(sdr.simulate_turn(ask, config("approval", **cfg), body))
+
+
+def test_simulator_answers_like_the_real_sdr_without_storing_or_sending():
+    result = simulate(model(), ("inbound", "Quanto custa a limpeza de pele?"))
+    assert result["action"] == "reply" and "R$ 150" in result["reply"]
+    assert result["analysis"]["temperature"] == "hot" and result["analysis"]["score"] == 80
+    assert result["configured"] is True
+
+
+def test_simulator_applies_the_number_protections():
+    asked = []
+
+    async def never(conversation):
+        asked.append(conversation)
+        return "{}"
+    stop = simulate(never, ("inbound", "Oi"), ("outbound", "Olá!"), ("inbound", "pare de me mandar mensagem"))
+    assert stop["action"] == "optout" and not asked  # obeyed before any AI
+    link = simulate(model(reply="Veja em www.clinica.com.br e me diga"), ("inbound", "Oi, vi o anúncio"))
+    assert "www." not in link["reply"] and any("Link removido" in note for note in link["notes"])
+    handoff = simulate(model(handoff=True), ("inbound", "Quero fechar, me liga?"))
+    assert handoff["action"] == "handoff" and handoff["reply"] == "Oi Maria, um atendente já vai continuar com você!"
+
+
+def test_simulator_follow_up_only_after_a_kiara_message():
+    result = simulate(model(reply="Oi Maria, conseguiu ver os horários?"), ("inbound", "Oi"), ("outbound", "Olá! Para quando?"), followup=1)
+    assert result["action"] == "followup" and "1 de 2" in result["notes"][-1]
+    try:
+        simulate(model(), ("inbound", "Oi"), followup=1)
+        raise AssertionError("follow-up without a Kiara message")
+    except sdr.ApiError as error:
+        assert error.code == "followup_not_due"

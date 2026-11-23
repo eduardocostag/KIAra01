@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowUp, Bot, Cable, FileText, Hand, Image as ImageIcon, Info, LoaderCircle, MapPin, MessageCircle, MessageSquareDashed, Mic, RefreshCw, Search, Sparkles, Sticker, Video, Workflow, type LucideIcon } from "lucide-react"
+import { ArrowLeft, ArrowUp, Bot, Cable, FileText, FlaskConical, Hand, Image as ImageIcon, Info, LoaderCircle, MapPin, MessageCircle, MessageSquareDashed, Mic, RefreshCw, Search, Sparkles, Sticker, Video, Workflow, type LucideIcon } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { ConversationConstellation } from "@/components/app-shell/conversation-constellation"
 import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel, syncWhatsAppConversations } from "@/components/app-shell/whatsapp-gateway-workspace"
@@ -49,10 +49,11 @@ function MediaBubble({ kind, label }: { kind: MediaKind; label: string }) {
   </span>
 }
 
-function WhatsAppFooter({ onConnection }: { onConnection: () => void }) {
+function WhatsAppFooter({ onConnection, isAdmin = false }: { onConnection: () => void; isAdmin?: boolean }) {
   return <>
     <button type="button" onClick={onConnection} className={footerLink}><Cable className="size-4" aria-hidden="true" />Conexão</button>
     <Link href="/app/whatsapp/automacao" className={footerLink}><Workflow className="size-4" aria-hidden="true" />Automação</Link>
+    {isAdmin ? <Link href="/app/whatsapp/simulador" className={footerLink}><FlaskConical className="size-4" aria-hidden="true" />Simulador</Link> : null}
   </>
 }
 
@@ -80,7 +81,7 @@ function ConnectionDialog({ open, onOpenChange, onConnected }: { open: boolean; 
 }
 
 /** Conversation-first WhatsApp workspace: list on the left, thread in the center, composer at the bottom. */
-export function WhatsAppInbox({ conversations, canSend = false, initialId = "", loadError = "" }: { conversations: readonly InboxConversationDTO[]; canSend?: boolean; initialId?: string; loadError?: string }) {
+export function WhatsAppInbox({ conversations, canSend = false, initialId = "", loadError = "", isAdmin = false }: { conversations: readonly InboxConversationDTO[]; canSend?: boolean; initialId?: string; loadError?: string; isAdmin?: boolean }) {
   const router = useRouter()
   const [selected, setSelected] = useState(initialId || [...conversations].sort((a, b) => (Date.parse(b.lastAt) || 0) - (Date.parse(a.lastAt) || 0))[0]?.id || "")
   const [query, setQuery] = useState("")
@@ -190,7 +191,7 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
   return <ImmersiveShell
     label="Conversas do WhatsApp"
     sidebar={sidebar}
-    footer={<WhatsAppFooter onConnection={() => setConnectionOpen(true)} />}
+    footer={<WhatsAppFooter isAdmin={isAdmin} onConnection={() => setConnectionOpen(true)} />}
     topBar={active ? <>
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{initials(active.name)}</span>
       <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{active.name}</p><p className="truncate text-xs text-muted-foreground">{channelLabels[active.channel] ?? active.channel} · {active.handle}</p></div>
@@ -276,12 +277,12 @@ export function WhatsAppInbox({ conversations, canSend = false, initialId = "", 
 }
 
 /** Same sidebar shell for secondary WhatsApp pages (automation settings). */
-export function WhatsAppSectionShell({ title, children }: { title: string; children: ReactNode }) {
+export function WhatsAppSectionShell({ title, children, isAdmin = false }: { title: string; children: ReactNode; isAdmin?: boolean }) {
   const [connectionOpen, setConnectionOpen] = useState(false)
   return <ImmersiveShell
     label="WhatsApp"
     sidebar={(close) => <Link href="/app/whatsapp" onClick={close} className={footerLink}><ArrowLeft className="size-4" aria-hidden="true" />Conversas</Link>}
-    footer={<WhatsAppFooter onConnection={() => setConnectionOpen(true)} />}
+    footer={<WhatsAppFooter isAdmin={isAdmin} onConnection={() => setConnectionOpen(true)} />}
     topBar={<span className="truncate font-medium">{title}</span>}
   >
     <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto w-full max-w-4xl p-4 sm:p-6">{children}</div></div>

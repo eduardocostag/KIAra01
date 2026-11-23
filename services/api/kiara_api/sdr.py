@@ -13,6 +13,7 @@ No cold prospecting: the SDR never writes first to someone who has not written t
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import os
@@ -20,12 +21,15 @@ import re
 import time
 import unicodedata
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable
+from typing import Annotated, Any, Awaitable, Callable, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from psycopg.types.json import Jsonb
+from pydantic import BaseModel, ConfigDict, Field
 
 from .adapters.postgres import PostgresRepository, _uuid
+from .http.context import RequestContext
+from .http.dependencies import system_administrator_context
 from .http.errors import ApiError
 from .memory import merge_contact_memory
 
@@ -513,6 +517,99 @@ class SdrService:
             summary["sent" if outcome == "done" else "failed"] += 1
 
 
+class SimulatedMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    direction: Literal["inbound", "outbound"]
+    body: str = Field(min_length=1, max_length=1500)
+
+
+class SimulationRequest(BaseModel):
+    """A pretend WhatsApp conversation kept by the admin's browser: nothing is stored or sent."""
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(default="Cliente teste", max_length=80)
+    messages: list[SimulatedMessage] = Field(min_length=1, max_length=40)
+    memory: list[str] = Field(default_factory=list, max_length=15)
+    followup: int = Field(default=0, ge=0, le=FOLLOWUP_MAX)
+
+
+def _analysis_view(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not data:
+        return None
+    try:
+        score = max(0, min(100, int(float(data.get("score") or 0))))
+    except (TypeError, ValueError):
+        score = 0
+    return {"stage": data.get("stage") if data.get("stage") in {*STAGE_ORDER, "lost"} else "new",
+            "temperature": data.get("temperature") if data.get("temperature") in {"cold", "warm", "hot"} else "warm",
+            "score": score, "summary": str(data.get("summary") or "")[:800], "intent": str(data.get("intent") or "")[:160],
+            "next_action": str(data.get("next_action") or "")[:300],
+            "gaps": [str(item)[:200] for item in (data.get("gaps") or [])[:6] if str(item).strip()]}
+
+
+async def simulate_turn(ask: Ask, config: dict[str, Any], body: SimulationRequest) -> dict[str, Any]:
+    """One SDR turn over a pretend conversation, with the same prompts and protections as the real worker
+    (opt-out first, analysis and handoff, no link in the first message, follow-up limit). Read-only."""
+    now = datetime.now(UTC)
+    messages = [{"direction": item.direction, "body": item.body, "sent_at": now - timedelta(minutes=2 * (len(body.messages) - index))}
+                for index, item in enumerate(body.messages)]
+    name = body.name.strip() or "Cliente teste"
+    company = str(config.get("ai_context") or "")
+    result: dict[str, Any] = {"action": "none", "reply": "", "reason": "", "analysis": None, "memory": body.memory,
+                              "notes": [], "configured": bool(company.strip()), "mode": config.get("sdr_mode", "off")}
+    last = messages[-1]
+    if body.followup:
+        if last["direction"] != "outbound" or not any(item["direction"] == "inbound" for item in messages):
+            raise ApiError(422, "followup_not_due", "O follow-up só acontece depois de uma mensagem da Kiara sem resposta do cliente.")
+    elif last["direction"] != "inbound":
+        raise ApiError(422, "nothing_to_answer", "Escreva uma mensagem como cliente para a Kiara responder.")
+    if not body.followup and wants_out(last["body"]):
+        result.update(action="optout", notes=["Pedido de parar reconhecido na hora: a Kiara não responde mais e o contato sai das automações."])
+        return result
+    conversation = transcript(messages, name)
+
+    async def analyse() -> dict[str, Any] | None:
+        try:
+            return parse_json(await ask(analysis_prompt(company, name, conversation)))
+        except (ValueError, json.JSONDecodeError):
+            return None
+
+    async def draft() -> dict[str, Any] | None:
+        try:
+            return parse_json(await ask(reply_prompt(company, name, conversation, body.followup, body.memory)))
+        except (ValueError, json.JSONDecodeError):
+            return None
+
+    # The worker runs these one after the other; together they answer in the time of one.
+    analysis, reply = await asyncio.gather(analyse(), draft())
+    result["analysis"] = _analysis_view(analysis)
+    if analysis and isinstance(analysis.get("remember"), list):
+        result["memory"] = merge_contact_memory(body.memory, analysis["remember"])
+    if analysis and analysis.get("optout") is True:
+        result.update(action="optout", notes=["A análise entendeu que o cliente não quer mais mensagens: o contato seria bloqueado."])
+        return result
+    handoff = (analysis or {}).get("handoff") is True and not body.followup
+    reason = str((analysis or {}).get("handoff_reason") or "")
+    if not handoff and reply and reply.get("handoff") is True:
+        handoff, reason = True, str(reply.get("reason") or "")
+    if handoff:
+        template = str(config.get("reply_template") or "").replace("{name}", name.split(" ")[0])[:1000].strip()
+        result.update(action="handoff", reason=reason[:300] or "pedido do cliente", reply=template,
+                      notes=["A IA para nesta conversa e avisa você para continuar o atendimento."])
+        return result
+    text = re.sub(r"[*_#`]", "", str((reply or {}).get("reply") or "")).strip()[:1500]
+    if not any(item["direction"] == "outbound" for item in messages):
+        if _LINK.search(text):
+            result["notes"].append("Link removido: a primeira mensagem para alguém nunca leva link.")
+        text = without_links(text)
+    if not text:
+        result["notes"].append("A IA não conseguiu responder agora. Tente de novo.")
+        return result
+    if body.followup:
+        result["notes"].append(f"Follow-up {body.followup} de {FOLLOWUP_MAX}. Depois disso a Kiara para de insistir.")
+    result.update(action="followup" if body.followup else "reply", reply=text)
+    return result
+
+
 def create_sdr_router(service: SdrService) -> APIRouter:
     router = APIRouter(tags=["sdr"])
 
@@ -529,5 +626,18 @@ def create_sdr_router(service: SdrService) -> APIRouter:
         if len(organizations) != 1:
             return {"mode": "off", "reason": "no_workspace" if not organizations else "ambiguous_workspace"}
         return await service.tick(organizations[0])
+
+    @router.post("/v1/sdr/simulate")
+    async def simulate(body: SimulationRequest,
+                       context: Annotated[RequestContext, Depends(system_administrator_context)]) -> dict[str, Any]:
+        """Admin-only test bench: the admin plays the customer; nothing reaches WhatsApp or the database."""
+        config: dict[str, Any] = {}
+        if service.postgres is not None:
+            org = _uuid("organization", context.organization_id)
+            async with service.postgres._transaction(context.organization_id) as connection:
+                config = await service._config(connection, org)
+                profile = await service._profile(connection, org)
+            config["ai_context"] = (str(config.get("ai_context") or "") + profile.pop("knowledge", "")).strip()
+        return await simulate_turn(service.ask, config, body)
 
     return router
