@@ -398,10 +398,69 @@ _BRAZIL_STATES = {
 }
 
 
+def split_locations(location: str | None) -> list[str]:
+    """"Tabaí, Lajeado e Estrela" -> three cities; "Porto Alegre, RS" stays one city with its state."""
+    if not location or not location.strip():
+        return []
+    pieces = [piece.strip(" .-") for piece in re.split(r"[;,/|\n]|\s+e\s+", location) if piece.strip(" .-")]
+    cities: list[str] = []
+    for piece in pieces:
+        key = folded(piece).strip()
+        if cities and (key in _BRAZIL_STATES or key in _BRAZIL_STATES.values() or key in {"brasil", "brazil"}):
+            if key not in {"brasil", "brazil"}:
+                cities[-1] = f"{cities[-1]} {piece}"
+            continue
+        if key and key not in {folded(city) for city in cities}:
+            cities.append(piece)
+    # "Centro, Curitiba, PR" / "Zona Sul, Porto Alegre": neighborhood + city is one place, not two cities.
+    first = folded(cities[0]).strip() if cities else ""
+    has_state = len(pieces) > len(cities)
+    if len(cities) <= 1 or len(cities) == 2 and (has_state or first == "centro" or first.startswith(("zona ", "bairro "))):
+        return [location.strip()]
+    return cities[:10]
+
+
+def national_phone(value: Any) -> str | None:
+    """Brazilian number as DDD + number (10 or 11 digits), without the 0 trunk prefix or 55."""
+    digits = re.sub(r"\D", "", str(value or ""))
+    if digits.startswith("55") and len(digits) in (12, 13):
+        digits = digits[2:]
+    digits = digits.lstrip("0")
+    return digits if len(digits) in (10, 11) and digits[:2] not in {"00", "10"} else None
+
+
+def phone_kind(value: Any) -> str:
+    """celular (WhatsApp likely), fixo (call only) or "" when it is not a Brazilian number."""
+    digits = national_phone(value)
+    if not digits:
+        return ""
+    return "celular" if len(digits) == 11 and digits[2] == "9" else "fixo" if len(digits) == 10 else ""
+
+
+def lead_identities(item: dict[str, Any]) -> set[str]:
+    """Keys that identify the same business across searches: Maps place, phone and own website."""
+    data = item.get("public_data") or {}
+    keys: set[str] = set()
+    if data.get("place_id"):
+        keys.add(f"place:{str(data['place_id']).lower()}")
+    for field in ("phone", "whatsapp_url"):
+        digits = national_phone(re.sub(r"^https?://wa\.me/", "", str(data.get(field) or "")))
+        if digits:
+            keys.add(f"phone:{digits}")
+    site = safe_public_url(data.get("website_url"))
+    host = (urlsplit(site).hostname or "").lower().removeprefix("www.") if site else ""
+    if host and not any(host == shared or host.endswith("." + shared) for shared in _PROFILE_DOMAINS):
+        keys.add(f"site:{host}")
+    return keys
+
+
 def address_matches_location(address: str, location: str | None) -> bool:
     """Require the requested city/region in observed locality, never infer from UF/CEP."""
     if not location or not location.strip():
         return True
+    cities = split_locations(location)
+    if len(cities) > 1:  # several cities requested: being in any one of them is a match
+        return any(address_matches_location(address, city) for city in cities)
 
     def words(value: str) -> str:
         return re.sub(r"[^a-z0-9]+", " ", folded(value)).strip()

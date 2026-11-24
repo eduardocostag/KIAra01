@@ -29,6 +29,7 @@ export type HunterPublicData = {
   website_url?: string | null
   website_evidence?: string | null
   phone?: string | null
+  phone_kind?: "celular" | "fixo" | ""
   email?: string | null
   whatsapp_url?: string | null
   whatsapp_probable?: boolean
@@ -93,6 +94,16 @@ export function publicPhone(value: unknown): string | null {
   if (typeof value !== "string" || !/^[\d\s()+.\-]+$/.test(value)) return null
   const digits = value.replace(/\D/g, "")
   return digits.length >= 8 && digits.length <= 15 ? value.trim() : null
+}
+
+/** "+5551999887766" or "051999887766" -> "(51) 99988-7766"; anything else is shown as found. */
+export function displayPhone(value: string): string {
+  let digits = value.replace(/\D/g, "")
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2)
+  digits = digits.replace(/^0+/, "")
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  return value
 }
 
 export function inferredWebsiteFilter(query: string, objective: string): WebsiteFilter {

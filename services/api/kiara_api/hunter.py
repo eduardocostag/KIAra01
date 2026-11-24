@@ -40,6 +40,10 @@ from .hunter_research import (
     extract_public_address,
     filter_results,
     folded,
+    lead_identities,
+    national_phone,
+    phone_kind,
+    split_locations,
     maps_detail_result,
     merge_public_contacts,
     normalize_result,
@@ -369,6 +373,20 @@ class HunterRepository:
                 (org, sid),
             )).fetchall()
         return self._search(row, [self._result(item) for item in results])
+
+    async def known_identities(self, context: RequestContext, search_id: str) -> set[str]:
+        """Businesses this workspace found in earlier searches (last 365 days), as lead identities."""
+        async with self.database._transaction(context.organization_id) as connection:
+            cursor = await connection.execute(
+                """SELECT public_data FROM hunter_results WHERE organization_id=%s AND search_id<>%s
+                   AND created_at > now() - interval '365 days' ORDER BY created_at DESC LIMIT 5000""",
+                (_uuid("organization", context.organization_id), _uuid("hunter_search", search_id)))
+            rows = await cursor.fetchall()
+        known: set[str] = set()
+        for row in rows:
+            data = row["public_data"] if isinstance(row, dict) else row[0]
+            known |= lead_identities({"public_data": data if isinstance(data, dict) else {}})
+        return known
 
     async def claim_work(self, context: RequestContext, search_id: str) -> dict[str, Any] | None:
         """Lease one tenant-scoped Hunter job; expired workers can be recovered safely."""
@@ -1838,6 +1856,51 @@ def expanded_research_query(search: dict[str, Any]) -> str:
     return f"{base}. Critério de interesse: {objective}" if objective else base
 
 
+def city_searches(search: dict[str, Any]) -> list[dict[str, Any]]:
+    """One search per requested city (a single city, or none, stays one search)."""
+    cities = split_locations(search.get("location"))
+    if len(cities) <= 1:
+        return [search]
+    return [{**search, "location": city} for city in cities]
+
+
+MAPS_CITY_CONCURRENCY = 3
+MAPS_CITIES_DEADLINE_SECONDS = 120
+
+
+async def maps_search_cities(search: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    """Maps per city, a few at a time, interleaved so every city is represented; cities still running at the
+    deadline are dropped and the ones that finished are kept."""
+    searches = city_searches(search)
+    if len(searches) == 1:
+        return await maps_search(research_query(search), limit)
+    share = max(5, -(-limit // len(searches)))
+    gate = asyncio.Semaphore(MAPS_CITY_CONCURRENCY)
+
+    async def one(city_search: dict[str, Any]) -> list[dict[str, Any]]:
+        async with gate:
+            return await maps_search(research_query(city_search), share)
+
+    tasks = [asyncio.create_task(one(item)) for item in searches]
+    _, pending = await asyncio.wait(tasks, timeout=MAPS_CITIES_DEADLINE_SECONDS)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    batches = [task.result() for task in tasks if task.done() and not task.cancelled() and task.exception() is None]
+    if not batches:
+        errors = [task.exception() for task in tasks if task.done() and not task.cancelled() and task.exception()]
+        raise errors[0] if errors else RuntimeError("provider_timeout")
+    return merge_maps_rows(interleave_unique(batches, limit * 2))[:limit]
+
+
+async def web_search_cities(search: dict[str, Any], source: str, limit: int) -> list[dict[str, Any]]:
+    searches = city_searches(search)
+    if len(searches) == 1:
+        return await multi_public_search(research_query_variants(search), source, limit)
+    # One concise query per city keeps the index cost close to a single-city search.
+    return await multi_public_search([research_query(item) for item in searches], source, limit)
+
+
 def research_query_variants(search: dict[str, Any]) -> list[str]:
     """Cover semantic, concise, and contact-oriented provider phrasing."""
     options = research_options(search)
@@ -1845,6 +1908,15 @@ def research_query_variants(search: dict[str, Any]) -> list[str]:
     concise = " ".join(filter(None, [options["provider_query"], search.get("location")]))
     contact = f"{concise} contato telefone site"
     return list(dict.fromkeys(value.strip() for value in (primary, concise, contact) if value.strip()))
+
+
+def _place_evidence(text: str, location: str | None) -> bool:
+    """Every word of at least one requested city appears in the text."""
+    for city in split_locations(location) or []:
+        words = re.findall(r"[a-z]{4,}", folded(city))
+        if words and all(word in text for word in words):
+            return True
+    return False
 
 
 def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bool:
@@ -1863,15 +1935,14 @@ def _instagram_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> b
     semantic_terms = [plan.get("entity") or "", *plan.get("services", []), *plan.get("alternatives", [])]
     niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(" ".join(semantic_terms) or options["provider_query"]))
              if word not in {"para", "com", "sem", "quero", "buscar", "encontrar"}]
-    place = [word for word in re.findall(r"[a-z]{4,}", folded(search.get("location") or ""))]
     indexed = folded(" ".join(str(row.get(key) or "") for key in ("title", "summary")) + " " + (segments[0] if profile else ""))
     bio = folded(str(row.get("public_data", {}).get("profile_bio") or ""))
     data = row.setdefault("public_data", {})
     data["content_kind"] = "publication" if publication else "profile"
     data["niche_evidence"] = bool(niche and any(word in indexed or word in bio for word in niche))
-    data["location_evidence"] = bool(place and all(word in indexed or word in bio for word in place))
+    data["location_evidence"] = _place_evidence(indexed + " " + bio, search.get("location"))
     data["bio_niche_evidence"] = bool(niche and any(word in bio for word in niche))
-    data["bio_location_evidence"] = bool(place and all(word in bio for word in place))
+    data["bio_location_evidence"] = _place_evidence(bio, search.get("location"))
     return bool(
         profile
         and data.get("bio_status") == "verified_public_profile"
@@ -1906,15 +1977,14 @@ def _facebook_profile_matches(row: dict[str, Any], search: dict[str, Any]) -> bo
     semantic_terms = [plan.get("entity") or "", *plan.get("services", []), *plan.get("alternatives", [])]
     niche = [word.rstrip("s") for word in re.findall(r"[a-z]{4,}", folded(" ".join(semantic_terms) or options["provider_query"]))
              if word not in {"para", "com", "sem", "quero", "buscar", "encontrar"}]
-    place = [word for word in re.findall(r"[a-z]{4,}", folded(search.get("location") or ""))]
     indexed = folded(" ".join(str(row.get(key) or "") for key in ("title", "summary")) + " " + (segments[0] if profile else ""))
     bio = folded(str(row.get("public_data", {}).get("profile_bio") or ""))
     data = row.setdefault("public_data", {})
     data["content_kind"] = "publication" if publication else "profile"
     data["niche_evidence"] = bool(niche and any(word in indexed or word in bio for word in niche))
-    data["location_evidence"] = bool(place and all(word in indexed or word in bio for word in place))
+    data["location_evidence"] = _place_evidence(indexed + " " + bio, search.get("location"))
     data["bio_niche_evidence"] = bool(niche and any(word in bio for word in niche))
-    data["bio_location_evidence"] = bool(place and all(word in bio for word in place))
+    data["bio_location_evidence"] = _place_evidence(bio, search.get("location"))
     return bool(
         profile
         and data.get("bio_status") == "verified_public_profile"
@@ -1995,11 +2065,13 @@ def combine_same_business(candidates: list[dict[str, Any]]) -> tuple[list[dict[s
     return combined, merged
 
 
-async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
-    """Bound provider work, retain partial successes, then apply hard filters."""
+async def execute_research(search: dict[str, Any], known: set[str] | None = None) -> dict[str, Any]:
+    """Bound provider work, retain partial successes, then apply hard filters.
+
+    `known` holds identities (place, phone, website) of businesses this workspace already found: they are
+    skipped so a new search brings new companies.
+    """
     options = research_options(search)
-    query = research_query(search)
-    expanded_queries = research_query_variants(search)
     logger.info("hunter.research.started", extra={
         "sources": search["sources"], "result_limit": search["result_limit"],
         "has_location": bool(search.get("location")), "research_mode": search.get("research_mode", "broad"),
@@ -2007,7 +2079,7 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     # Filter after recall: never spend the user's result allowance on rejects.
     per_source = min(HUNTER_MAX_RESULTS, search["result_limit"] * 3)
     def source_task(source: str) -> asyncio.Task[list[dict[str, Any]]]:
-        operation = maps_search(query, per_source) if source == "google_maps" else multi_public_search(expanded_queries, source, per_source)
+        operation = maps_search_cities(search, per_source) if source == "google_maps" else web_search_cities(search, source, per_source)
         return asyncio.create_task(operation)
 
     def valid_task(task: asyncio.Task[Any]) -> bool:
@@ -2089,11 +2161,28 @@ async def execute_research(search: dict[str, Any]) -> dict[str, Any]:
     candidates, combined_count = combine_same_business(candidates)
     if combined_count:
         warnings.append(f"{combined_count} resultado(s) eram a mesma empresa em outra fonte; os contatos foram reunidos em um único lead.")
+    if known:
+        fresh = [item for item in candidates if not (lead_identities(item) & known)]
+        skipped = len(candidates) - len(fresh)
+        candidates = fresh
+        if skipped:
+            warnings.append(f"{skipped} empresa(s) que você já tinha encontrado antes foram puladas.")
     results, validation = filter_results(candidates, search)
     validation["source_failures"] = len(failures)
     # The requested amount is filled in order of confidence (filter_results already sorts
     # confirmed > probable > to review): weaker leads only appear when confirmed ones run out,
-    # labeled on the card, so a search is never empty just because confirmation failed.
+    # labeled on the card, so a search is never empty just because confirmation failed. Within
+    # the same confidence, whoever can be reached on WhatsApp comes first.
+    for item in results:
+        data = item.setdefault("public_data", {})
+        phone, digits = str(data.get("phone") or ""), national_phone(data.get("phone"))
+        if digits and (not phone.startswith("+") or phone.startswith("+55")):
+            data["phone"] = f"+55{digits}"  # WhatsApp format; Maps shows Brazilian numbers with a 0 trunk prefix
+        data["phone_kind"] = phone_kind(data.get("phone"))
+    tier_rank = {"confirmed": 0, "probable": 1, "to_review": 2}
+    reach_rank = {"celular": 1, "fixo": 2, "": 3}
+    results.sort(key=lambda item: (tier_rank.get(item["public_data"].get("lead_tier"), 3),
+                                   0 if item["public_data"].get("whatsapp_url") else reach_rank[item["public_data"]["phone_kind"]]))
     results = results[:search["result_limit"]]
     assign_relative_temperature(results)
     validation["accepted"] = len(results)
@@ -2146,7 +2235,12 @@ def create_hunter_router(repository: HunterRepository, usage=None, learning=None
             return await repository.get(context, search_id)
         search = await repository.get(context, search_id)
         try:
-            outcome = await execute_research(search)
+            known = await repository.known_identities(context, search_id)
+        except Exception as exc:  # noqa: BLE001 - skipping repeats is a bonus, never a reason to fail the search
+            logger.warning("hunter.known_identities_unavailable", extra={"error_class": type(exc).__name__})
+            known = set()
+        try:
+            outcome = await execute_research(search, known)
         except Exception as exc:  # noqa: BLE001 — the durable boundary must requeue unknown transient failures
             logger.warning("hunter.research.unexpected_error", extra={"error_class": type(exc).__name__})
             outcome = {"results": [], "error": "transient_worker_error", "validation": {},

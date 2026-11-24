@@ -4,7 +4,7 @@ import { useRef, useState, type CSSProperties } from "react"
 import { BadgeCheck, Check, ExternalLink, Flame, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Snowflake, Star, Sun, Trash2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { burst } from "@/components/fx/fx"
-import { hunterEvidenceLabel, hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
+import { displayPhone, hunterEvidenceLabel, hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
 
 const sourceLabels: Record<string, string> = { web: "Web", google_maps: "Google Maps", instagram: "Instagram", facebook: "Facebook" }
 const tierStyles = {
@@ -154,7 +154,7 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
         </p>
         <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{phone}</a> : null}
+          {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{displayPhone(phone)}{data?.phone_kind ? <span className="text-xs text-muted-foreground">· {data.phone_kind}</span> : null}</a> : null}
           {email ? <a href={`mailto:${encodeURIComponent(email)}`} className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />{email}</a> : null}
           {website ? <a href={website} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Globe2 className="size-3.5 text-muted-foreground" aria-hidden="true" />Site</a> : null}
           {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}

@@ -58,6 +58,7 @@ function kindInfo(kind: string) {
 /** wa.me link for Brazilian numbers typed with or without country code. */
 export function whatsappLink(to: unknown, text: string): string | null {
   let digits = String(to ?? "").replace(/\D/g, "")
+  if (/^0\d{10,11}$/.test(digits)) digits = digits.slice(1)  // "0 51 ..." trunk prefix from Maps
   if (digits.length === 10 || digits.length === 11) digits = `55${digits}`
   if (!/^[1-9]\d{11,13}$/.test(digits)) return null
   return `https://wa.me/${digits}?text=${encodeURIComponent(text.slice(0, 3000))}`

@@ -184,8 +184,8 @@ export function HunterClient() {
         <div className="flex flex-col gap-2 md:flex-row">
           <label htmlFor="hunter-query" className="sr-only">Quem você procura</label>
           <Input id="hunter-query" required minLength={2} maxLength={300} value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 flex-1 text-base md:text-sm" placeholder="Ex.: Dentistas sem site" />
-          <label htmlFor="hunter-location" className="sr-only">Cidade ou região</label>
-          <Input id="hunter-location" maxLength={160} value={location} onChange={(event) => setLocation(event.target.value)} className="h-11 text-base md:w-60 md:text-sm" placeholder="Cidade ou região" />
+          <label htmlFor="hunter-location" className="sr-only">Cidades ou região</label>
+          <Input id="hunter-location" maxLength={160} value={location} onChange={(event) => setLocation(event.target.value)} className="h-11 text-base md:w-60 md:text-sm" placeholder="Cidades (ex.: Lajeado, Estrela)" title="Separe várias cidades por vírgula: a Kiara pesquisa cada uma" />
           <Button type="submit" className="h-11 px-6" disabled={!canSearch}>{busy ? <Loader2 className="animate-spin" /> : <Search />}Buscar</Button>
         </div>
         <button type="button" aria-expanded={filtersOpen} aria-controls="hunter-filters" onClick={() => setFiltersOpen((open) => !open)} className="-my-1.5 flex min-h-8 w-full items-center gap-2 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground">
