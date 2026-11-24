@@ -60,6 +60,7 @@ from .knowledge import KnowledgeRepository, create_knowledge_router
 from .memory import MemoryRepository, create_memory_router
 from .learning import LearningService, create_learning_router
 from .outreach_ai import OutreachAI, create_outreach_router
+from .service_setup import ServiceSetupRepository, create_service_setup_router
 from .team import TeamService, create_team_router
 from .usage import UsageService, create_usage_router
 from .social import SocialRepository, create_social_router
@@ -457,6 +458,7 @@ def create_app(
         app.include_router(create_memory_router(memory_repository))
         app.include_router(create_learning_router(learning_service))
         app.include_router(create_outreach_router(OutreachAI(growth_db, usage=usage_service)))
+        app.include_router(create_service_setup_router(ServiceSetupRepository(growth_db)))
         app.include_router(create_team_router(app.state.team))
         app.include_router(create_usage_router(usage_service))
         app.include_router(create_sdr_router(SdrService(

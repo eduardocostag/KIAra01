@@ -88,6 +88,10 @@ async def knowledge_context(connection, organization_uuid, limit: int = PROMPT_C
         "SELECT title,content FROM business_knowledge WHERE organization_id=%s AND enabled ORDER BY updated_at DESC LIMIT %s",
         (organization_uuid, MAX_ITEMS))).fetchall()
     parts: list[str] = []
+    from .service_setup import read_setup, service_block  # local: service_setup imports nothing from here
+    setup = service_block(await read_setup(connection, organization_uuid))
+    if setup:
+        parts.append(setup)
     if profile and (profile["business_name"] or profile["offer"]):
         parts.append(f"Empresa: {profile['business_name'] or 'não informada'}. O que vende: {profile['offer'] or 'não informado'}."
                      + (f" Tom de voz: {profile['tone']}." if profile["tone"] else ""))

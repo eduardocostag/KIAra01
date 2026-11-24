@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, ArrowUp, Bot, Check, Clock, Copy, FlaskConical, Hand, LoaderCircle, RotateCcw, ShieldCheck, Workflow } from "lucide-react"
+import { ArrowLeft, ArrowUp, Bot, Check, Clock, Copy, FlaskConical, Hand, LoaderCircle, RotateCcw, ShieldCheck, SlidersHorizontal, Workflow } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { temperatureLabels } from "@/lib/api/inbox-contract"
@@ -157,7 +157,7 @@ export function SdrSimulator() {
   return <ImmersiveShell
     label="Simulador do WhatsApp"
     sidebar={sidebar}
-    footer={<Link href="/app/whatsapp/automacao" className={footerLink}><Workflow className="size-4" aria-hidden="true" />Automação</Link>}
+    footer={<><Link href="/app/whatsapp/atendimento" className={footerLink}><SlidersHorizontal className="size-4" aria-hidden="true" />Configurar atendimento</Link><Link href="/app/whatsapp/automacao" className={footerLink}><Workflow className="size-4" aria-hidden="true" />Automação</Link></>}
     topBar={<>
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-primary"><FlaskConical className="size-4" aria-hidden="true" /></span>
       <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">Simulador</p><p className="truncate text-xs text-muted-foreground">Você é {name.trim() || "Cliente teste"} · nada é enviado</p></div>
@@ -172,7 +172,7 @@ export function SdrSimulator() {
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
           <p className="text-muted-foreground"><span className="font-medium text-foreground">Modo teste, só para administradores.</span> Você escreve como se fosse o cliente e a Kiara responde com as mesmas regras do WhatsApp real. Nada vai para o WhatsApp e nada fica salvo.</p>
         </div>
-        {!configured ? <p role="status" className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-3 text-sm text-amber-200">A empresa ainda não tem descrição em <Link href="/app/whatsapp/automacao" className="underline underline-offset-4">Automação</Link>. Sem ela, as respostas ficam genéricas.</p> : null}
+        {!configured ? <p role="status" className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-3 text-sm text-amber-200">O atendimento ainda não foi configurado. Preencha <Link href="/app/whatsapp/atendimento" className="underline underline-offset-4">Configurar atendimento</Link> (nicho, serviços e preços) para respostas melhores.</p> : null}
         {!lines.length ? <div className="py-12 text-center">
           <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full border bg-card text-emerald-400"><Bot className="size-5" aria-hidden="true" /></span>
           {origin === "hunted" ? <>

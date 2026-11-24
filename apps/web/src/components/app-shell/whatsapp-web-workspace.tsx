@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Bot, Loader2, Megaphone, ScanSearch, ShieldCheck, Sparkles, Trash2, UserPlus, Users } from "lucide-react"
@@ -194,7 +195,6 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
     if (!config) return
     if (!pause && config.enabled && (!config.pilot_consent_confirmed || !config.contacts.some((contact) => contact.enabled && !contact.handoff))) { setFormError("Para ativar, habilite ao menos um contato e confirme a autorização."); return }
     if (!pause && config.enabled && !config.ai_context.trim()) { setFormError("Para ativar, descreva o que a Kiara pode dizer sobre sua empresa."); return }
-    if (!pause && (config.sdr_mode ?? "off") !== "off" && !config.ai_context.trim()) { setFormError("Para ligar a Kiara SDR, descreva o que ela pode dizer sobre sua empresa (seção Responder)."); return }
     if (!pause && (!Number.isInteger(config.followup_hours) || config.followup_hours < 1 || config.followup_hours > 720 || !config.contact_start || !config.contact_end || config.contact_start >= config.contact_end)) { setFormError("Use um follow-up de 1 a 720 horas e um horário de início anterior ao fim."); return }
     setSaving(true); setFormError(""); setFormNotice("")
     try {
@@ -253,7 +253,8 @@ export function WhatsAppWebWorkspace({ entries }: { entries: PipelineEntry[] }) 
 
         <Section icon={Bot} title="Responder" description="A Kiara responde quem escreve, usando só as informações que você aprovar. Sem informação suficiente, ela passa para um humano.">
           <Toggle checked={config.auto_reply_enabled ?? true} onChange={(value) => update({ auto_reply_enabled: value })} label="Responder mensagens com IA" />
-          <Field id="wa-ai-context" label="O que a Kiara pode dizer sobre sua empresa" hint="Serviços, preços aprovados, horários e limites. Não inclua senhas nem dados de clientes.">
+          <p className="rounded-lg border border-primary/25 bg-primary/5 p-3 text-sm text-muted-foreground">Nicho, serviços, preços, horários e o jeito de atender ficam em <Link href="/app/whatsapp/atendimento" className="font-medium text-primary underline-offset-4 hover:underline">Configurar atendimento</Link>. Use o campo abaixo só para algo a mais.</p>
+          <Field id="wa-ai-context" label="Informações extras para a Kiara (opcional)" hint="Não inclua senhas nem dados de clientes.">
             <Textarea id="wa-ai-context" maxLength={6000} value={config.ai_context} onChange={(event) => update({ ai_context: event.target.value })} className="min-h-28" placeholder="Ex.: Criamos sites para clínicas. Plano mensal a partir de R$ 189. Atendemos de seg. a sex., 9h às 18h." />
           </Field>
           <Field id="wa-reply" label="Mensagem ao passar para um humano" hint="Use {name} para o nome do contato.">

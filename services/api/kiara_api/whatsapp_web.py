@@ -74,9 +74,13 @@ class WhatsAppConfig(BaseModel):
             raise ValueError("Informe as informações autorizadas da empresa antes de habilitar a automação.")
         if self.contact_start >= self.contact_end:
             raise ValueError("O horário final deve ser posterior ao inicial.")
-        if self.sdr_mode != "off" and not self.ai_context.strip():
-            raise ValueError("Para ligar a Kiara SDR, descreva o que ela pode dizer sobre sua empresa.")
         return self
+
+
+async def _knows_business(connection, organization_uuid) -> bool:
+    """The SDR may run without the free-text description when the attendance setup or the knowledge base says enough."""
+    from .knowledge import knowledge_context
+    return bool((await knowledge_context(connection, organization_uuid, 200)).strip())
 
 
 class WhatsAppEvent(BaseModel):
@@ -158,11 +162,15 @@ class WhatsAppWebRepository:
     async def save_config(self, organization_id: str, config: WhatsAppConfig):
         data = config.model_dump()
         if self.postgres is None:
+            if data["sdr_mode"] != "off" and not data["ai_context"].strip():
+                raise ApiError(422, "business_context_required", "Para ligar o atendimento automático, preencha Configurar atendimento ou descreva o que a Kiara pode dizer sobre sua empresa.")
             previous = self.configs.get(organization_id, {})
             data["sdr_since"] = _sdr_since(previous, data)
             self.configs[organization_id] = data
         else:
             async with self.postgres._transaction(organization_id) as connection:
+                if data["sdr_mode"] != "off" and not data["ai_context"].strip() and not await _knows_business(connection, _uuid("organization", organization_id)):
+                    raise ApiError(422, "business_context_required", "Para ligar o atendimento automático, preencha Configurar atendimento ou descreva o que a Kiara pode dizer sobre sua empresa.")
                 row = await (await connection.execute("SELECT config FROM whatsapp_web_config WHERE organization_id=%s", (_uuid("organization", organization_id),))).fetchone()
                 data["sdr_since"] = _sdr_since(row["config"] if row else {}, data)
                 await connection.execute("INSERT INTO whatsapp_web_config(organization_id,config) VALUES(%s,%s) ON CONFLICT(organization_id) DO UPDATE SET config=EXCLUDED.config,updated_at=now()", (_uuid("organization", organization_id), Jsonb(data)))

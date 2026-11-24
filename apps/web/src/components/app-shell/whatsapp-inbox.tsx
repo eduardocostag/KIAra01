@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowUp, Bot, Cable, FileText, FlaskConical, Hand, Image as ImageIcon, Info, LoaderCircle, MapPin, MessageCircle, MessageSquareDashed, Mic, RefreshCw, Search, Sparkles, Sticker, Video, Workflow, type LucideIcon } from "lucide-react"
+import { ArrowLeft, ArrowUp, Bot, Cable, FileText, FlaskConical, Hand, Image as ImageIcon, Info, LoaderCircle, MapPin, MessageCircle, MessageSquareDashed, Mic, RefreshCw, Search, SlidersHorizontal, Sparkles, Sticker, Video, Workflow, type LucideIcon } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { ConversationConstellation } from "@/components/app-shell/conversation-constellation"
 import { WhatsAppConnectionPanel, WhatsAppWebConnectionPanel, syncWhatsAppConversations } from "@/components/app-shell/whatsapp-gateway-workspace"
@@ -52,6 +52,7 @@ function MediaBubble({ kind, label }: { kind: MediaKind; label: string }) {
 function WhatsAppFooter({ onConnection, isAdmin = false }: { onConnection: () => void; isAdmin?: boolean }) {
   return <>
     <button type="button" onClick={onConnection} className={footerLink}><Cable className="size-4" aria-hidden="true" />Conexão</button>
+    <Link href="/app/whatsapp/atendimento" className={footerLink}><SlidersHorizontal className="size-4" aria-hidden="true" />Configurar atendimento</Link>
     <Link href="/app/whatsapp/automacao" className={footerLink}><Workflow className="size-4" aria-hidden="true" />Automação</Link>
     {isAdmin ? <Link href="/app/whatsapp/simulador" className={footerLink}><FlaskConical className="size-4" aria-hidden="true" />Simulador</Link> : null}
   </>

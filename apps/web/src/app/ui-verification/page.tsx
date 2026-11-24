@@ -30,6 +30,8 @@ import "../(app)/app/orbit-dashboard.css"
 import { FxPreview } from "./fx-preview"
 import { AdminConsole } from "@/components/app-shell/admin-console"
 import { SdrSimulator } from "@/components/app-shell/sdr-simulator"
+import { ServiceSetupWorkspace } from "@/components/app-shell/service-setup"
+import { EMPTY_SETUP, type Niche } from "@/lib/service-setup"
 
 const previewApprovals: ActionRequest[] = [
   { id: "a1", kind: "whatsapp", title: "Enviar WhatsApp: (51) 99999-0000", payload: { to: "(51) 99999-0000", text: "Olá, Dra. Ana! Vi que a Clínica Sorriso tem ótimas avaliações no Google. Posso mostrar como um site pode trazer ainda mais pacientes?", entrada: "" }, status: "pending", note: null, version: 1, flow_name: "Boas-vindas no WhatsApp", created_at: "2026-11-13T12:10:00Z", decided_at: null },
@@ -71,6 +73,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   if (workspace === "lead-company") return <div className="kiara-lead-detail p-6"><LeadCompanyPanel leadId="preview" initialCompany={{ cnpj: "11222333000181", cnpj_formatted: "11.222.333/0001-81", legal_name: "CLINICA SORRISO ODONTOLOGIA LTDA", trade_name: "Clínica Sorriso", status: "ATIVA", active: true, opened_at: "2015-03-10", size: "DEMAIS", legal_nature: "Sociedade Empresária Limitada", main_activity: "Atividade odontológica", capital: 50000, city: "PORTO ALEGRE", state: "RS", simples: true, mei: false, partners: [{ name: "ANA SOUZA", role: "Sócio-Administrador" }], source: "brasilapi", cnpj_source: "website", fetched_at: "2026-11-13T12:00:00Z" }} initialFit={{ score: 82, grade: "A", label: "Prioridade alta", has_company_data: true, reasons: [{ points: 18, text: "WhatsApp público encontrado" }, { points: 16, text: "Sem site próprio: oportunidade clara" }, { points: 14, text: "230 avaliações no Google: negócio movimentado" }, { points: 10, text: "Empresa com 11 anos: negócio estabelecido" }, { points: 8, text: "Nota 4.8 no Google: clientes satisfeitos" }, { points: 8, text: "CNPJ ativo na Receita Federal" }] }} /></div>
   if (workspace === "launch-badge") return <div className="grid min-h-dvh place-items-center bg-[#07060d] p-8"><div className="flex w-64 flex-col items-center rounded-3xl border border-white/10 bg-black/40 p-8 text-center"><h2 className="mb-2 text-xl font-semibold">KIARA Chat</h2><p className="mb-8 text-sm text-muted-foreground">Conversa, voz e criação com IA.</p><LaunchBadge /><span className="text-sm">Ver novidade</span></div></div>
   if (workspace === "soon-whatsapp" || workspace === "soon-chat" || workspace === "soon-automation") return <ComingSoon module={workspace.slice(5) as "whatsapp" | "chat" | "automation"} />
+  if (workspace === "atendimento") {
+    const niches: Niche[] = [
+      { id: "odontologia", label: "Odontologia", goal: "schedule", payment_label: "Convênios e formas de pagamento", discover: ["Qual tratamento procura ou o que está incomodando", "Se tem dor ou é urgente", "Convênio ou particular", "Melhor dia e horário"], handoff: "Dor forte ou urgência, pedido de orçamento de tratamento completo, reclamação ou dúvida clínica.", care: "Siga o código de ética odontológico: não anuncie promoções nem descontos e não dê diagnóstico ou indique tratamento pelo WhatsApp; o caminho é a avaliação com o dentista.", examples: [["Avaliação", "R$ 100"], ["Limpeza", "R$ 180"], ["Clareamento", "a partir de R$ 900"]] },
+      { id: "imobiliaria", label: "Imobiliária e corretores", goal: "visit", payment_label: "Financiamento, permuta e condições", discover: ["Comprar ou alugar", "Bairro ou região", "Faixa de preço"], handoff: "Pedido de proposta ou negociação.", care: "Valores são referência.", examples: [["Apartamento 2 quartos", "R$ 420 mil"]] },
+      ...["Estética e beleza", "Clínica e saúde", "Advocacia", "Contabilidade", "Academia e estúdio", "Oficina e autopeças", "Cursos e escolas", "Serviços para empresas", "Loja e varejo"].map((label, index) => ({ id: `n${index}`, label, goal: "quote" as const, payment_label: "Formas de pagamento", discover: [], handoff: "", care: "", examples: [] as [string, string][] })),
+    ]
+    const setup = view === "empty" ? EMPTY_SETUP : { ...EMPTY_SETUP, niche: "odontologia", services: [{ name: "Avaliação", price: "R$ 100" }, { name: "Clareamento", price: "a partir de R$ 900" }, { name: "Implante", price: "" }], hours: "Seg. a sex., 8h às 18h" }
+    return <WhatsAppSectionShell title="Configurar atendimento" isAdmin><ServiceSetupWorkspace isAdmin preview={{ setup, niches }} /></WhatsAppSectionShell>
+  }
   if (workspace === "simulador") return <SdrSimulator />
   if (workspace === "whatsapp") return <WhatsAppInbox conversations={view === "empty" ? [] : previewConversations} canSend isAdmin={view !== "client"} />
   if (workspace === "automation") return <WhatsAppSectionShell title="Automação"><WhatsAppWebWorkspace entries={previewEntries} /></WhatsAppSectionShell>

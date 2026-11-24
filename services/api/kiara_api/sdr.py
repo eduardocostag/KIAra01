@@ -196,13 +196,14 @@ def analysis_prompt(company: str, name: str, conversation: str, memory: list[str
         '"summary" (2 a 3 frases), "stage" (new|contacted|qualified|opportunity|lost), "temperature" (cold|warm|hot), '
         '"score" (0-100), "intent" (curto), "facts" (lista de sinais observados), "gaps" (o que falta saber: necessidade, '
         'orçamento, prazo, decisor; não liste o que já está no cadastro), "next_action" (próximo passo concreto), '
-        '"handoff" (true se o lead está pronto para um humano fechar, pediu uma pessoa ou reclamou), "handoff_reason", '
+        '"handoff" (true se o lead está pronto para um humano fechar, pediu uma pessoa, reclamou ou caiu numa situação em '
+        'que a empresa pediu para chamar uma pessoa), "handoff_reason", '
         '"optout" (true só se pediu claramente para não receber mais mensagens), "confidence" (0-1), "remember" (lista de '
         "até 5 fatos NOVOS e duradouros sobre a pessoa ou a empresa dela, que valem para conversas futuras: quem é, o que "
         "faz, o que procura, preferências (horário, forma de contato, plano de interesse), objeções, combinados. Não repita "
         "o que já está em 'Já sabido' nem no cadastro; não registre acontecimentos da conversa (como 'perguntou o preço' ou "
         "'primeiro contato em tal dia'); não comente o nome do contato; nunca senhas, documentos ou dados de cartão; lista "
-        f"vazia se não houver nada novo).\nSobre a empresa: {company[:4000]}"
+        f"vazia se não houver nada novo).\nSobre a empresa: {company[:8000]}"
         + _contact_block(origin, profile, None)
     )
     known = ("\nJá sabido: " + "; ".join(str(item) for item in memory[:15])) if isinstance(memory, list) and memory else ""
@@ -230,8 +231,9 @@ def reply_prompt(company: str, name: str, conversation: str, followup: int = 0,
         "diretamente; se perguntarem, seja honesta.\n"
         'Responda SOMENTE um JSON: {"reply": "texto da mensagem", "pending": "pergunta que você não soube responder, ou '
         'vazio", "handoff": true|false, "reason": "motivo se handoff"}. Use handoff=true (e reply vazio) só quando o '
-        "cliente quer fechar, pede para falar com uma pessoa ou reclama.\n"
-        f"Sobre a empresa: {company[:4000]}"
+        "cliente quer fechar, pede para falar com uma pessoa, reclama ou cai numa situação em que a empresa pediu para "
+        "chamar uma pessoa.\n"
+        f"Sobre a empresa: {company[:8000]}"
         + _contact_block(origin, profile, memory)
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": f"Contato: {name or 'Cliente'}\nConversa:\n{conversation}"}]
@@ -371,7 +373,7 @@ class SdrService:
         await self._request(connection, org, kind="notice", node=node, approved=False,
                             title=f"Pergunta para você responder: {name}"[:200],
                             payload={"text": f"{name} perguntou: {question}. A Kiara disse que ia confirmar. Responda na conversa do "
-                                             "WhatsApp e, se for algo que se repete, acrescente a resposta em Automação para ela "
+                                             "WhatsApp e, se for algo que se repete, acrescente a resposta em Configurar atendimento para ela "
                                              "já saber da próxima vez."[:2000]})
 
     async def _handoff(self, connection, org, thread, config, reason: str, approved: bool) -> None:
