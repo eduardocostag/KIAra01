@@ -157,3 +157,80 @@ def test_send_text_uses_the_clients_number(monkeypatch):
     method, path, token, _params, body = calls[0]
     assert (method, path, token) == ("POST", "908070605040/messages", "tok")
     assert body == {"messaging_product": "whatsapp", "recipient_type": "individual", "to": "5551999990000", "type": "text", "text": {"body": "Olá!"}}
+
+
+MANUAL = {"access_token": "EAAG" + "x" * 60, "waba_id": "102030405060", "phone_number_id": "908070605040",
+          "app_secret": "0123456789abcdef0123456789abcdef"}
+
+
+def manual_graph(calls, *, numbers=("908070605040",), expires_at=0, platform="CLOUD_API", override_fails=False):
+    def call(method, path, *, version, token=None, params=None, body=None, timeout=20):
+        calls.append((method, path, token, params, body))
+        if path.endswith("/phone_numbers"):
+            return {"data": [{"id": n} for n in numbers]}
+        if path == "debug_token":
+            return {"data": {"expires_at": expires_at, "is_valid": True}}
+        if path.endswith("/subscribed_apps") and override_fails and body:
+            raise whatsapp_cloud.GraphError(400, 100, "callback")
+        if method == "GET":
+            return {"display_phone_number": "+55 51 3333-4444", "verified_name": "Clínica Sorriso",
+                    "quality_rating": "GREEN", "platform_type": platform}
+        return {"success": True}
+    return call
+
+
+def build_manual(monkeypatch, **graph_options):
+    api, integrations, calls = build(monkeypatch, settings={})
+    api.app.router.routes.clear()
+    service = whatsapp_cloud.WhatsAppCloudService(integrations, graph_call=manual_graph(calls, **graph_options))
+    api.app.include_router(whatsapp_cloud.create_whatsapp_cloud_router(service))
+    return api, integrations, calls
+
+
+def test_own_meta_app_connects_without_kiara_meta_app(monkeypatch):
+    api, integrations, calls = build_manual(monkeypatch)
+    response = api.post("/v1/whatsapp-official/connect-manual", json=MANUAL)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["connected"] and result["registered"] and result["verify_token"]
+    assert result["webhook_url"].endswith(f"/v1/channels/whatsapp-cloud/{ORG}/webhook")
+    saved = integrations.saved[(ORG, "whatsapp_cloud")]
+    assert saved["mode"] == "manual" and saved["app_secret"] == MANUAL["app_secret"]
+    proof = hmac.new(MANUAL["app_secret"].encode(), MANUAL["access_token"].encode(), hashlib.sha256).hexdigest()
+    assert calls[0][3]["appsecret_proof"] == proof
+    assert not any(path.endswith("/register") for _m, path, *_ in calls)  # already on the Cloud API
+    status = api.get("/v1/whatsapp-official/status").json()
+    assert status["connected"] and status["verify_token"] == saved["verify_token"] and not status["platform_ready"]
+
+
+def test_own_meta_app_rejects_foreign_number_and_temporary_token(monkeypatch):
+    api, integrations, _ = build_manual(monkeypatch, numbers=("111111",))
+    assert api.post("/v1/whatsapp-official/connect-manual", json=MANUAL).status_code == 422
+    assert not integrations.saved
+    import time
+    api, integrations, _ = build_manual(monkeypatch, expires_at=int(time.time()) + 3600)
+    response = api.post("/v1/whatsapp-official/connect-manual", json=MANUAL)
+    assert response.status_code == 422 and response.json()["error"]["code"] == "whatsapp_official_temporary_token"
+    assert not integrations.saved
+
+
+def test_own_meta_app_falls_back_to_plain_subscription_and_registers(monkeypatch):
+    api, _integrations, calls = build_manual(monkeypatch, override_fails=True, platform="NOT_APPLICABLE")
+    assert api.post("/v1/whatsapp-official/connect-manual", json=MANUAL).status_code == 200
+    subscribes = [body for _m, path, _t, _p, body in calls if path.endswith("/subscribed_apps")]
+    assert subscribes[0]["override_callback_uri"] and subscribes[1] is None
+    assert any(path.endswith("/register") for _m, path, *_ in calls)
+
+
+def test_own_meta_app_webhook_uses_clients_secret(monkeypatch):
+    api, integrations, _ = build(monkeypatch, settings={})
+    integrations.saved[(ORG, "whatsapp_cloud")] = {"phone_number_id": "908070605040", "verify_token": "vt", "access_token": "t",
+                                                   "waba_id": "1", "app_secret": "client-secret", "mode": "manual"}
+
+    async def fake_credentials(repository, organization_id, provider):
+        return integrations.saved[(organization_id, provider)]
+
+    monkeypatch.setattr(whatsapp_cloud, "credentials_for_webhook", fake_credentials)
+    raw = json.dumps({"object": "whatsapp_business_account", "entry": []}).encode()
+    wrong = "sha256=" + hmac.new(b"app-secret", raw, hashlib.sha256).hexdigest()
+    assert api.post(f"/v1/channels/whatsapp-cloud/{ORG}/webhook", content=raw, headers={"x-hub-signature-256": wrong}).status_code == 401

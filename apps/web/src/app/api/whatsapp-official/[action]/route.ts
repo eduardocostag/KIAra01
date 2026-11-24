@@ -10,10 +10,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ act
   }
   if (action === "status") return kiaraApi("/v1/whatsapp-official/status")
   if (action === "disconnect") return kiaraApi("/v1/whatsapp-official", { method: "DELETE" })
-  if (action === "connect") {
+  if (action === "connect" || action === "connect-manual") {
     const body = await request.text()
     if (body.length > 4000) return Response.json({ error: { message: "Dados de conexão inválidos." } }, { status: 413 })
-    return kiaraApi("/v1/whatsapp-official/connect", { method: "POST", body })
+    return kiaraApi(`/v1/whatsapp-official/${action}`, { method: "POST", body })
   }
   return Response.json({ error: { message: "Ação desconhecida." } }, { status: 404 })
 }

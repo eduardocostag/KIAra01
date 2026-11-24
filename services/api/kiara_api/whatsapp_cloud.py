@@ -1,4 +1,10 @@
-"""Official WhatsApp (Meta Cloud API) for each client, connected through Meta's Embedded Signup.
+"""Official WhatsApp (Meta Cloud API) for each client.
+
+Two ways in:
+- Own Meta app (default, needs nothing from Kiara at Meta): the client creates the app, number and permanent token
+  in their own Meta account, pastes 4 values here, and Kiara only syncs: subscribes the webhook, reads and replies.
+  Webhook signatures are checked with the client's own app secret, kept encrypted with the rest.
+- Embedded Signup (only when Kiara's own Meta app is configured below):
 
 Kiara is the Tech Provider: the client clicks one button, creates or picks their WhatsApp Business account and
 number inside Meta's own window, and pays Meta directly (payment method added in their WhatsApp Manager).
@@ -121,6 +127,15 @@ class ConnectRequest(BaseModel):
     phone_number_id: str = Field(pattern=r"^[0-9]{5,30}$")
 
 
+class ManualConnectRequest(BaseModel):
+    """The client's own Meta app: permanent System User token, account and number ids, and the app secret."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    access_token: str = Field(min_length=40, max_length=1000, pattern=r"^[A-Za-z0-9_\-.]+$")
+    waba_id: str = Field(pattern=r"^[0-9]{5,30}$")
+    phone_number_id: str = Field(pattern=r"^[0-9]{5,30}$")
+    app_secret: str = Field(pattern=r"^[0-9a-fA-F]{32}$")
+
+
 def _owner_or_admin(context: RequestContext) -> None:
     if context.role not in {"owner", "admin"}:
         raise ApiError(403, "insufficient_permission", "Somente owner ou admin conectam o WhatsApp oficial.")
@@ -146,7 +161,70 @@ class WhatsAppCloudService:
                   "graph_version": settings["graph_version"]}
         if missing and is_system_admin(context.email):
             result["missing_settings"] = missing
+        if credentials and credentials.get("mode") == "manual" and context.role in {"owner", "admin"}:
+            # Shown so the client can paste them in their own Meta app if Meta did not take the automatic setup.
+            result["webhook_url"] = self.webhook_url(context.organization_id, credentials.get("base_url", ""))
+            result["verify_token"] = credentials.get("verify_token", "")
         return result
+
+    @staticmethod
+    def webhook_url(organization_id: str, base_url: str) -> str:
+        base = platform_settings()["public_url"] or base_url
+        return f"{base.rstrip('/')}/v1/channels/whatsapp-cloud/{organization_id}/webhook"
+
+    async def connect_manual(self, context: RequestContext, body: ManualConnectRequest, base_url: str) -> dict[str, Any]:
+        """Client's own Meta app: check the values with Meta, subscribe the webhook, register the number if needed."""
+        _owner_or_admin(context)
+        repository = self._repository()
+        version = platform_settings()["graph_version"]
+        token = body.access_token
+        # Proves the secret belongs to the token's app: Meta rejects a wrong appsecret_proof.
+        proof = hmac.new(body.app_secret.encode(), token.encode(), hashlib.sha256).hexdigest()
+        try:
+            info = await asyncio.to_thread(self.graph, "GET", body.phone_number_id, version=version, token=token, params={
+                "fields": "display_phone_number,verified_name,quality_rating,platform_type", "appsecret_proof": proof})
+            numbers = await asyncio.to_thread(self.graph, "GET", f"{body.waba_id}/phone_numbers", version=version, token=token,
+                                              params={"fields": "id", "appsecret_proof": proof})
+        except GraphError as error:
+            raise ApiError(422, "whatsapp_official_invalid", f"A Meta não aceitou esses dados: {error}") from None
+        if not any(isinstance(item, dict) and str(item.get("id")) == body.phone_number_id for item in numbers.get("data") or []):
+            raise ApiError(422, "whatsapp_official_invalid", "Esse número não pertence a essa conta do WhatsApp Business.")
+        try:  # a temporary token stops in hours; only a permanent System User token keeps Kiara connected
+            debug = await asyncio.to_thread(self.graph, "GET", "debug_token", version=version, token=token,
+                                            params={"input_token": token, "appsecret_proof": proof})
+            expires = int((debug.get("data") or {}).get("expires_at") or 0)
+        except (GraphError, TypeError, ValueError, AttributeError):
+            expires = 0
+        if expires and expires < datetime.now(UTC).timestamp() + 30 * 86400:
+            raise ApiError(422, "whatsapp_official_temporary_token",
+                           "Esse token é temporário e vai parar de funcionar. Gere um token permanente de Usuário do sistema.")
+        verify_token = secrets.token_urlsafe(24)
+        callback = self.webhook_url(context.organization_id, base_url)
+        credentials = {"access_token": token, "waba_id": body.waba_id, "phone_number_id": body.phone_number_id,
+                       "app_secret": body.app_secret, "mode": "manual", "verify_token": verify_token, "base_url": base_url[:200],
+                       "pin": f"{secrets.randbelow(900000) + 100000}", "connected_at": datetime.now(UTC).isoformat(),
+                       "registered": "true" if info.get("platform_type") == "CLOUD_API" else "false",
+                       **{key: str(info.get(key) or "")[:120] for key in ("display_phone_number", "verified_name", "quality_rating")}}
+        # Saved before subscribing: Meta checks the callback right away and the webhook reads the verify token.
+        await repository.save(context.organization_id, PROVIDER, credentials)
+        try:
+            try:
+                await asyncio.to_thread(self.graph, "POST", f"{body.waba_id}/subscribed_apps", version=version, token=token,
+                                        body={"override_callback_uri": callback, "verify_token": verify_token})
+            except GraphError:  # app without a default webhook yet: subscribe anyway; the client pastes the URL in their app
+                await asyncio.to_thread(self.graph, "POST", f"{body.waba_id}/subscribed_apps", version=version, token=token)
+            if credentials["registered"] != "true":
+                try:
+                    await asyncio.to_thread(self.graph, "POST", f"{body.phone_number_id}/register", version=version, token=token,
+                                            body={"messaging_product": "whatsapp", "pin": credentials["pin"]})
+                    credentials["registered"] = "true"
+                except GraphError:
+                    pass  # e.g. a two-step PIN the client already set; shown as "not activated yet"
+        except GraphError as error:
+            await self._forget(context.organization_id)
+            raise ApiError(502, "whatsapp_official_failed", f"A Meta recusou a conexão: {error}") from None
+        await repository.save(context.organization_id, PROVIDER, credentials)
+        return {**public_state(credentials), "webhook_url": callback, "verify_token": verify_token}
 
     async def connect(self, context: RequestContext, body: ConnectRequest) -> dict[str, Any]:
         _owner_or_admin(context)
@@ -261,6 +339,12 @@ def create_whatsapp_cloud_router(service: WhatsAppCloudService) -> APIRouter:
         response.headers["Cache-Control"] = "no-store, private"
         return await service.connect(context, body)
 
+    @router.post("/v1/whatsapp-official/connect-manual")
+    async def connect_manual(body: ManualConnectRequest, request: Request, response: Response,
+                             context: Annotated[RequestContext, Depends(authenticated_context)]):
+        response.headers["Cache-Control"] = "no-store, private"
+        return await service.connect_manual(context, body, str(request.base_url).replace("http://", "https://", 1))
+
     @router.delete("/v1/whatsapp-official")
     async def disconnect(response: Response, context: Annotated[RequestContext, Depends(authenticated_context)]):
         response.headers["Cache-Control"] = "no-store, private"
@@ -282,7 +366,8 @@ def create_whatsapp_cloud_router(service: WhatsAppCloudService) -> APIRouter:
         raw = await request.body()
         if not raw or len(raw) > 262144:
             raise ApiError(413, "webhook_too_large", "Evento acima do limite.")
-        secret = platform_settings()["app_secret"]
+        # Own-app connections are signed with the client's secret; Embedded Signup ones with Kiara's.
+        secret = credentials.get("app_secret") or platform_settings()["app_secret"]
         expected = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
         if not secret or not hmac.compare_digest(request.headers.get("x-hub-signature-256", ""), expected):
             raise ApiError(401, "webhook_invalid", "Evento não autenticado.")

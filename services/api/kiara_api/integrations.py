@@ -40,9 +40,9 @@ ALLOWED_FIELDS = {
     "mailerfind": {"endpoint_url", "access_token", "refresh_token", "client_id", "client_secret", "expires_at", "scope", "token_type"},
     "postiz": {"endpoint_url", "api_key"},
     "chatwoot": {"endpoint_url", "api_access_token", "account_id", "webhook_secret"},
-    # Official WhatsApp (Meta Cloud API), written only by the Embedded Signup flow in whatsapp_cloud.py.
+    # Official WhatsApp (Meta Cloud API), written only by whatsapp_cloud.py (Embedded Signup or the client's own Meta app).
     "whatsapp_cloud": {"access_token", "waba_id", "phone_number_id", "verify_token", "pin", "connected_at", "registered",
-                       "display_phone_number", "verified_name", "quality_rating"},
+                       "display_phone_number", "verified_name", "quality_rating", "mode", "app_secret", "base_url"},
 }
 
 
