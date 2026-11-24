@@ -155,6 +155,10 @@ def contact_profile(attributes: dict[str, Any] | None) -> list[str]:
                       for key in ("city", "state") if company.get(key)) or str(hunter.get("address") or hunter.get("location") or "")
     if place:
         lines.append(f"Local: {place[:200]}")
+    person = hunter.get("decision_maker") if isinstance(hunter.get("decision_maker"), dict) else {}
+    if person.get("name"):
+        role = f" ({person['role']})" if person.get("role") else ""
+        lines.append(f"Responsável pela empresa: {str(person['name'])[:80]}{role[:70]}")
     if company.get("opened_at"):
         lines.append(f"Empresa aberta em: {str(company['opened_at'])[:10]}")
     if company.get("size"):

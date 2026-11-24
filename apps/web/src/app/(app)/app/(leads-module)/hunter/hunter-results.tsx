@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, type CSSProperties } from "react"
-import { BadgeCheck, Check, ExternalLink, Flame, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Snowflake, Star, Sun, Trash2, TriangleAlert } from "lucide-react"
+import { BadgeCheck, Check, ExternalLink, Flame, Globe2, Loader2, Mail, MapPin, MessageCircle, Phone, Plus, RefreshCw, Snowflake, Star, Sun, Trash2, TriangleAlert, UserRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { burst } from "@/components/fx/fx"
 import { displayPhone, hunterEvidenceLabel, hunterMissingEvidence, hunterResultLocation, publicEmail, publicPhone, publicWebsiteUrl, publicWhatsappUrl, type HunterJob, type HunterResult } from "@/lib/api/hunter-client"
@@ -152,6 +152,7 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
           <span className={`inline-flex items-center gap-1 ${verified ? "text-emerald-400" : ""}`}>{verified ? <BadgeCheck className="size-3.5" aria-hidden="true" /> : null}{hunterEvidenceLabel(result.source, data)}</span>
           {result.source === "google_maps" && data?.rating != null ? <span className="inline-flex items-center gap-1"><Star className="size-3 fill-amber-400 text-amber-400" aria-hidden="true" />{data.rating.toFixed(1).replace(".", ",")} ({data.user_rating_count ?? 0})</span> : null}
         </p>
+        {data?.decision_maker?.name ? <p className="flex items-start gap-1.5 text-sm"><UserRound className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /><span><span className="font-medium">{data.decision_maker.name}</span>{data.decision_maker.role ? <span className="text-muted-foreground"> · {data.decision_maker.role}</span> : null}<span className="text-xs text-muted-foreground">{data.decision_maker.source === "receita" ? " · Receita Federal" : data.decision_maker.source === "site" ? " · site da empresa" : " · Google Maps"}</span></span></p> : null}
         <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{hunterResultLocation(result.source, data, location)}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-8 items-center gap-1.5 hover:underline"><Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />{displayPhone(phone)}{data?.phone_kind ? <span className="text-xs text-muted-foreground">· {data.phone_kind}</span> : null}</a> : null}

@@ -30,7 +30,9 @@ from .browser_runtime import browser_task
 from .http.context import RequestContext
 from .http.dependencies import authenticated_context
 from .http.errors import ApiError
+from .company_data import CompanyLookupError, fetch_company, find_cnpjs
 from .hunter_crm import sync_hunter_results
+from .hunter_people import decision_maker, people_from_text
 from .hunter_intelligence import expand_provider_query, understand_search
 from .hunter_research import (
     assign_relative_temperature,
@@ -1053,6 +1055,51 @@ async def inspect_facebook_pages(rows: list[dict[str, Any]]) -> None:
     await asyncio.gather(*(inspect(row, index) for index, row in enumerate(rows[:30])))
 
 
+def _remember_people(data: dict[str, Any], text: str) -> None:
+    """CNPJ and named people (owner, partner, professional) printed on the business's own pages."""
+    if not data.get("cnpj"):
+        found = find_cnpjs(text)
+        if found:
+            data["cnpj"] = found[0]
+    people = people_from_text(text)
+    if people:
+        known = {person["name"].lower() for person in data.get("site_people") or []}
+        data["site_people"] = [*(data.get("site_people") or []), *(p for p in people if p["name"].lower() not in known)][:5]
+
+
+COMPANY_LOOKUPS_PER_SEARCH = 30
+COMPANY_LOOKUP_SECONDS = 25
+
+
+async def identify_decision_makers(results: list[dict[str, Any]], lookup=fetch_company) -> int:
+    """Public registry (CNPJ from the lead's own site) + named people -> who to talk to. Returns how many found."""
+    slots = asyncio.Semaphore(4)
+
+    async def company(item: dict[str, Any]) -> None:
+        data = item["public_data"]
+        async with slots:
+            try:
+                data["company"] = await asyncio.to_thread(lookup, data["cnpj"])
+            except (CompanyLookupError, OSError, ValueError, TypeError):
+                pass
+
+    pending = [item for item in results if item.get("public_data", {}).get("cnpj") and not item["public_data"].get("company")]
+    if pending:
+        tasks = [asyncio.create_task(company(item)) for item in pending[:COMPANY_LOOKUPS_PER_SEARCH]]
+        _, late = await asyncio.wait(tasks, timeout=COMPANY_LOOKUP_SECONDS)
+        for task in late:
+            task.cancel()
+        await asyncio.gather(*late, return_exceptions=True)
+    found = 0
+    for item in results:
+        data = item.setdefault("public_data", {})
+        person = decision_maker(data.get("company"), data.pop("site_people", None), item.get("title"))
+        if person:
+            data["decision_maker"] = person
+            found += 1
+    return found
+
+
 def _needs_more_contact(item: dict[str, Any]) -> bool:
     data = item.get("public_data", {})
     return (data.get("enrichment") != "completed"
@@ -1104,6 +1151,7 @@ async def _firecrawl_enrich(results: list[dict[str, Any]], key: str) -> None:
                 links = (response.get("data") or {}).get("links") or []
                 contacts = extract_contacts(content[:40000], links)
                 merge_public_contacts(item.setdefault("public_data", {}), contacts)
+                _remember_people(item["public_data"], content[:40000])
                 if item.get("source") == "web":
                     item["public_data"].update(extract_public_address(content[:40000], item["public_data"]["enrichment_url"]))
                 quality, signals = website_opportunity(item["public_data"]["enrichment_url"], content, links)
@@ -1254,6 +1302,7 @@ async def native_enrich_results(results: list[dict[str, Any]]) -> None:
                     combined_links.extend(child_links[:300])
                 contacts = extract_contacts(combined_content, combined_links)
                 merge_public_contacts(item["public_data"], contacts)
+                _remember_people(item["public_data"], combined_content)
                 if item.get("source") == "web":
                     item["public_data"].update(address)
                 quality, signals = website_opportunity(target, combined_content, combined_links)
@@ -2159,8 +2208,7 @@ async def execute_research(search: dict[str, Any], known: set[str] | None = None
         except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
             warnings.append("O enriquecimento não foi concluído; os resultados originais foram preservados.")
     candidates, combined_count = combine_same_business(candidates)
-    if combined_count:
-        warnings.append(f"{combined_count} resultado(s) eram a mesma empresa em outra fonte; os contatos foram reunidos em um único lead.")
+    # (same business in two sources: merged silently; it is not something the client needs to act on)
     if known:
         fresh = [item for item in candidates if not (lead_identities(item) & known)]
         skipped = len(candidates) - len(fresh)
@@ -2184,6 +2232,13 @@ async def execute_research(search: dict[str, Any], known: set[str] | None = None
     results.sort(key=lambda item: (tier_rank.get(item["public_data"].get("lead_tier"), 3),
                                    0 if item["public_data"].get("whatsapp_url") else reach_rank[item["public_data"]["phone_kind"]]))
     results = results[:search["result_limit"]]
+    try:
+        named = await identify_decision_makers(results)
+    except Exception as exc:  # noqa: BLE001 - the owner's name is a bonus; the leads stand on their own
+        logger.warning("hunter.decision_makers_unavailable", extra={"error_class": type(exc).__name__})
+        named = 0
+    if named:
+        warnings.append(f"Responsável identificado em {named} de {len(results)} lead(s), pela Receita Federal ou pelo site da empresa.")
     assign_relative_temperature(results)
     validation["accepted"] = len(results)
     if options["website_filter"] == "without_website":
@@ -2211,12 +2266,13 @@ async def execute_research(search: dict[str, Any], known: set[str] | None = None
         )
     if options["unsupported_criterion"]:
         warnings.append("O critério livre foi enviado à busca, mas não pôde ser comprovado automaticamente. Esses resultados não foram importados para o CRM.")
-    if any(item.get("public_data", {}).get("enrichment") == "unavailable" for item in candidates):
+    short = len(results) < search["result_limit"]
+    if short and any(item.get("public_data", {}).get("enrichment") == "unavailable" for item in candidates):
         warnings.append("Algumas páginas não permitiram enriquecimento; dados indisponíveis não foram inventados.")
-    if any(item.get("public_data", {}).get("provider") == "maps_public_index" for item in candidates):
+    if short and any(item.get("public_data", {}).get("provider") == "maps_public_index" for item in candidates):
         warnings.append("O Google Maps estava indisponível. Trechos indexados não são fichas comerciais confirmadas e foram excluídos; configure uma fonte de Maps verificável.")
     unverified_maps = sum(item.get("source") == "google_maps" and item.get("public_data", {}).get("detail_inspected") is not True for item in candidates)
-    if unverified_maps:
+    if short and unverified_maps:
         warnings.append(f"{unverified_maps} ficha(s) do Google Maps não puderam ser verificadas e foram excluídas. Tente novamente para consultar os detalhes públicos; contatos não confirmados não foram importados.")
     error = (failures[0] if len(set(failures)) == 1 else "provider_error") if len(failures) == len(tasks) else None
     logger.info("hunter.research.finished", extra={

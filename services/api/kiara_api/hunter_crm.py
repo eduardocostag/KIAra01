@@ -120,6 +120,13 @@ def identity_keys(result: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(keys))
 
 
+def _keep_company(attrs: dict[str, Any], result: dict[str, Any]) -> None:
+    """Registry data found during the hunt fills the lead's company card, never replacing one already there."""
+    company = (result.get("public_data") or {}).get("company")
+    if isinstance(company, dict) and company.get("cnpj") and not isinstance(attrs.get("company"), dict):
+        attrs["company"] = company
+
+
 def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: Any = None) -> dict[str, Any]:
     data = result.get("public_data") or {}
     options = search.get("search_options") or search
@@ -146,6 +153,9 @@ def _hunter_metadata(search: dict[str, Any], result: dict[str, Any], previous: A
             metadata[key] = data[key]
     if isinstance(data.get("business_status"), str):
         metadata["business_status"] = data["business_status"][:40]
+    person = data.get("decision_maker")
+    if isinstance(person, dict) and isinstance(person.get("name"), str) and person["name"].strip():
+        metadata["decision_maker"] = {key: str(person.get(key) or "")[:80] for key in ("name", "role", "source")}
     for key in ("lead_tier", "temperature"):
         if isinstance(data.get(key), str):
             metadata[key] = data[key][:20]
@@ -273,6 +283,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
         attrs["hunter_identity_keys"] = list(dict.fromkeys((old_keys if isinstance(old_keys, list) else []) + keys))
         # Replace only discovery metadata. Manual CRM attributes and consent stay intact.
         attrs["hunter"] = _hunter_metadata(search_dict, normalized_result, attrs.get("hunter"))
+        _keep_company(attrs, normalized_result)
         if consumer:
             consumer_id = consumer["id"]
             await connection.execute(
@@ -305,6 +316,7 @@ async def sync_hunter_results(connection: Any, org_uuid: UUID, search_dict: dict
                 old_keys = attrs.get("hunter_identity_keys")
                 attrs["hunter_identity_keys"] = list(dict.fromkeys((old_keys if isinstance(old_keys, list) else []) + keys))
                 attrs["hunter"] = _hunter_metadata(search_dict, normalized_result, attrs.get("hunter"))
+                _keep_company(attrs, normalized_result)
                 await connection.execute(
                     """UPDATE consumers SET attributes=%s,display_name=COALESCE(NULLIF(display_name,''),%s),
                        version=version+1,updated_at=now() WHERE organization_id=%s AND id=%s""",

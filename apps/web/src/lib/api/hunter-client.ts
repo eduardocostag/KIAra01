@@ -30,6 +30,7 @@ export type HunterPublicData = {
   website_evidence?: string | null
   phone?: string | null
   phone_kind?: "celular" | "fixo" | ""
+  decision_maker?: { name: string; role?: string; source?: "receita" | "site" | "maps" }
   email?: string | null
   whatsapp_url?: string | null
   whatsapp_probable?: boolean
@@ -136,6 +137,7 @@ export function parseHunterJob(value: unknown): HunterJob {
           if (data.detail_inspected != null && typeof data.detail_inspected !== "boolean") return false
           if (!textFields.every((field) => field == null || typeof field === "string")) return false
           if (data.manual_import != null && typeof data.manual_import !== "boolean") return false
+          if (data.decision_maker != null && (typeof data.decision_maker !== "object" || typeof data.decision_maker.name !== "string")) return false
           if (data.website_status && !["present", "not_listed", "unknown"].includes(data.website_status)) return false
           if (data.criterion_status && !["verified", "not_verified", "not_requested", "manual_review"].includes(data.criterion_status)) return false
           if (data.website_quality_score != null && (typeof data.website_quality_score !== "number" || data.website_quality_score < 0 || data.website_quality_score > 100)) return false
