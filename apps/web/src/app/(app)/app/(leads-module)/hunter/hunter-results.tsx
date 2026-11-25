@@ -113,7 +113,6 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
     (result.source === "facebook" && data?.page_status === "verified_public_page")
   )
   const name = resultDisplayName(result)
-  const summary = result.summary?.replace(/\s+/g, " ").trim()
   const locationConfirmed = Boolean(data?.address && (data?.detail_inspected || data?.address_evidence === "verified_public_page")) || Boolean(data?.bio_location_evidence)
   const missing = [...new Set([
     ...hunterMissingEvidence(data),
@@ -161,7 +160,6 @@ function LeadRow({ result, searchId, location, index }: { result: HunterResult; 
           {!phone && !whatsapp && !email ? <span className="text-muted-foreground">Sem telefone público</span> : null}
         </div>
         {tags.length ? <ul className="flex flex-wrap gap-1.5" aria-label="Por que este lead">{tags.map((tag) => <li key={tag.text} className={`rounded-full border px-2 py-0.5 text-[11px] ${toneClass[tag.tone]}`}>{tag.text}</li>)}</ul> : null}
-        {summary ? <p className="line-clamp-2 text-xs text-muted-foreground">{summary}</p> : null}
         {result.source === "web" && data?.name_status === "source_title" ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Nome extraído do título da fonte</summary><p className="mt-1 break-words">{data.source_title || result.title}</p><p>O nome comercial não foi confirmado separadamente.</p></details> : null}
         {publication && !added ? <p className="text-xs text-amber-400">É uma publicação, não um perfil de negócio.</p>
           : missing.length && !added ? <p className="text-xs text-amber-400">Falta confirmar: {missing.join(", ")}. Confira a fonte antes de abordar.</p> : null}
