@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/app",
     name: "Kiara Intelligence",
     short_name: "Kiara",
-    description: "Kiara: prospecção, atendimento, chat e automação em um só app.",
+    description: "Kiara: leads, captação e CRM com IA em um só app.",
     lang: "pt-BR",
     dir: "ltr",
     start_url: "/app?source=app",
@@ -23,7 +23,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Kiara Chat", short_name: "Chat", url: "/app/chat?source=app", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Contato presencial", short_name: "Presencial", url: "/app/presencial?source=app", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "Buscar leads", short_name: "Leads", url: "/app/leads?source=app", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   }

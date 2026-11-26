@@ -267,3 +267,35 @@
   .chip svg { flex-shrink: 0; }
   .faq summary { padding: 1.05rem 0; font-size: 1rem; }
 }
+
+/* Presencial mini: a card is scanned and its fields appear */
+.scanCard { position: absolute; left: 7%; top: 16%; display: flex; width: 44%; height: 64%; flex-direction: column; gap: .15rem; overflow: hidden; border-radius: 12px; padding: .8rem; background: linear-gradient(135deg, #fbfbf8, #e9e6df); color: #1a1a2e; transform: rotate(-6deg); box-shadow: 0 18px 30px -12px rgb(0 0 0 / .8); }
+.scanCard::before { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: linear-gradient(#f97316, #db2777); content: ""; }
+.scanCard b { font-size: .85rem; }
+.scanCard span { margin-top: auto; font-size: .8rem; font-weight: 700; }
+.scanCard small { color: #db2777; font-size: .6rem; font-weight: 600; }
+.scanLine { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, #7c4dff, transparent); box-shadow: 0 0 16px #7c4dff; animation: scan 2.2s ease-in-out infinite; }
+.scanFields { position: absolute; right: 6%; top: 12%; display: flex; width: 42%; flex-direction: column; gap: .35rem; }
+.scanField { display: flex; flex-direction: column; border: 1px solid rgb(52 211 153 / .3); border-radius: 10px; padding: .3rem .5rem; background: rgb(52 211 153 / .1); color: white; font-size: .66rem; font-weight: 600; animation: rise .5s both; }
+.scanField small { color: rgb(255 255 255 / .45); font-size: .55rem; font-weight: 500; }
+@keyframes scan { 0%, 100% { top: 6%; } 50% { top: 92%; } }
+
+/* CRM mini: a pipeline board */
+.board { display: grid; height: 100%; grid-template-columns: repeat(3, 1fr); gap: .45rem; padding: .7rem; }
+.column { display: flex; flex-direction: column; gap: .4rem; border-radius: 12px; padding: .5rem; background: rgb(255 255 255 / .03); }
+.column small { color: var(--tone); font-size: .6rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.deal { border: 1px solid rgb(255 255 255 / .07); border-left: 3px solid var(--tone); border-radius: 8px; padding: .4rem .45rem; background: rgb(255 255 255 / .05); color: white; font-size: .64rem; animation: rise .6s both; }
+.dealMoving { animation: rise .6s both, moveDeal 4s 1.5s ease-in-out infinite; }
+@keyframes moveDeal { 0%, 30% { transform: none; } 55%, 85% { transform: translateX(108%); border-left-color: #facc15; } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .scanLine, .dealMoving { animation: none; } }
+
+/* Demo: the phone with the Presencial video */
+.demo { display: grid; align-items: center; gap: 2.5rem; }
+@media (min-width: 900px) { .demo { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 4rem; } }
+.phone { position: relative; width: min(100%, 320px); margin: 0 auto; overflow: hidden; border: 10px solid #15131f; border-radius: 42px; background: #000; box-shadow: 0 40px 90px -30px rgb(124 77 255 / .55), 0 0 0 1px rgb(255 255 255 / .08); aspect-ratio: 9 / 19.2; }
+.phone video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.demoSteps { display: grid; gap: 1rem; counter-reset: step; }
+.demoStep { display: grid; grid-template-columns: 2.25rem 1fr; gap: .9rem; align-items: start; }
+.demoStep b { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: 12px; background: rgb(124 77 255 / .18); color: #c4a1ff; font-size: .9rem; }
+.demoStep h3 { color: white; font-size: 1.05rem; font-weight: 600; }
+.demoStep p { margin-top: .2rem; color: rgb(255 255 255 / .55); font-size: .9rem; line-height: 1.5; }

@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react"
-import { Megaphone, Play, Sparkles, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import styles from "./landing.module.css"
 
@@ -25,26 +24,26 @@ export function WhatsAppPreview() {
   </div></div>
 }
 
-export function VoicePreview() {
-  const bars = [10, 18, 26, 14, 22, 30, 16, 24, 12, 20]
-  return <div className={styles.preview} aria-hidden="true"><div className={styles.voice}><span className={styles.voiceOrb} /></div>
-    <div className={styles.wave}>{bars.map((height, index) => <i key={index} style={{ height, animationDelay: `${index * .09}s` } as CSSProperties} />)}</div>
+/** A business card being read: the scan line passes and the fields it found pop in. */
+export function PresencialPreview() {
+  const fields: [string, string][] = [["Nome", "Ana Souza"], ["WhatsApp", "(51) 99876-5432"], ["Empresa", "Pulso Marketing"], ["Sócia", "Receita Federal ✓"]]
+  return <div className={styles.preview} aria-hidden="true">
+    <div className={styles.scanCard}><b>Pulso</b><span>Ana Souza</span><small>Diretora Comercial</small><i className={styles.scanLine} /></div>
+    <div className={styles.scanFields}>{fields.map(([label, value], index) => <span key={label} className={styles.scanField} style={{ animationDelay: `${.6 + index * .35}s` }}><small>{label}</small>{value}</span>)}</div>
   </div>
 }
 
-export function AutomationPreview() {
-  const nodes = [
-    { label: "Toda segunda", icon: Play, tone: "#f5a524", left: "6%", top: "18%" },
-    { label: "Kiara escreve", icon: Sparkles, tone: "#a78bfa", left: "38%", top: "40%" },
-    { label: "Instagram", icon: Users, tone: "#e879f9", left: "68%", top: "16%" },
-    { label: "Meta Ads", icon: Megaphone, tone: "#facc15", left: "68%", top: "68%" },
+/** The CRM funnel: deals move from one stage to the next. */
+export function PipelinePreview() {
+  const columns: [string, string, string[]][] = [
+    ["Novos", "#38bdf8", ["Clínica Aurora", "Pulso"]],
+    ["Em contato", "#facc15", ["Odonto Prime"]],
+    ["Oportunidade", "#e879f9", ["Dental Blanc"]],
   ]
-  return <div className={styles.preview} aria-hidden="true">
-    <svg className={styles.flowSvg} viewBox="0 0 400 216" preserveAspectRatio="none">
-      <path className={styles.flowPath} d="M 110 52 C 150 52, 130 100, 165 100" />
-      <path className={styles.flowPath} d="M 260 100 C 290 100, 250 46, 285 46" />
-      <path className={styles.flowPath} d="M 260 100 C 290 100, 250 158, 285 158" />
-    </svg>
-    {nodes.map(({ label, icon: Icon, tone, left, top }) => <span key={label} className={styles.flowNode} style={{ left, top, "--tone": tone } as CSSProperties}><Icon />{label}</span>)}
-  </div>
+  return <div className={styles.preview} aria-hidden="true"><div className={styles.board}>
+    {columns.map(([title, tone, deals], column) => <div key={title} className={styles.column} style={{ "--tone": tone } as CSSProperties}>
+      <small>{title}</small>
+      {deals.map((deal, index) => <span key={deal} className={cn(styles.deal, column === 0 && index === 1 && styles.dealMoving)} style={{ animationDelay: `${column * .2 + index * .15}s` }}>{deal}</span>)}
+    </div>)}
+  </div></div>
 }

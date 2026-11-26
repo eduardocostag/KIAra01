@@ -9,7 +9,8 @@ new Function("exports", ts.transpileModule(source, { compilerOptions: { module: 
 
 test("administrators always have every module; others what was chosen, or Leads when never configured", () => {
   assert.deepEqual(m.modulesFor("eduardocgonsalves@hotmail.com", { modules: [] }), ["leads", "whatsapp", "chat", "automation"]);
-  assert.deepEqual(m.modulesFor("ana@empresa.com", { modules: ["chat", "leads", "bogus"] }), ["leads", "chat"]);
+  // The chat is for the system administrators only: a client given "chat" still does not get it.
+  assert.deepEqual(m.modulesFor("ana@empresa.com", { modules: ["chat", "leads", "bogus"] }), ["leads"]);
   assert.deepEqual(m.modulesFor("ana@empresa.com", { modules: [] }), []);
   assert.deepEqual(m.modulesFor("ana@empresa.com", { provider: "email" }), ["leads"]);
   assert.deepEqual(m.modulesFor("ana@empresa.com", undefined), ["leads"]);

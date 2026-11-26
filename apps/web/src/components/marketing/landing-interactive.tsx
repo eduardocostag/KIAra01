@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import { Bot, MessageCircle, Search, Workflow } from "lucide-react"
+import { ListChecks, MessageCircle, ScanLine, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import styles from "./landing.module.css"
 
@@ -25,7 +25,7 @@ export function HeroScene() {
     return () => { window.removeEventListener("pointermove", move); cancelAnimationFrame(frame) }
   }, [])
 
-  return <div ref={ref} className={styles.scene} role="img" aria-label="A Kiara no centro, conectada aos módulos Leads, WhatsApp, Chat e Automation">
+  return <div ref={ref} className={styles.scene} role="img" aria-label="A Kiara no centro: leads encontrados, cartão lido, WhatsApp e follow-ups do dia">
     <div className={styles.stage}>
       <span className={styles.halo} />
       <span className={styles.ring} />
@@ -34,8 +34,8 @@ export function HeroScene() {
       <span className={styles.orb}><span className={styles.face}><i /><i /></span></span>
       <div className={cn(styles.card, styles.cardA)}><span className={styles.cardIcon}><Search /></span><span><strong>12 leads encontrados</strong><small>Dentistas · Porto Alegre</small></span></div>
       <div className={cn(styles.card, styles.cardB)}><span className={styles.cardIcon}><MessageCircle /></span><span><strong>Respondendo no WhatsApp</strong><small>Contato autorizado</small></span><i className={styles.live} /></div>
-      <div className={cn(styles.card, styles.cardC)}><span className={styles.cardIcon}><Bot /></span><span><strong>“Kiara, o que priorizo?”</strong><small>Converse com a Kiara</small></span></div>
-      <div className={cn(styles.card, styles.cardD)}><span className={styles.cardIcon}><Workflow /></span><span><strong>Post de segunda agendado</strong><small>Kiara Automation</small></span></div>
+      <div className={cn(styles.card, styles.cardC)}><span className={styles.cardIcon}><ScanLine /></span><span><strong>Cartão virou lead</strong><small>Ana Souza · Expo Sul</small></span></div>
+      <div className={cn(styles.card, styles.cardD)}><span className={styles.cardIcon}><ListChecks /></span><span><strong>3 follow-ups hoje</strong><small>CRM · Fila de hoje</small></span></div>
     </div>
   </div>
 }

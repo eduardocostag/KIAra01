@@ -343,9 +343,10 @@ def _is_system_admin(context: RequestContext) -> bool:
 
 
 def _authorize(context: RequestContext) -> None:
-    """Kiara Chat is open to every workspace (since 2026-11-17); read-only members cannot use it."""
-    if context.role not in {"owner", "admin", "operator"}:
-        raise ApiError(403, "chat_forbidden", "Seu perfil não pode usar o Kiara Chat.")
+    """Kiara Chat is for the system administrators only (since 2026-11-26): the product sold is leads, CRM and
+    capture. The models it uses still serve every client inside those features (drafts, SDR, card reading)."""
+    if not _is_system_admin(context):
+        raise ApiError(403, "chat_forbidden", "O Kiara Chat não está disponível na sua conta.")
 
 
 WEEKDAYS = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")

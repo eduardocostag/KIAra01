@@ -13,13 +13,19 @@ export const MODULES: readonly ModuleInfo[] = [
   { key: "leads", label: "KIARA Leads", description: "Pesquisa, CRM e Pipeline.", href: "/app/leads" },
   { key: "whatsapp", label: "KIARA WhatsApp", description: "Conexão, análise e automação.", href: "/app/whatsapp" },
   { key: "chat", label: "KIARA Chat", description: "Conversa, voz e criação com IA.", href: "/app/chat" },
-  { key: "automation", label: "KIARA Automation", description: "Fluxos, tarefas, agenda, redes e anúncios.", href: "/app/automation" },
+  { key: "automation", label: "KIARA Automation", description: "Rotinas do CRM: resumo do dia, abordagens e follow-ups.", href: "/app/automation" },
 ]
 
 export const MODULE_KEYS: readonly ModuleKey[] = MODULES.map((item) => item.key)
 
 /** Accounts the administrator never configured keep what they already used before per-user modules: Kiara Leads. */
 export const DEFAULT_MODULES: readonly ModuleKey[] = ["leads"]
+
+/** Modules only the system administrators use (the product sold is leads, CRM and capture); never given to clients. */
+export const ADMIN_ONLY_MODULES: readonly ModuleKey[] = ["chat"]
+
+/** What the administrator can give to a client account. */
+export const ASSIGNABLE_MODULES: readonly ModuleInfo[] = MODULES.filter((item) => !ADMIN_ONLY_MODULES.includes(item.key))
 
 /** Every system administrator (full access); keep in sync with services/api/kiara_api/admins.py. */
 export const SYSTEM_ADMIN_EMAILS: readonly string[] = ["admin@kiara.local", "eduardocgonsalves@hotmail.com"]
@@ -36,7 +42,7 @@ export function isModuleKey(value: unknown): value is ModuleKey {
 export function storedModules(appMetadata: unknown): ModuleKey[] {
   const raw = appMetadata && typeof appMetadata === "object" ? (appMetadata as { modules?: unknown }).modules : undefined
   if (!Array.isArray(raw)) return [...DEFAULT_MODULES]
-  return MODULE_KEYS.filter((key) => raw.includes(key))
+  return MODULE_KEYS.filter((key) => raw.includes(key) && !ADMIN_ONLY_MODULES.includes(key))
 }
 
 /** What an account may open: administrators everything, everyone else what the administrator chose. */

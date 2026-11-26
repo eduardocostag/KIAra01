@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AdminService, AdminSnapshot, AdminUser } from "@/lib/admin/types"
-import { MODULES, type ModuleKey } from "@/lib/modules"
+import { ASSIGNABLE_MODULES, MODULES, type ModuleKey } from "@/lib/modules"
 import { cn } from "@/lib/utils"
 
 const statusPresentation = {
@@ -241,7 +241,7 @@ function ModulePicker({ value, onChange }: { value: ModuleKey[]; onChange: (modu
   const toggle = (key: ModuleKey) => onChange(value.includes(key) ? value.filter((item) => item !== key) : MODULES.map((item) => item.key).filter((item) => item === key || value.includes(item)))
   return <fieldset className="space-y-2">
     <legend className="mb-2 text-sm font-medium">Módulos liberados</legend>
-    <div className="grid gap-2">{MODULES.map(({ key, label, description }) => {
+    <div className="grid gap-2">{ASSIGNABLE_MODULES.map(({ key, label, description }) => {
       const on = value.includes(key)
       const Icon = MODULE_ICONS[key]
       return <button key={key} type="button" role="switch" aria-checked={on} onClick={() => toggle(key)} className={cn("flex min-h-14 items-center gap-3 rounded-xl border p-3 text-left transition-colors", on ? "border-primary/60 bg-primary/10" : "hover:bg-muted/40")}>
@@ -250,6 +250,7 @@ function ModulePicker({ value, onChange }: { value: ModuleKey[]; onChange: (modu
         <span className={cn("grid size-5 shrink-0 place-items-center rounded-md border", on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")} aria-hidden="true">{on ? <Check className="size-3.5" /> : null}</span>
       </button>
     })}</div>
+    <p className="text-xs text-muted-foreground">O KIARA Chat é só para os administradores do sistema.</p>
     {!value.length ? <p className="text-xs text-amber-500">Sem nenhum módulo, a conta entra mas não vê nada até você liberar.</p> : null}
   </fieldset>
 }

@@ -10,7 +10,7 @@ from kiara_api.http.dependencies import authenticated_context
 from kiara_api.http.errors import ApiError
 
 
-def client(monkeypatch, role="owner", configured=True, reply="Resposta real do adaptador"):
+def client(monkeypatch, role="owner", configured=True, reply="Resposta real do adaptador", email="admin@kiara.local"):
     for key, value in {
         "KIARA_CHAT_API_BASE_URL": "https://provider.example/v1" if configured else "",
         "KIARA_CHAT_MODEL": "configured-model" if configured else "",
@@ -38,7 +38,7 @@ def client(monkeypatch, role="owner", configured=True, reply="Resposta real do a
         return JSONResponse({"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status_code)
 
     if role:
-        app.dependency_overrides[authenticated_context] = lambda: RequestContext("user", "org", "member", role, "req", email="admin@kiara.local")
+        app.dependency_overrides[authenticated_context] = lambda: RequestContext("user", "org", "member", role, "req", email=email)
     return TestClient(app), calls
 
 
@@ -46,7 +46,8 @@ def test_chat_requires_auth_and_membership(monkeypatch):
     api, calls = client(monkeypatch, role=None)
     assert api.get("/v1/chat/status").status_code == 401
     assert not calls
-    api, calls = client(monkeypatch, role="viewer")
+    # Since 2026-11-26 the chat is for the system administrators only: a client's owner is refused too.
+    api, calls = client(monkeypatch, role="owner", email="cliente@empresa.com.br")
     assert api.get("/v1/chat/status").status_code == 403
     assert api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Olá"}]}).status_code == 403
     assert not calls
@@ -95,8 +96,8 @@ def test_provider_failure_never_leaks_provider_error_or_fakes_success(monkeypatc
     assert "test-secret-key" not in result.text
 
 
-def test_chat_is_open_to_every_workspace_and_counts_messages(monkeypatch):
-    """Since 2026-11-17 any owner/admin/operator uses the chat; each answer counts as one Kiara message."""
+def test_chat_is_admin_only_and_counts_messages(monkeypatch):
+    """Since 2026-11-26 only the system administrators use the chat (clients get leads/CRM); each answer counts as one Kiara message."""
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
     from fastapi.testclient import TestClient
@@ -133,7 +134,10 @@ def test_chat_is_open_to_every_workspace_and_counts_messages(monkeypatch):
 
     app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "org", "m", "owner", "req", email="cliente@empresa.com")
     api = TestClient(app)
+    refused = api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Oi"}]})
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "chat_forbidden" and charged == []
+    app.dependency_overrides[authenticated_context] = lambda: RequestContext("u", "org", "m", "owner", "req", email="admin@kiara.local")
     first = api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Oi"}]})
-    assert first.status_code == 200 and first.json()["text"] == "Olá!" and first.json()["model"] == ""
+    assert first.status_code == 200 and first.json()["text"] == "Olá!" and first.json()["model"] == "m"  # admins see the model
     assert api.post("/v1/chat/messages", json={"messages": [{"role": "user", "content": "Oi"}]}).status_code == 402
     assert charged == ["ai_messages", "ai_messages"]

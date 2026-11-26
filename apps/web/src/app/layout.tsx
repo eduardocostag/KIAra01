@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     template: "%s | Kiara",
   },
   description:
-    "Kiara Intelligence: prospecção, atendimento, criação de sites, vídeos e automação em uma plataforma integrada.",
+    "Kiara: a IA que encontra clientes, transforma cartões de visita em leads e acompanha cada venda no CRM e no WhatsApp.",
   applicationName: "Kiara Intelligence",
   category: "business",
   // Installed on the iPhone home screen: full screen, named "Kiara". A solid status bar, so no screen ends up
