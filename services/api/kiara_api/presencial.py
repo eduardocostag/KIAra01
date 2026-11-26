@@ -6,6 +6,8 @@
    or the site, and the Receita Federal registry (legal name, partners). Nothing is saved at this step.
 2. POST /v1/presencial/contacts - the salesperson reviews and saves: the contact goes to the CRM and the pipeline
    (stage "new") with where they met and the salesperson's note.
+   Storefront mode ("place"): a photo of a shop front, sign, vehicle or painted number; Kiara finds the business on
+   Google Maps near the phone's location and scores it (presencial_place.py).
 3. The first WhatsApp message is drafted with that meeting as context (/v1/sales/draft) and sent by the salesperson
    from their own WhatsApp with one tap (/v1/sales/activities records it). The server never writes first; when the
    person answers, the Kiara SDR continues the conversation already knowing the meeting.
@@ -34,7 +36,7 @@ from .hunter_people import decision_maker, people_from_text
 from .hunter_research import national_phone, phone_kind, safe_public_url
 
 Context = Annotated[RequestContext, Depends(authenticated_context)]
-Vision = Callable[[str], Awaitable[str]]
+Vision = Callable[[str, str], Awaitable[str]]
 
 MAX_IMAGE_BASE64 = 6_000_000
 MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG", "image/webp": b"RIFF"}
@@ -62,9 +64,19 @@ class Photo(BaseModel):
     data_base64: str = Field(min_length=100, max_length=MAX_IMAGE_BASE64)
 
 
+class Location(BaseModel):
+    """The phone's position when the photo was taken: used once to find the street, never stored."""
+    model_config = ConfigDict(extra="forbid")
+    lat: float = Field(ge=-34, le=6)      # Brazil, roughly
+    lng: float = Field(ge=-74, le=-28)
+
+
 class ReadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     photo: Photo
+    mode: Literal["card", "place"] = "card"
+    location: Location | None = None
+    city: str = Field(default="", max_length=80)   # typed by the salesperson when the location is off
 
 
 class ContactIn(BaseModel):
@@ -80,15 +92,23 @@ class ContactIn(BaseModel):
     cnpj: str = Field(default="", max_length=20)
     event: str = Field(default="", max_length=80)
     note: str = Field(default="", max_length=600)
+    # Storefront mode: what the photo and Google Maps showed about the place.
+    kind: Literal["cartao", "cracha", "outro", "fachada"] = "cartao"
+    segment: str = Field(default="", max_length=80)
+    address: str = Field(default="", max_length=300)
+    maps_url: str = Field(default="", max_length=1000)
+    rating: float | None = Field(default=None, ge=0, le=5)
+    user_rating_count: int | None = Field(default=None, ge=0, le=10_000_000)
+    website_status: Literal["", "present", "not_listed"] = ""
 
 
 # ---------------------------------------------------------------- reading
 
-async def default_vision(image_url: str) -> str:
-    """The chat's model chain (it reads photos) with the card as an image part."""
+async def default_vision(image_url: str, prompt: str = READ_PROMPT) -> str:
+    """The chat's model chain (it reads photos) with the photo as an image part."""
     from .chat import stream_conversation
 
-    conversation = [{"role": "system", "content": READ_PROMPT},
+    conversation = [{"role": "system", "content": prompt},
                     {"role": "user", "content": [{"type": "text", "text": "Leia o contato desta imagem."},
                                                  {"type": "image_url", "image_url": {"url": image_url}}]}]
     parts: list[str] = []
@@ -159,9 +179,9 @@ def _site(value: str) -> str | None:
 
 
 def company_site(card: dict[str, Any]) -> str | None:
-    """The company's site: printed on the card, or the corporate e-mail domain (never Gmail, Hotmail...)."""
+    """The company's site: printed on the card or sign, or the corporate e-mail domain (never Gmail, Hotmail...)."""
     if card.get("website"):
-        return card["website"]
+        return _site(card["website"])
     for email in card.get("emails") or []:
         domain = email.rsplit("@", 1)[-1].lower()
         if domain not in FREE_MAIL:
@@ -227,8 +247,11 @@ def display_name(body: ContactIn) -> str:
 def presencial_attributes(body: ContactIn, *, user_id: str, company: dict[str, Any] | None, now: datetime) -> dict[str, Any]:
     phone = national_phone(body.phone)
     instagram = re.sub(r"^@", "", body.instagram.strip())
+    maps_url = safe_public_url(body.maps_url) if body.maps_url.strip() else None
     data = {
-        "source": "presencial", "event": body.event.strip(), "note": body.note.strip(), "met_at": now.isoformat(),
+        "source": "presencial", "kind": body.kind, "event": body.event.strip(), "note": body.note.strip(), "met_at": now.isoformat(),
+        "segment": body.segment.strip(), "address": body.address.strip(), "maps_url": maps_url or "",
+        "rating": body.rating, "user_rating_count": body.user_rating_count, "website_status": body.website_status,
         "captured_by": user_id, "contact_name": body.name.strip(), "role": body.role.strip(), "company": body.company.strip(),
         "phone": f"+55{phone}" if phone else "", "phone_kind": phone_kind(phone) if phone else "",
         "email": body.email.strip().lower() if EMAIL.fullmatch(body.email.strip()) else "",
@@ -242,16 +265,19 @@ def presencial_attributes(body: ContactIn, *, user_id: str, company: dict[str, A
 
 class PresencialService:
     def __init__(self, postgres: PostgresRepository | None, vision: Vision = default_vision, usage=None,
-                 enricher=enrich, lookup=fetch_company) -> None:
+                 enricher=enrich, lookup=fetch_company, geocode=None, maps=None) -> None:
         self._postgres, self._vision, self._usage, self._enrich, self._lookup = postgres, vision, usage, enricher, lookup
+        self._geocode, self._maps = geocode, maps
 
     async def read(self, context: RequestContext, body: ReadRequest) -> dict[str, Any]:
         _authorize(context)
         image = checked_image(body.photo)
         if self._usage:
             await self._usage.consume(context, "ai_messages")
+        if body.mode == "place":
+            return await self._read_place(image, body.location, body.city.strip())
         try:
-            text = await self._vision(image)
+            text = await self._vision(image, READ_PROMPT)
         except Exception:  # noqa: BLE001 - provider details never reach the screen
             text = ""
         card = parse_card(text)
@@ -267,6 +293,32 @@ class PresencialService:
             "kind": card["kind"], "site_read": extra["site_read"],
             "company": public_company(extra["company"]), "decision_maker": extra["decision_maker"],
         }
+
+    async def _read_place(self, image: str, location: Location | None, city: str = "") -> dict[str, Any]:
+        from .presencial_place import (
+            PLACE_PROMPT,
+            find_on_maps,
+            parse_place,
+            place_preview,
+            reverse_geocode,
+        )
+
+        try:
+            text = await self._vision(image, PLACE_PROMPT)
+        except Exception:  # noqa: BLE001
+            text = ""
+        sign = parse_place(text)
+        if not sign["readable"]:
+            raise ApiError(422, "place_unreadable", "Não consegui identificar o negócio nesta foto. Enquadre o letreiro ou a placa com o nome.")
+        place = await (self._geocode or reverse_geocode)(location.lat, location.lng) if location else {}
+        if city and not place.get("city"):
+            place = {**place, "city": city}
+        found = await find_on_maps(sign, place, self._maps)
+        data = (found or {}).get("public_data") or {}
+        website = sign["website"] or data.get("website_url") or ""
+        extra = await self._enrich({"website": website, "emails": [], "cnpj": ""})
+        extra["public_company"] = public_company(extra["company"])
+        return place_preview(sign, place, found, extra)
 
     async def save(self, context: RequestContext, body: ContactIn) -> dict[str, Any]:
         _authorize(context)
@@ -310,10 +362,12 @@ class PresencialService:
                     "INSERT INTO consumers (organization_id,id,display_name,attributes) VALUES (%s,%s,%s,%s)",
                     (org, consumer_id, display_name(body), json.dumps(attributes)))
             where = f" ({body.event.strip()})" if body.event.strip() else ""
+            action = (f"Enviar a primeira mensagem: visitou a fachada{where}" if body.kind == "fachada"
+                      else f"Enviar a primeira mensagem: conheceu pessoalmente{where}")
             entry = await (await connection.execute(
                 """INSERT INTO pipeline_entries (organization_id,consumer_id,stage,next_action)
                    VALUES (%s,%s,'new',%s) ON CONFLICT (organization_id,consumer_id) DO NOTHING RETURNING id""",
-                (org, consumer_id, f"Enviar a primeira mensagem: conheceu pessoalmente{where}"[:300]))).fetchone()
+                (org, consumer_id, action[:300]))).fetchone()
             created = bool(entry)
             if not entry:
                 entry = await (await connection.execute(

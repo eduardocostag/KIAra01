@@ -55,7 +55,7 @@ def test_enrich_uses_the_site_cnpj_and_registry_partners():
 
 
 def test_read_returns_a_preview_and_saves_nothing():
-    async def vision(image):
+    async def vision(image, prompt=""):
         assert image.startswith("data:image/jpeg;base64,")
         return card_json()
 
@@ -69,7 +69,7 @@ def test_read_returns_a_preview_and_saves_nothing():
 
 
 def test_read_refuses_fake_images_and_unreadable_cards():
-    async def vision(image):
+    async def vision(image, prompt=""):
         return "{}"
 
     service = PresencialService(None, vision=vision, enricher=enrich)
@@ -108,3 +108,67 @@ def test_first_message_and_sdr_know_where_they_met():
     assert "conhecer essa pessoa pessoalmente" in prompt[1]["content"]
     assert contact_origin(attributes) == HUNTED
     assert any("Conhecido pessoalmente em Expo Sul" in line for line in contact_profile(attributes))
+
+
+# ---------------------------------------------------------------- storefront mode
+
+def place_json(**extra):
+    data = {"business": "Pizzaria Bella Napoli", "segment": "pizzaria", "phones": ["(51) 3222-1100"], "instagram": "@bellanapolipoa",
+            "website": "", "address_text": "", "details": "fachada simples, delivery", "readable": True}
+    data.update(extra)
+    return json.dumps(data)
+
+
+MAPS_ROWS = [
+    {"title": "Bella Napoli Pizzaria", "url": "https://www.google.com/maps/place/?q=place_id:abc",
+     "public_data": {"phone": "(51) 99123-4567", "address": "Rua Padre Chagas, 300 - Moinhos de Vento, Porto Alegre",
+                     "rating": 4.7, "user_rating_count": 312, "website_status": "not_listed"}},
+    {"title": "Pizza Hut", "url": "https://www.google.com/maps/place/?q=place_id:xyz",
+     "public_data": {"phone": "(51) 3000-0000", "address": "Av. Ipiranga, 1000, Porto Alegre"}},
+]
+
+
+def test_storefront_photo_finds_the_business_on_maps_and_scores_it():
+    from kiara_api.presencial import Location
+
+    queries = []
+
+    async def vision(image, prompt=""):
+        assert "fachadas" in prompt
+        return place_json()
+
+    async def geocode(lat, lng):
+        return {"road": "Rua Padre Chagas", "number": "300", "suburb": "Moinhos de Vento", "city": "Porto Alegre", "state": "RS"}
+
+    async def maps(query, limit):
+        queries.append(query)
+        return MAPS_ROWS
+
+    async def no_enrich(card):
+        return {"website": "", "site_read": False, "cnpj": "", "company": None, "decision_maker": None}
+
+    service = PresencialService(None, vision=vision, enricher=no_enrich, geocode=geocode, maps=maps)
+    body = ReadRequest(photo=Photo(mime="image/jpeg", data_base64=JPEG), mode="place", location=Location(lat=-30.02, lng=-51.2))
+    preview = asyncio.run(service.read(CONTEXT, body))
+    assert queries == ["Pizzaria Bella Napoli, Rua Padre Chagas, Porto Alegre, RS"]
+    assert preview["kind"] == "fachada" and preview["place"]["found_on_maps"] and preview["place"]["rating"] == 4.7
+    assert preview["contact"]["company"] == "Bella Napoli Pizzaria"
+    assert preview["contact"]["phone"] == "51991234567"  # the mobile from Maps comes before the landline on the sign
+    assert preview["fit"]["grade"] in {"A", "B"} and any("Sem site" in reason["text"] for reason in preview["fit"]["reasons"])
+
+
+def test_storefront_never_takes_a_different_business():
+    from kiara_api.presencial_place import best_match
+
+    assert best_match(MAPS_ROWS, "Sorveteria Gelato", [], "Rua Padre Chagas") is None
+    assert best_match(MAPS_ROWS, "Qualquer", ["5130000000"], "")["title"] == "Pizza Hut"  # same phone = same business
+
+
+def test_storefront_draft_says_they_passed_by():
+    attributes = {"presencial": {"kind": "fachada", "company": "Bella Napoli", "segment": "pizzaria", "address": "Rua Padre Chagas, 300",
+                                 "rating": 4.7, "user_rating_count": 312, "website_status": "not_listed"}}
+    facts = lead_facts("Bella Napoli", attributes)
+    assert any("passou pessoalmente em frente" in fact for fact in facts) and any("Não tem site" in fact for fact in facts)
+    prompt = draft_prompt("first_contact", {}, "", facts, [], "", met="fachada")
+    assert "viu pessoalmente" in prompt[1]["content"]
+    assert any("passou em frente" in line for line in contact_profile(attributes))

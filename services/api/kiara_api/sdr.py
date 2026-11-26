@@ -174,7 +174,9 @@ def contact_profile(attributes: dict[str, Any] | None) -> list[str]:
     if hunter.get("profile_bio"):
         lines.append(f"Descrição pública: {str(hunter['profile_bio'])[:300]}")
     met = attributes.get("presencial") if isinstance(attributes.get("presencial"), dict) else {}
-    if met:
+    if met and met.get("kind") == "fachada":
+        lines.append("Abordado depois que a equipe passou em frente ao negócio" + (f" ({str(met['address'])[:120]})" if met.get("address") else ""))
+    elif met:
         who = ", ".join(str(met[key])[:80] for key in ("contact_name", "role", "company") if met.get(key))
         lines.append("Conhecido pessoalmente" + (f" em {str(met['event'])[:80]}" if met.get("event") else "") + (f": {who}" if who else ""))
     if isinstance(attributes.get("notes"), str) and attributes["notes"].strip():

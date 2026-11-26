@@ -468,8 +468,17 @@ class PostgresRepository:
                     consumer[key] = met[key]
             if isinstance(met.get("event"), str) and met["event"]:
                 consumer["research_query"] = f"Conheceu em: {met['event']}"
-            if isinstance(met.get("city"), str) and met["city"]:
+            if isinstance(met.get("address"), str) and met["address"]:
+                consumer["address"] = met["address"]
+            elif isinstance(met.get("city"), str) and met["city"]:
                 consumer["address"] = met["city"]
+            if isinstance(met.get("maps_url"), str) and met["maps_url"]:
+                consumer["source_url"] = met["maps_url"]
+            if met.get("website_status") in {"present", "not_listed"}:
+                consumer["website_status"] = met["website_status"]
+            for key in ("rating", "user_rating_count"):
+                if isinstance(met.get(key), (int, float)) and not isinstance(met.get(key), bool):
+                    consumer[key] = met[key]
             if isinstance(met.get("instagram"), str) and met["instagram"] and not consumer.get("instagram_username"):
                 consumer["instagram_username"] = met["instagram"]
         company = (row.get("attributes") or {}).get("company")

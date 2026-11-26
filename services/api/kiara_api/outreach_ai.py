@@ -44,12 +44,30 @@ class DraftRequest(BaseModel):
 
 # ---------------------------------------------------------------- the lead, in words
 
+def _met_kind(attributes: dict[str, Any]) -> bool | str:
+    met = attributes.get("presencial") if isinstance(attributes.get("presencial"), dict) else None
+    return False if met is None else "fachada" if met.get("kind") == "fachada" else True
+
+
 def met_facts(attributes: dict[str, Any]) -> list[str]:
     """A contact met face to face (Kiara Presencial): who, where and what the salesperson noted."""
     met = attributes.get("presencial") if isinstance(attributes.get("presencial"), dict) else {}
     if not met:
         return []
     facts = []
+    if met.get("kind") == "fachada":
+        facts.append(f"Negócio: {met.get('company') or 'sem nome'}" + (f" ({met['segment']})" if met.get("segment") else ""))
+        if met.get("contact_name"):
+            facts.append(f"Responsável: {met['contact_name']}" + (f", {met['role']}" if met.get("role") else ""))
+        facts.append("Você passou pessoalmente em frente ao negócio" + (f", em {met['address']}" if met.get("address") else "")
+                     + "; ninguém de lá conhece você ainda")
+        if isinstance(met.get("rating"), (int, float)):
+            facts.append(f"Nota no Google: {met['rating']:.1f} com {met.get('user_rating_count') or 0} avaliações")
+        if met.get("website_status") == "not_listed":
+            facts.append("Não tem site próprio")
+        if met.get("note"):
+            facts.append(f"Observação de quem passou lá: {str(met['note'])[:500]}")
+        return facts
     if met.get("contact_name"):
         facts.append(f"Pessoa: {met['contact_name']}" + (f", {met['role']}" if met.get("role") else "")
                      + (f" na {met['company']}" if met.get("company") else ""))
@@ -94,12 +112,18 @@ def lead_facts(name: str, attributes: dict[str, Any]) -> list[str]:
 
 
 def draft_prompt(kind: str, profile: dict[str, Any], knowledge: str, facts: list[str], history: list[str], note: str,
-                 met: bool = False) -> list[dict[str, str]]:
+                 met: bool | str = False) -> list[dict[str, str]]:
     sender = profile.get("sender_name") or "a equipe"
+    if met == "fachada":
+        met = False
+        first = ("a PRIMEIRA mensagem para um negócio que você viu pessoalmente (passou em frente): diga que passou por lá "
+                 "e o que chamou sua atenção, use um detalhe concreto dos dados, sem fingir que já se conhecem")
+    else:
+        first = None
     goal = {
-        "first_contact": ("a PRIMEIRA mensagem depois de conhecer essa pessoa pessoalmente: chame pelo primeiro nome, "
-                          "lembre onde vocês se conheceram e retome o que foi conversado (a anotação), sem parecer automático"
-                          if met else "a PRIMEIRA mensagem para esse negócio, que ainda não conhece você"),
+        "first_contact": first or ("a PRIMEIRA mensagem depois de conhecer essa pessoa pessoalmente: chame pelo primeiro nome, "
+                                   "lembre onde vocês se conheceram e retome o que foi conversado (a anotação), sem parecer automático"
+                                   if met else "a PRIMEIRA mensagem para esse negócio, que ainda não conhece você"),
         "follow_up": f"uma mensagem de acompanhamento: a pessoa não respondeu à mensagem anterior (tentativa {len(history) + 1})",
         "reactivation": "uma mensagem para retomar uma negociação que ficou parada",
     }[kind]
@@ -237,7 +261,7 @@ class OutreachAI:
         kind = body.kind if body.kind != "first_contact" or not history else "follow_up"
         attributes = row["attributes"] or {}
         text = clean_message(await self._ask(draft_prompt(kind, dict(profile), knowledge, lead_facts(row["display_name"], attributes), history,
-                                                          body.note, met=isinstance(attributes.get("presencial"), dict))))
+                                                          body.note, met=_met_kind(attributes))))
         if not text:
             raise ApiError(502, "draft_unavailable", "A Kiara não conseguiu escrever agora. Tente de novo.")
         return {"message": text, "kind": kind}
