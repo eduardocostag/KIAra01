@@ -30,6 +30,7 @@ import "../(app)/app/orbit-dashboard.css"
 import { FxPreview } from "./fx-preview"
 import { AdminConsole } from "@/components/app-shell/admin-console"
 import { SdrSimulator } from "@/components/app-shell/sdr-simulator"
+import { PresencialCapture } from "@/components/app-shell/presencial-capture"
 import { ServiceSetupWorkspace } from "@/components/app-shell/service-setup"
 import { EMPTY_SETUP, type Niche } from "@/lib/service-setup"
 
@@ -83,6 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
     return <WhatsAppSectionShell title="Configurar atendimento" isAdmin><ServiceSetupWorkspace isAdmin preview={{ setup, niches }} /></WhatsAppSectionShell>
   }
   if (workspace === "simulador") return <SdrSimulator />
+  if (workspace === "presencial") return <AppShell previewModule="/app/leads"><div className="mx-auto w-full max-w-4xl space-y-6"><header className="mx-auto max-w-xl"><h1 className="text-3xl font-medium tracking-tight">Contato presencial</h1><p className="mt-1 text-sm text-muted-foreground">Conheceu alguém numa feira, visita ou reunião? Fotografe o cartão: a Kiara salva o contato e prepara a mensagem no WhatsApp.</p></header><PresencialCapture /></div></AppShell>
   if (workspace === "whatsapp") return <WhatsAppInbox conversations={view === "empty" ? [] : previewConversations} canSend isAdmin={view !== "client"} />
   if (workspace === "automation") return <WhatsAppSectionShell title="Automação"><WhatsAppWebWorkspace entries={previewEntries} /></WhatsAppSectionShell>
   const content = workspace === "hunter" ? <HunterClient />

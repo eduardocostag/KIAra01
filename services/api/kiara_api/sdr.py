@@ -132,6 +132,8 @@ def contact_origin(attributes: dict[str, Any] | None, messages: list[dict[str, A
     hunter = (attributes or {}).get("hunter") or {}
     if isinstance(hunter, dict) and hunter.get("search_id"):
         return HUNTED
+    if isinstance((attributes or {}).get("presencial"), dict):
+        return HUNTED  # met face to face; the business wrote first
     # Only when the whole conversation is in view (the inbox keeps the last 30 messages here).
     if messages and len(messages) < 30 and messages[0].get("direction") == "outbound":
         return HUNTED
@@ -171,6 +173,10 @@ def contact_profile(attributes: dict[str, Any] | None) -> list[str]:
         lines.append(f"Site: {website}")
     if hunter.get("profile_bio"):
         lines.append(f"Descrição pública: {str(hunter['profile_bio'])[:300]}")
+    met = attributes.get("presencial") if isinstance(attributes.get("presencial"), dict) else {}
+    if met:
+        who = ", ".join(str(met[key])[:80] for key in ("contact_name", "role", "company") if met.get(key))
+        lines.append("Conhecido pessoalmente" + (f" em {str(met['event'])[:80]}" if met.get("event") else "") + (f": {who}" if who else ""))
     if isinstance(attributes.get("notes"), str) and attributes["notes"].strip():
         lines.append(f"Anotações da equipe: {attributes['notes'].strip()[:600]}")
     return lines

@@ -44,7 +44,7 @@ export function modulesFor(email: string | null | undefined, appMetadata: unknow
   return isSystemAdminEmail(email) ? [...MODULE_KEYS] : storedModules(appMetadata)
 }
 
-const LEADS_PAGES = ["leads", "hunter", "pipeline", "concorrencia", "conteudo", "followups", "fila"]
+const LEADS_PAGES = ["leads", "hunter", "pipeline", "concorrencia", "conteudo", "followups", "fila", "presencial"]
 
 /** The module a page belongs to; shared pages (settings, approvals, company, team, plan) belong to none. */
 export function moduleForPage(pathname: string): ModuleKey | null {

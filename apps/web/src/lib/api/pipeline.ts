@@ -175,7 +175,7 @@ export function parsePipeline(value: unknown): PipelineEntry[] {
   return (value as { items: unknown[] }).items.map(parsePipelineEntry)
 }
 
-export const sourceLabels: Record<string, string> = { google_maps: "Google Maps", web: "Web pública", instagram: "Instagram", facebook: "Facebook", hunter: "Hunter", whatsapp_web: "WhatsApp Web" }
+export const sourceLabels: Record<string, string> = { google_maps: "Google Maps", web: "Web pública", instagram: "Instagram", facebook: "Facebook", hunter: "Hunter", whatsapp_web: "WhatsApp Web", presencial: "Contato presencial" }
 
 export function leadDisplayName(consumer: PipelineEntry["consumer"]): string {
   const username = consumer.instagram_username?.trim().replace(/^@/, "")

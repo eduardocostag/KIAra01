@@ -459,6 +459,19 @@ class PostgresRepository:
         for key in ("rating", "user_rating_count"):
             if isinstance(hunter.get(key), (int, float)) and not isinstance(hunter.get(key), bool):
                 consumer[key] = hunter[key]
+        met = (row.get("attributes") or {}).get("presencial")
+        if isinstance(met, dict) and not hunter:
+            # Met face to face (Kiara Presencial): the card's details fill the same fields the CRM shows.
+            consumer["source"] = "presencial"
+            for key in ("phone", "email", "website_url"):
+                if isinstance(met.get(key), str) and met[key]:
+                    consumer[key] = met[key]
+            if isinstance(met.get("event"), str) and met["event"]:
+                consumer["research_query"] = f"Conheceu em: {met['event']}"
+            if isinstance(met.get("city"), str) and met["city"]:
+                consumer["address"] = met["city"]
+            if isinstance(met.get("instagram"), str) and met["instagram"] and not consumer.get("instagram_username"):
+                consumer["instagram_username"] = met["instagram"]
         company = (row.get("attributes") or {}).get("company")
         if isinstance(company, dict):
             consumer["company"] = company

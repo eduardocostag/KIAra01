@@ -19,6 +19,7 @@ import {
   Sparkles,
   SlidersHorizontal,
   ListChecks,
+  ScanLine,
   Building2,
   Ellipsis,
   Download,
@@ -53,6 +54,7 @@ const navConfigs = {
   "/app/leads": [
     { href: "/app/leads", label: "Visão geral", icon: House },
     { href: "/app/hunter", label: "Buscar leads", icon: Search },
+    { href: "/app/presencial", label: "Presencial", icon: ScanLine },
     { href: "/app/fila", label: "Fila de hoje", icon: ListChecks },
     { href: "/app/pipeline", label: "Contatos", icon: UsersRound },
     { href: "/app/empresa", label: "Minha empresa", icon: Building2 },

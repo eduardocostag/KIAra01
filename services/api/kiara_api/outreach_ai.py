@@ -44,9 +44,31 @@ class DraftRequest(BaseModel):
 
 # ---------------------------------------------------------------- the lead, in words
 
+def met_facts(attributes: dict[str, Any]) -> list[str]:
+    """A contact met face to face (Kiara Presencial): who, where and what the salesperson noted."""
+    met = attributes.get("presencial") if isinstance(attributes.get("presencial"), dict) else {}
+    if not met:
+        return []
+    facts = []
+    if met.get("contact_name"):
+        facts.append(f"Pessoa: {met['contact_name']}" + (f", {met['role']}" if met.get("role") else "")
+                     + (f" na {met['company']}" if met.get("company") else ""))
+    facts.append(f"Vocês se conheceram pessoalmente{(' em ' + str(met['event'])) if met.get('event') else ''}"
+                 + (f" ({str(met['met_at'])[8:10]}/{str(met['met_at'])[5:7]})" if met.get("met_at") else ""))
+    if met.get("note"):
+        facts.append(f"Anotação de quem conversou com a pessoa: {str(met['note'])[:500]}")
+    return facts
+
+
 def lead_facts(name: str, attributes: dict[str, Any]) -> list[str]:
     hunter = attributes.get("hunter") or {}
     company = attributes.get("company") or {}
+    met = met_facts(attributes)
+    if met:
+        facts = met
+        if company.get("main_activity"):
+            facts.append(f"Atividade da empresa: {company['main_activity']}")
+        return facts
     facts = [f"Nome do negócio: {name}"]
     if hunter.get("research_query"):
         facts.append(f"Encontrado na busca: {hunter['research_query']}" + (f" em {hunter['location']}" if hunter.get("location") else ""))
@@ -71,10 +93,13 @@ def lead_facts(name: str, attributes: dict[str, Any]) -> list[str]:
     return facts
 
 
-def draft_prompt(kind: str, profile: dict[str, Any], knowledge: str, facts: list[str], history: list[str], note: str) -> list[dict[str, str]]:
+def draft_prompt(kind: str, profile: dict[str, Any], knowledge: str, facts: list[str], history: list[str], note: str,
+                 met: bool = False) -> list[dict[str, str]]:
     sender = profile.get("sender_name") or "a equipe"
     goal = {
-        "first_contact": "a PRIMEIRA mensagem para esse negócio, que ainda não conhece você",
+        "first_contact": ("a PRIMEIRA mensagem depois de conhecer essa pessoa pessoalmente: chame pelo primeiro nome, "
+                          "lembre onde vocês se conheceram e retome o que foi conversado (a anotação), sem parecer automático"
+                          if met else "a PRIMEIRA mensagem para esse negócio, que ainda não conhece você"),
         "follow_up": f"uma mensagem de acompanhamento: a pessoa não respondeu à mensagem anterior (tentativa {len(history) + 1})",
         "reactivation": "uma mensagem para retomar uma negociação que ficou parada",
     }[kind]
@@ -210,7 +235,9 @@ class OutreachAI:
         if self._usage:
             await self._usage.consume(context, "ai_messages")
         kind = body.kind if body.kind != "first_contact" or not history else "follow_up"
-        text = clean_message(await self._ask(draft_prompt(kind, dict(profile), knowledge, lead_facts(row["display_name"], row["attributes"] or {}), history, body.note)))
+        attributes = row["attributes"] or {}
+        text = clean_message(await self._ask(draft_prompt(kind, dict(profile), knowledge, lead_facts(row["display_name"], attributes), history,
+                                                          body.note, met=isinstance(attributes.get("presencial"), dict))))
         if not text:
             raise ApiError(502, "draft_unavailable", "A Kiara não conseguiu escrever agora. Tente de novo.")
         return {"message": text, "kind": kind}
