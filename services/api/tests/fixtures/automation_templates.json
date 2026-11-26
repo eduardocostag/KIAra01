@@ -1,0 +1,368 @@
+[
+ {
+  "id": "crm-digest",
+  "title": "Resumo diário do CRM",
+  "nodes": [
+   {
+    "id": "n-mwy0z9bv-0",
+    "type": "trigger.schedule",
+    "x": 60,
+    "y": 160,
+    "config": {
+     "cadence": "weekdays",
+     "weekday": "1",
+     "time": "08:00"
+    }
+   },
+   {
+    "id": "n-mwy0z9bv-1",
+    "type": "crm.read",
+    "x": 330,
+    "y": 160,
+    "config": {
+     "stage": "active",
+     "limit": 30
+    }
+   },
+   {
+    "id": "n-mwy0z9bv-2",
+    "type": "ai.generate",
+    "x": 600,
+    "y": 160,
+    "config": {
+     "prompt": "Com base nestes leads, diga em até 5 tópicos curtos o que priorizar hoje e por quê (quem abordar, quem acompanhar, qual negociação retomar):\n{{entrada}}"
+    }
+   },
+   {
+    "id": "n-mwy0z9bv-3",
+    "type": "logic.notify",
+    "x": 870,
+    "y": 160,
+    "config": {
+     "title": "Prioridades de hoje"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "e-mwy0z9bv-4",
+    "from": "n-mwy0z9bv-0",
+    "to": "n-mwy0z9bv-1"
+   },
+   {
+    "id": "e-mwy0z9bv-5",
+    "from": "n-mwy0z9bv-1",
+    "to": "n-mwy0z9bv-2"
+   },
+   {
+    "id": "e-mwy0z9bv-6",
+    "from": "n-mwy0z9bv-2",
+    "to": "n-mwy0z9bv-3"
+   }
+  ]
+ },
+ {
+  "id": "first-messages",
+  "title": "Primeira mensagem para leads novos",
+  "nodes": [
+   {
+    "id": "n-mwy0z9bw-8",
+    "type": "trigger.schedule",
+    "x": 60,
+    "y": 160,
+    "config": {
+     "cadence": "weekdays",
+     "weekday": "1",
+     "time": "09:00"
+    }
+   },
+   {
+    "id": "n-mwy0z9bw-9",
+    "type": "crm.drafts",
+    "x": 330,
+    "y": 160,
+    "config": {
+     "kind": "first_contact",
+     "limit": 10
+    }
+   },
+   {
+    "id": "n-mwy0z9bw-a",
+    "type": "logic.notify",
+    "x": 600,
+    "y": 160,
+    "config": {
+     "title": "Abordagens prontas para enviar"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "e-mwy0z9bw-b",
+    "from": "n-mwy0z9bw-8",
+    "to": "n-mwy0z9bw-9"
+   },
+   {
+    "id": "e-mwy0z9bw-c",
+    "from": "n-mwy0z9bw-9",
+    "to": "n-mwy0z9bw-a"
+   }
+  ]
+ },
+ {
+  "id": "follow-ups",
+  "title": "Follow-up de quem não respondeu",
+  "nodes": [
+   {
+    "id": "n-mwy0z9bw-e",
+    "type": "trigger.schedule",
+    "x": 60,
+    "y": 160,
+    "config": {
+     "cadence": "weekdays",
+     "weekday": "1",
+     "time": "10:00"
+    }
+   },
+   {
+    "id": "n-mwy0z9bw-f",
+    "type": "crm.drafts",
+    "x": 330,
+    "y": 160,
+    "config": {
+     "kind": "follow_up",
+     "limit": 15
+    }
+   },
+   {
+    "id": "n-mwy0z9bw-g",
+    "type": "logic.notify",
+    "x": 600,
+    "y": 160,
+    "config": {
+     "title": "Follow-ups prontos para enviar"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "e-mwy0z9bw-h",
+    "from": "n-mwy0z9bw-e",
+    "to": "n-mwy0z9bw-f"
+   },
+   {
+    "id": "e-mwy0z9bw-i",
+    "from": "n-mwy0z9bw-f",
+    "to": "n-mwy0z9bw-g"
+   }
+  ]
+ },
+ {
+  "id": "reactivation",
+  "title": "Retomar negociações paradas",
+  "nodes": [
+   {
+    "id": "n-mwy0z9bw-k",
+    "type": "trigger.schedule",
+    "x": 60,
+    "y": 160,
+    "config": {
+     "cadence": "weekly",
+     "weekday": "1",
+     "time": "09:00"
+    }
+   },
+   {
+    "id": "n-mwy0z9bw-l",
+    "type": "crm.drafts",
+    "x": 330,
+    "y": 160,
+    "config": {
+     "kind": "reactivation",
+     "limit": 10
+    }
+   },
+   {
+    "id": "n-mwy0z9bw-m",
+    "type": "logic.notify",
+    "x": 600,
+    "y": 160,
+    "config": {
+     "title": "Negociações para retomar"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "e-mwy0z9bw-n",
+    "from": "n-mwy0z9bw-k",
+    "to": "n-mwy0z9bw-l"
+   },
+   {
+    "id": "e-mwy0z9bw-o",
+    "from": "n-mwy0z9bw-l",
+    "to": "n-mwy0z9bw-m"
+   }
+  ]
+ },
+ {
+  "id": "lead-welcome",
+  "title": "Boas-vindas para cada lead novo",
+  "nodes": [
+   {
+    "id": "n-mwy0z9bx-q",
+    "type": "trigger.lead",
+    "x": 60,
+    "y": 200,
+    "config": {}
+   },
+   {
+    "id": "n-mwy0z9bx-r",
+    "type": "ai.classify",
+    "x": 330,
+    "y": 200,
+    "config": {
+     "question": "Este lead tem telefone e parece um negócio real, adequado para uma primeira abordagem comercial? {{lead}}"
+    }
+   },
+   {
+    "id": "n-mwy0z9bx-s",
+    "type": "logic.condition",
+    "x": 600,
+    "y": 200,
+    "config": {
+     "contains": "SIM"
+    }
+   },
+   {
+    "id": "n-mwy0z9bx-t",
+    "type": "ai.generate",
+    "x": 870,
+    "y": 110,
+    "config": {
+     "prompt": "Escreva uma primeira mensagem curta e cordial de WhatsApp (até 400 caracteres) para este lead, citando um detalhe dele e terminando com uma pergunta simples. Responda só com a mensagem.\nLead: {{lead}}"
+    }
+   },
+   {
+    "id": "n-mwy0z9bx-u",
+    "type": "messages.whatsapp",
+    "x": 1140,
+    "y": 110,
+    "config": {
+     "text": "{{entrada}}",
+     "to": ""
+    }
+   },
+   {
+    "id": "n-mwy0z9bx-v",
+    "type": "logic.notify",
+    "x": 870,
+    "y": 300,
+    "config": {
+     "title": "Lead sem perfil para abordagem agora"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "e-mwy0z9bx-x",
+    "from": "n-mwy0z9bx-q",
+    "to": "n-mwy0z9bx-r"
+   },
+   {
+    "id": "e-mwy0z9bx-y",
+    "from": "n-mwy0z9bx-r",
+    "to": "n-mwy0z9bx-s"
+   },
+   {
+    "id": "e-mwy0z9bx-z",
+    "from": "n-mwy0z9bx-s",
+    "to": "n-mwy0z9bx-t",
+    "port": "yes"
+   },
+   {
+    "id": "e-mwy0z9bx-10",
+    "from": "n-mwy0z9bx-t",
+    "to": "n-mwy0z9bx-u"
+   },
+   {
+    "id": "e-mwy0z9bx-11",
+    "from": "n-mwy0z9bx-s",
+    "to": "n-mwy0z9bx-v",
+    "port": "no"
+   }
+  ]
+ },
+ {
+  "id": "hot-lead",
+  "title": "Avisar sobre lead prioritário",
+  "nodes": [
+   {
+    "id": "n-mwy0z9by-12",
+    "type": "trigger.lead",
+    "x": 60,
+    "y": 200,
+    "config": {}
+   },
+   {
+    "id": "n-mwy0z9by-13",
+    "type": "ai.classify",
+    "x": 330,
+    "y": 200,
+    "config": {
+     "question": "Este lead parece prioritário (negócio estabelecido, com WhatsApp, boa reputação ou oportunidade clara)? {{lead}}"
+    }
+   },
+   {
+    "id": "n-mwy0z9by-14",
+    "type": "logic.condition",
+    "x": 600,
+    "y": 200,
+    "config": {
+     "contains": "SIM"
+    }
+   },
+   {
+    "id": "n-mwy0z9by-15",
+    "type": "ai.generate",
+    "x": 870,
+    "y": 200,
+    "config": {
+     "prompt": "Em 2 frases, diga por que este lead merece contato hoje e qual o melhor ângulo de abordagem: {{lead}}"
+    }
+   },
+   {
+    "id": "n-mwy0z9by-16",
+    "type": "logic.notify",
+    "x": 1140,
+    "y": 200,
+    "config": {
+     "title": "Lead prioritário"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "e-mwy0z9by-18",
+    "from": "n-mwy0z9by-12",
+    "to": "n-mwy0z9by-13"
+   },
+   {
+    "id": "e-mwy0z9by-19",
+    "from": "n-mwy0z9by-13",
+    "to": "n-mwy0z9by-14"
+   },
+   {
+    "id": "e-mwy0z9by-1a",
+    "from": "n-mwy0z9by-14",
+    "to": "n-mwy0z9by-15",
+    "port": "yes"
+   },
+   {
+    "id": "e-mwy0z9by-1b",
+    "from": "n-mwy0z9by-15",
+    "to": "n-mwy0z9by-16"
+   }
+  ]
+ }
+]

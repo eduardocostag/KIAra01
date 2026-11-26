@@ -39,7 +39,7 @@ const editableFields = ["text", "body", "caption"]
 const fieldLabels: Record<string, string> = {
   to: "Para", subject: "Assunto", title: "Título", when: "Quando", minutes: "Duração (min)", url: "Site", steps: "O que fazer",
   action: "Ação", folder: "Pasta", rule: "Regra", media: "Mídia", objective: "Objetivo", daily: "Por dia", days: "Dias", keywords: "Palavras-chave",
-  motivo: "Motivo", resumo: "Resumo do lead",
+  motivo: "Motivo", resumo: "Resumo do lead", lead: "Lead",
 }
 const objectiveLabels: Record<string, string> = { traffic: "Tráfego para o site", leads: "Geração de leads", messages: "Mensagens no WhatsApp", awareness: "Reconhecimento" }
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
@@ -94,7 +94,7 @@ function RequestCard({ item, onChange, swipeable = false }: { item: ActionReques
   const kiaraSends = item.kind === "whatsapp.reply"
   const text = notice ? String(item.payload.text ?? "") : draft
   const wa = item.kind === "whatsapp" ? whatsappLink(item.payload.to, draft) : null
-  const details = Object.entries(item.payload).filter(([key, value]) => key !== "entrada" && key !== field && !(notice && key === "text") && String(value).trim())
+  const details = Object.entries(item.payload).filter(([key, value]) => key !== "entrada" && key !== "pipeline_entry_id" && key !== field && !(notice && key === "text") && String(value).trim())
 
   async function decide(decision: "approve" | "reject" | "done") {
     setBusy(decision); setError("")
@@ -102,6 +102,10 @@ function RequestCard({ item, onChange, swipeable = false }: { item: ActionReques
       const payload = field && draft !== item.payload[field] ? { [field]: draft } : undefined
       const next = await call<ActionRequest>(`/api/approvals/${encodeURIComponent(item.id)}/decision`, { method: "POST", body: JSON.stringify({ decision, version: item.version, payload }) })
       if (decision !== "reject") burst(cardRef.current, "#34d399", 22)
+      // A message prepared from the CRM, sent by the person: the lead moves to "Em contato" with its follow-up.
+      if (decision === "done" && item.kind === "whatsapp" && typeof item.payload.pipeline_entry_id === "string") {
+        void call("/api/sales/activities", { method: "POST", body: JSON.stringify({ pipeline_entry_id: item.payload.pipeline_entry_id, channel: "whatsapp", status: "sent", body: draft, follow_up_hours: 48 }) }).catch(() => undefined)
+      }
       onChange(next)
     } catch (cause) {
       setLeaving(0); setDx(0)

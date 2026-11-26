@@ -17,7 +17,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -37,7 +37,10 @@ DECIDERS = {"owner", "admin"}
 
 # Blocks the server runs itself, and blocks that become an approval request.
 SERVER_KINDS = {"trigger.manual", "trigger.schedule", "trigger.lead", "ai.generate", "ai.classify",
-                "logic.condition", "logic.delay", "logic.notify", "crm.read", "web.http"}
+                "logic.condition", "logic.delay", "logic.notify", "crm.read", "crm.drafts", "web.http"}
+# "Kiara prepara mensagens do CRM": one WhatsApp draft per lead, each waiting in the approval center.
+DRAFT_KINDS = {"first_contact": "Primeira mensagem", "follow_up": "Follow-up", "reactivation": "Retomar negociação"}
+PHONE_TEXT = re.compile(r"(?:\+?55[\s-]?)?\(?0?\d{2}\)?[\s-]?9?\d{4}[\s-]?\d{4}")
 APPROVAL_KINDS = {
     "messages.whatsapp": ("whatsapp", "Enviar WhatsApp"),
     "messages.email": ("email", "Enviar e-mail"),
@@ -161,6 +164,7 @@ class RunEnv:
     http_get: Callable[[str], Awaitable[str]]
     request_approval: Callable[[dict[str, Any], str, str, dict[str, Any]], Awaitable[str]]
     notify: Callable[[str, str], Awaitable[None]]
+    drafts: Callable[[dict[str, Any], str, int], Awaitable[str]] | None = None
 
 
 @dataclass
@@ -180,8 +184,20 @@ class Waiting(Exception):
         self.seconds = seconds
 
 
-def fill(template: Any, value: str) -> str:
-    return str(template if template is not None else "").replace("{{entrada}}", value).replace("{{lead}}", value)
+def fill(template: Any, value: str, lead: str = "") -> str:
+    """{{entrada}} is the previous block's result; {{lead}} is the lead that started the flow (all along the flow)."""
+    return str(template if template is not None else "").replace("{{entrada}}", value).replace("{{lead}}", lead or value)
+
+
+def phone_in(text: str) -> str:
+    """The first Brazilian phone number written in a text (a lead description), as DDD + number."""
+    from .hunter_research import national_phone
+
+    for match in PHONE_TEXT.finditer(text or ""):
+        digits = national_phone(match.group(0))
+        if digits:
+            return digits
+    return ""
 
 
 def _number(value: Any, default: int, low: int, high: int) -> int:
@@ -197,14 +213,22 @@ def approval_title(node_type: str, payload: dict[str, Any]) -> str:
     return f"{label}: {target}"[:200] if target else label
 
 
-async def execute_node(node: dict[str, Any], value: str, env: RunEnv, *, resumed: bool = False) -> tuple[str, str | None]:
+async def execute_node(node: dict[str, Any], value: str, env: RunEnv, *, resumed: bool = False, lead: str = "") -> tuple[str, str | None]:
     """Runs one block. Returns (output, port) or raises Blocked/Waiting."""
     kind, config = node["type"], node.get("config") or {}
     if kind in BLOCKED_ON_SERVER:
         raise Blocked(BLOCKED_ON_SERVER[kind])
     if kind in APPROVAL_KINDS:
-        payload = {key: fill(item, value) if isinstance(item, str) else item for key, item in config.items()}
+        payload = {key: fill(item, value, lead) if isinstance(item, str) else item for key, item in config.items()}
         payload["entrada"] = value[:MAX_TEXT]
+        if kind == "messages.whatsapp":
+            # The lead that started the flow is the recipient unless a number was typed.
+            phone = phone_in(str(payload.get("to") or "")) or phone_in(lead)
+            if not phone:
+                raise RuntimeError("Sem telefone para enviar: o lead não tem WhatsApp ou o campo Para está vazio.")
+            payload["to"] = phone
+            if lead:
+                payload["lead"] = lead[:300]
         request_id = await env.request_approval(node, APPROVAL_KINDS[kind][0], approval_title(kind, payload), payload)
         return request_id, "approval"
     if kind in {"trigger.manual", "trigger.schedule"}:
@@ -217,9 +241,9 @@ async def execute_node(node: dict[str, Any], value: str, env: RunEnv, *, resumed
             raise RuntimeError("Ainda não há leads no CRM.")
         return latest, None
     if kind == "ai.generate":
-        return (await env.ask(fill(config.get("prompt"), value)))[:MAX_TEXT], None
+        return (await env.ask(fill(config.get("prompt"), value, lead)))[:MAX_TEXT], None
     if kind == "ai.classify":
-        answer = await env.ask(f"{fill(config.get('question'), value)}\n\nResponda apenas com SIM ou NÃO.")
+        answer = await env.ask(f"{fill(config.get('question'), value, lead)}\n\nResponda apenas com SIM ou NÃO.")
         yes = re.search(r"\bsim\b", answer, re.IGNORECASE) and not re.search(r"\bn[ãa]o\b", answer, re.IGNORECASE)
         return ("SIM" if yes else "NÃO"), None
     if kind == "logic.condition":
@@ -240,8 +264,13 @@ async def execute_node(node: dict[str, Any], value: str, env: RunEnv, *, resumed
         stage = str(config.get("stage") or "active")
         rows = await env.leads(stage if stage in STAGES else "active", _number(config.get("limit"), 10, 1, 50))
         return ("\n".join(rows) if rows else "Nenhum lead nessa etapa."), None
+    if kind == "crm.drafts":
+        if env.drafts is None:
+            raise Blocked("Este bloco roda no servidor da Kiara.")
+        draft_kind = str(config.get("kind") or "first_contact")
+        return await env.drafts(node, draft_kind if draft_kind in DRAFT_KINDS else "first_contact", _number(config.get("limit"), 10, 1, 20)), None
     if kind == "web.http":
-        url = fill(config.get("url"), value).strip()
+        url = fill(config.get("url"), value, lead).strip()
         if not url.lower().startswith("https://"):
             raise RuntimeError("Informe um endereço https.")
         return (await env.http_get(url))[:MAX_TEXT], None
@@ -250,7 +279,8 @@ async def execute_node(node: dict[str, Any], value: str, env: RunEnv, *, resumed
 
 def initial_queue(definition: dict[str, Any], trigger: str, value: str) -> list[dict[str, Any]]:
     wanted = {"manual": {"trigger.manual", "trigger.schedule", "trigger.lead"}, "schedule": {"trigger.schedule"}, "lead": {"trigger.lead"}}[trigger]
-    return [{"node": node["id"], "input": value} for node in definition.get("nodes", []) if node.get("type") in wanted]
+    return [{"node": node["id"], "input": value, **({"lead": value} if trigger == "lead" else {})}
+            for node in definition.get("nodes", []) if node.get("type") in wanted]
 
 
 async def run_flow(definition: dict[str, Any], state: RunState, env: RunEnv, *, deadline: float) -> RunState:
@@ -270,7 +300,7 @@ async def run_flow(definition: dict[str, Any], state: RunState, env: RunEnv, *, 
             return state
         step: dict[str, Any] = {"node_id": node["id"], "type": node["type"], "at": _iso(datetime.now(UTC))}
         try:
-            output, port = await execute_node(node, item.get("input", ""), env, resumed=bool(item.get("resumed")))
+            output, port = await execute_node(node, item.get("input", ""), env, resumed=bool(item.get("resumed")), lead=item.get("lead", ""))
         except Waiting as wait:
             state.pending.insert(0, {**item, "resumed": True})
             state.resume_at = datetime.now(UTC) + timedelta(seconds=wait.seconds)
@@ -287,9 +317,10 @@ async def run_flow(definition: dict[str, Any], state: RunState, env: RunEnv, *, 
             state.steps.append({**step, "status": "approval", "message": "Enviado para a Central de aprovações.", "request_id": output})
             continue  # The branch waits for a person; nothing after it runs on its own.
         state.steps.append({**step, "status": "done", "output": output[:2000]})
+        lead = output if node["type"] == "trigger.lead" else item.get("lead", "")
         for edge in edges:
             if edge.get("from") == node["id"] and (port is None or (edge.get("port") or "yes") == port) and edge.get("to") in nodes:
-                state.pending.append({"node": edge["to"], "input": output})
+                state.pending.append({"node": edge["to"], "input": output, **({"lead": lead} if lead else {})})
     return state
 
 
@@ -344,10 +375,29 @@ def public_https_get(url: str) -> str:
     return payload.decode(charset, errors="replace")
 
 
+def lead_phone(attributes: dict[str, Any] | None) -> str:
+    """The lead's WhatsApp-capable number from wherever it came (Hunter, Presencial, WhatsApp inbox)."""
+    from .hunter_research import national_phone
+
+    attributes = attributes or {}
+    for source in (attributes.get("presencial"), attributes.get("hunter"), attributes, attributes.get("whatsapp")):
+        if isinstance(source, dict):
+            for key in ("phone", "whatsapp_url"):
+                digits = national_phone(re.sub(r"^https?://(?:wa\.me|api\.whatsapp\.com/send\?phone=)/?", "", str(source.get(key) or "")))
+                if digits:
+                    return digits
+    return ""
+
+
 def describe_lead(row: dict[str, Any]) -> str:
-    hunter = (row.get("attributes") or {}).get("hunter") or {}
+    attributes = row.get("attributes") or {}
+    hunter = attributes.get("hunter") or {}
+    met = attributes.get("presencial") if isinstance(attributes.get("presencial"), dict) else {}
     labels = {"new": "Novos", "qualified": "Qualificados", "contacted": "Em contato", "opportunity": "Oportunidades", "won": "Ganhos", "lost": "Perdidos"}
-    parts = [row.get("display_name") or "Contato sem nome", hunter.get("phone"), hunter.get("address"),
+    phone = lead_phone(attributes)
+    parts = [row.get("display_name") or "Contato sem nome", f"WhatsApp +55{phone}" if phone else None,
+             hunter.get("address") or met.get("address") or met.get("city"),
+             f"segmento: {hunter.get('research_query') or met.get('segment')}" if hunter.get("research_query") or met.get("segment") else None,
              f"etapa: {labels.get(row.get('stage'), row.get('stage'))}" if row.get("stage") else None,
              f"próxima ação: {row['next_action']}" if row.get("next_action") else None]
     return " · ".join(str(part) for part in parts if part)
@@ -599,7 +649,79 @@ class AutomationRepository:
                        VALUES(%s,%s,%s,%s,'notice',%s,%s)""",
                     (org, uuid4(), flow_id, run_id, title, json.dumps({"text": text})))
 
-        return RunEnv(ask=ask, leads=leads, latest_lead=latest_lead, http_get=http_get, request_approval=request_approval, notify=notify)
+        async def drafts(node: dict[str, Any], kind: str, limit: int) -> str:
+            return await self._draft_messages(organization_id, org, flow_id, run_id, node, kind, limit)
+
+        return RunEnv(ask=ask, leads=leads, latest_lead=latest_lead, http_get=http_get, request_approval=request_approval,
+                      notify=notify, drafts=drafts)
+
+    DRAFT_QUERIES: ClassVar[dict[str, str]] = {
+        # New leads that never received a message.
+        "first_contact": """p.stage='new' AND NOT EXISTS (SELECT 1 FROM outreach_activities a WHERE a.organization_id=p.organization_id
+                              AND a.pipeline_entry_id=p.id AND a.status='sent')""",
+        # Contacted, no reply, follow-up due (at most 3 follow-ups).
+        "follow_up": """p.stage='contacted' AND p.next_action_at IS NOT NULL AND p.next_action_at <= now()
+                          AND NOT EXISTS (SELECT 1 FROM outreach_activities a WHERE a.organization_id=p.organization_id
+                                          AND a.pipeline_entry_id=p.id AND a.status='replied')
+                          AND (SELECT count(*) FROM outreach_activities a WHERE a.organization_id=p.organization_id
+                               AND a.pipeline_entry_id=p.id AND a.status='sent') BETWEEN 1 AND 3""",
+        # Negotiations with no news for 7 days.
+        "reactivation": "p.stage IN ('qualified','opportunity') AND p.updated_at < now() - interval '7 days'",
+    }
+
+    async def _draft_messages(self, organization_id: str, org: Any, flow_id: Any, run_id: Any, node: dict[str, Any],
+                              kind: str, limit: int) -> str:
+        """One WhatsApp draft per lead, written like the Fila de hoje does, each waiting in the approval center."""
+        from .knowledge import knowledge_context
+        from .outreach_ai import _met_kind, clean_message, draft_prompt, lead_facts
+        from .outreach_ai import default_ask as draft_ask
+
+        store = self._store()
+        async with store._transaction(organization_id) as connection:
+            rows = await (await connection.execute(
+                f"""SELECT p.id,c.display_name,c.attributes,
+                          ARRAY(SELECT a.body FROM outreach_activities a WHERE a.organization_id=p.organization_id
+                                AND a.pipeline_entry_id=p.id AND a.status='sent' AND a.body<>'' ORDER BY a.created_at) AS history
+                   FROM pipeline_entries p JOIN consumers c ON c.organization_id=p.organization_id AND c.id=p.consumer_id
+                   WHERE p.organization_id=%s AND c.lifecycle_status='active' AND c.consent_status NOT IN ('revoked','opted_out')
+                     AND {self.DRAFT_QUERIES[kind]}
+                     AND NOT EXISTS (SELECT 1 FROM action_requests r WHERE r.organization_id=p.organization_id AND r.kind='whatsapp'
+                                     AND r.status IN ('pending','approved') AND r.payload->>'pipeline_entry_id'=p.id::text)
+                   ORDER BY p.updated_at DESC LIMIT %s""", (org, limit * 3))).fetchall()
+            profile = await (await connection.execute(
+                "SELECT business_name,sender_name,offer,tone FROM sales_profiles WHERE organization_id=%s", (org,))).fetchone() or {}
+            knowledge = await knowledge_context(connection, org, 3000)
+        made: list[str] = []
+        without_phone = 0
+        for row in rows:
+            if len(made) >= limit:
+                break
+            attributes = row["attributes"] or {}
+            phone = lead_phone(attributes)
+            if not phone:
+                without_phone += 1
+                continue
+            history = [str(item) for item in (row["history"] or [])]
+            try:
+                text = clean_message(await draft_ask(draft_prompt(kind, dict(profile), knowledge, lead_facts(row["display_name"] or "", attributes),
+                                                                  history, "", met=_met_kind(attributes))))
+            except Exception:  # noqa: BLE001 - one lead's failure does not stop the others
+                text = ""
+            if not text:
+                continue
+            name = (row["display_name"] or "Lead")[:120]
+            async with store._transaction(organization_id) as connection:
+                await connection.execute(
+                    """INSERT INTO action_requests(organization_id,id,flow_id,run_id,node_id,kind,title,payload)
+                       VALUES(%s,%s,%s,%s,%s,'whatsapp',%s,%s)""",
+                    (org, uuid4(), flow_id, run_id, node["id"], f"{DRAFT_KINDS[kind]}: {name}"[:200],
+                     json.dumps({"to": phone, "text": text, "lead": name, "motivo": DRAFT_KINDS[kind], "pipeline_entry_id": str(row["id"])})))
+            made.append(name)
+        if not made:
+            reason = f" ({without_phone} sem telefone)" if without_phone else ""
+            return f"Nenhum lead precisa de {DRAFT_KINDS[kind].lower()} agora{reason}."
+        return (f"{len(made)} mensagem(ns) de {DRAFT_KINDS[kind].lower()} pronta(s) na Central de aprovações: " + ", ".join(made[:10])
+                + (f". {without_phone} lead(s) sem telefone ficaram de fora." if without_phone else "."))
 
     async def _process_run(self, claimed: dict[str, Any], deadline: float) -> str:
         organization_id, org, run_id = str(claimed["organization_id"]), claimed["organization_id"], claimed["run_id"]

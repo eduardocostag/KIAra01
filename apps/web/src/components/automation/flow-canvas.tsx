@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react"
-import { BellRing as Bell, Box, BrainCircuit, Briefcase, Building2, CalendarClock, CalendarPlus, Camera, Code, FolderSync, GitBranch, Globe, Mail, MapPin, Megaphone, MessageCircle, Monitor, MousePointerClick, Play, Search, Send, Sparkles, ThumbsUp, Timer, UserPlus, Users, X, type LucideIcon } from "lucide-react"
+import { BellRing as Bell, Box, BrainCircuit, Briefcase, Building2, CalendarClock, CalendarPlus, Camera, Code, FolderSync, GitBranch, Globe, Mail, MapPin, Megaphone, MessageCircle, MessagesSquare, Monitor, MousePointerClick, Play, Search, Send, Sparkles, ThumbsUp, Timer, UserPlus, Users, X, type LucideIcon } from "lucide-react"
 import { categories, newId, nodeKind, type FlowEdge, type FlowNode, type Workflow } from "@/lib/automation/catalog"
 import type { StepStatus } from "@/lib/automation/runner"
 import { cn } from "@/lib/utils"
@@ -19,7 +19,7 @@ type Drag =
   | { mode: "connect"; from: string; port: Port }
 
 // Only the icons the catalog uses, so the editor does not ship the whole icon set.
-const icons: Record<string, LucideIcon> = { Bell, BrainCircuit, Briefcase, Building2, CalendarClock, CalendarPlus, Camera, Code, FolderSync, GitBranch, Globe, Mail, MapPin, Megaphone, MessageCircle, Monitor, MousePointerClick, Play, Search, Send, Sparkles, ThumbsUp, Timer, UserPlus, Users }
+const icons: Record<string, LucideIcon> = { Bell, BrainCircuit, Briefcase, Building2, CalendarClock, CalendarPlus, Camera, Code, FolderSync, GitBranch, Globe, Mail, MapPin, Megaphone, MessageCircle, MessagesSquare, Monitor, MousePointerClick, Play, Search, Send, Sparkles, ThumbsUp, Timer, UserPlus, Users }
 
 export function NodeIcon({ name, className }: { name: string; className?: string }) {
   const Icon = icons[name] ?? Box

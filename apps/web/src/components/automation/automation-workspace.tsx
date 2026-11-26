@@ -4,7 +4,7 @@ import { AdminOnly } from "@/components/app-shell/admin-access"
 
 import Link from "next/link"
 import { useEffect, useRef, useState, type CSSProperties } from "react"
-import { Check, ChevronDown, CircleAlert, CloudOff, CloudUpload, Copy, History, LayoutTemplate, LoaderCircle, Maximize2, Play, Plug, Plus, Search, Server, ShieldCheck, Square, Trash2, Workflow as WorkflowIcon, X, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, ChevronDown, CircleAlert, CloudOff, CloudUpload, Copy, History, LayoutTemplate, LoaderCircle, Maximize2, Play, Plug, Plus, Search, ShieldCheck, Square, Trash2, Workflow as WorkflowIcon, X, ZoomIn, ZoomOut } from "lucide-react"
 import { ImmersiveShell } from "@/components/app-shell/immersive-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -274,7 +274,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
   }
 
   const needle = search.trim().toLowerCase()
-  const groups = (Object.keys(categories) as CategoryId[]).map((category) => ({ category, kinds: nodeKinds.filter((kind) => kind.category === category && (!needle || `${kind.label} ${kind.description} ${categories[category].label}`.toLowerCase().includes(needle))) })).filter((group) => group.kinds.length)
+  const groups = (Object.keys(categories) as CategoryId[]).map((category) => ({ category, kinds: nodeKinds.filter((kind) => kind.category === category && !kind.hidden && (!needle || `${kind.label} ${kind.description} ${categories[category].label}`.toLowerCase().includes(needle))) })).filter((group) => group.kinds.length)
   const blocked = steps.filter((step) => step.status === "blocked").length
   const errors = steps.filter((step) => step.status === "error").length
 
@@ -309,8 +309,8 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
         {flow.enabled ? "Ativo" : "Desativado"}
       </button> : null}
       {sync === "server" ? <Button type="button" size="sm" variant="ghost" aria-label="Histórico de execuções no servidor" onClick={() => { const next = !historyOpen; setHistoryOpen(next); if (next) void refreshRuns(flow.id) }}><History /></Button> : null}
-      {sync === "server" ? <Button type="button" size="sm" variant="outline" disabled={serverBusy} onClick={() => void runServer()}>{serverBusy ? <LoaderCircle className="animate-spin" /> : <Server />}<span className="hidden md:inline">No servidor</span></Button> : null}
-      {running ? <Button type="button" size="sm" variant="outline" onClick={() => abortRef.current?.abort()}><Square />Parar</Button>
+      {sync === "server" ? <Button type="button" size="sm" disabled={serverBusy} onClick={() => void runServer()} title="Executa agora no servidor da Kiara, com seus leads reais">{serverBusy ? <LoaderCircle className="animate-spin" /> : <Play />}<span className="hidden sm:inline">Executar agora</span></Button>
+        : running ? <Button type="button" size="sm" variant="outline" onClick={() => abortRef.current?.abort()}><Square />Parar</Button>
         : <Button type="button" size="sm" onClick={() => void run()}><Play /><span className="hidden sm:inline">Testar aqui</span></Button>}
     </> : <span className="font-medium">Kiara Automation</span>}>
     {flow ? <div ref={areaRef} className="relative flex min-h-0 flex-1">
@@ -424,7 +424,7 @@ export function AutomationWorkspace({ userId = "preview" }: { userId?: string })
     </div> : <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <span className="mb-4 grid size-14 place-items-center rounded-2xl border bg-card text-primary"><WorkflowIcon className="size-6" /></span>
       <h1 className="text-2xl font-medium tracking-tight">Automatize com a Kiara</h1>
-      <p className="mt-2 max-w-md text-sm text-muted-foreground">Monte fluxos ligando blocos: gatilhos, IA, CRM, mensagens, agenda, sites, computador, redes sociais e anúncios.</p>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">Escolha um modelo pronto ao lado ou monte o seu: a Kiara acompanha seus leads, escreve as mensagens do CRM e avisa o que fazer primeiro. Toda mensagem passa pela sua aprovação.</p>
       <Button type="button" variant="outline" className="mt-6" onClick={() => open(emptyWorkflow())}><Plus />Começar do zero</Button>
     </div>}
   </ImmersiveShell>
