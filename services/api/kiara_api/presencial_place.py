@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import unicodedata
 from typing import Any
@@ -94,26 +95,51 @@ async def reverse_geocode(lat: float, lng: float, opener=urlopen) -> dict[str, A
         return {}
 
 
-def match_score(row: dict[str, Any], name: str, phones: list[str], road: str) -> float:
+NEAR_KM = 2.0
+_MAPS_COORDS = re.compile(r"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)")
+
+
+def maps_coords(row: dict[str, Any]) -> tuple[float, float] | None:
+    """Where a Maps listing is, from its own coordinates or from the place link (…!3d<lat>!4d<lng>…)."""
+    data = row.get("public_data") or {}
+    lat, lng = data.get("latitude", data.get("lat")), data.get("longitude", data.get("lng"))
+    if isinstance(lat, int | float) and isinstance(lng, int | float):
+        return float(lat), float(lng)
+    found = _MAPS_COORDS.search(str(row.get("url") or ""))
+    return (float(found.group(1)), float(found.group(2))) if found else None
+
+
+def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    lat1, lng1, lat2, lng2 = map(math.radians, (*a, *b))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lng2 - lng1) / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(h))
+
+
+def match_score(row: dict[str, Any], name: str, phones: list[str], road: str, near: tuple[float, float] | None = None) -> float:
     data = row.get("public_data") or {}
     row_phone = national_phone(data.get("phone"))
     if row_phone and row_phone in phones:
         return 2.0  # the number on the sign is the business's own number
+    where = maps_coords(row)
+    if near and where and distance_km(near, where) > NEAR_KM:
+        return 0.0  # same name somewhere else (another branch or another city) is not the shop in the photo
     wanted = tokens(name)
     overlap = len(wanted & tokens(str(row.get("title") or ""))) / len(wanted) if wanted else 0.0
     on_street = bool(road) and fold(road) in fold(str(data.get("address") or ""))
     return overlap + (0.4 if on_street else 0.0)
 
 
-def best_match(rows: list[dict[str, Any]], name: str, phones: list[str], road: str) -> dict[str, Any] | None:
-    scored = sorted(((match_score(row, name, phones, road), index, row) for index, row in enumerate(rows)), key=lambda item: (-item[0], item[1]))
+def best_match(rows: list[dict[str, Any]], name: str, phones: list[str], road: str,
+               near: tuple[float, float] | None = None) -> dict[str, Any] | None:
+    scored = sorted(((match_score(row, name, phones, road, near), index, row) for index, row in enumerate(rows)), key=lambda item: (-item[0], item[1]))
     if not scored:
         return None
     score, _index, row = scored[0]
     return row if score >= 0.6 else None
 
 
-async def find_on_maps(sign: dict[str, Any], place: dict[str, Any], search=None) -> dict[str, Any] | None:
+async def find_on_maps(sign: dict[str, Any], place: dict[str, Any], search=None,
+                       near: tuple[float, float] | None = None) -> dict[str, Any] | None:
     if search is None:
         from .hunter import maps_search as search
     where = ", ".join(item for item in (place.get("road"), place.get("city"), place.get("state")) if item)
@@ -125,7 +151,7 @@ async def find_on_maps(sign: dict[str, Any], place: dict[str, Any], search=None)
         rows = await asyncio.wait_for(search(query, 6), timeout=MAPS_SECONDS)
     except Exception:  # noqa: BLE001 - Maps is a bonus; the photo stands on its own
         return None
-    return best_match(rows or [], sign.get("business") or "", sign.get("phones") or [], place.get("road") or "")
+    return best_match(rows or [], sign.get("business") or "", sign.get("phones") or [], place.get("road") or "", near)
 
 
 def place_preview(sign: dict[str, Any], place: dict[str, Any], found: dict[str, Any] | None, extra: dict[str, Any]) -> dict[str, Any]:

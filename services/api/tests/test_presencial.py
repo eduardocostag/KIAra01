@@ -164,6 +164,20 @@ def test_storefront_never_takes_a_different_business():
     assert best_match(MAPS_ROWS, "Qualquer", ["5130000000"], "")["title"] == "Pizza Hut"  # same phone = same business
 
 
+def test_storefront_ignores_the_same_name_in_another_city():
+    from kiara_api.presencial_place import best_match
+
+    # The salesperson is in downtown Porto Alegre; a bakery with the same name exists in Gravataí, ~30 km away.
+    far = {"title": "Padaria Pão Dourado", "url": "https://www.google.com/maps/place/x/data=!3d-29.9156817!4d-50.9171929!16s",
+           "public_data": {"phone": "+55 51 3333-1111", "address": "Av. Sertório, 770 - Gravataí - RS"}}
+    near = {**far, "url": "https://www.google.com/maps/place/x/data=!3d-30.0350!4d-51.2180!16s"}
+    downtown = (-30.0346, -51.2177)
+    assert best_match([far], "Padaria Pão Dourado", [], "", downtown) is None
+    assert best_match([far, near], "Padaria Pão Dourado", [], "", downtown) is near
+    assert best_match([far], "Padaria Pão Dourado", ["5133331111"], "", downtown) is far  # same phone still wins
+    assert best_match([far], "Padaria Pão Dourado", [], "") is far  # without the phone's location there is nothing to compare
+
+
 def test_storefront_draft_says_they_passed_by():
     attributes = {"presencial": {"kind": "fachada", "company": "Bella Napoli", "segment": "pizzaria", "address": "Rua Padre Chagas, 300",
                                  "rating": 4.7, "user_rating_count": 312, "website_status": "not_listed"}}

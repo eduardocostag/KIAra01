@@ -313,7 +313,7 @@ class PresencialService:
         place = await (self._geocode or reverse_geocode)(location.lat, location.lng) if location else {}
         if city and not place.get("city"):
             place = {**place, "city": city}
-        found = await find_on_maps(sign, place, self._maps)
+        found = await find_on_maps(sign, place, self._maps, (location.lat, location.lng) if location else None)
         data = (found or {}).get("public_data") or {}
         website = sign["website"] or data.get("website_url") or ""
         extra = await self._enrich({"website": website, "emails": [], "cnpj": ""})
