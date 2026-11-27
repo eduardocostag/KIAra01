@@ -103,6 +103,13 @@ def test_hot_lead_alert_and_manual_test_use_the_latest_lead():
     assert env.notices[0][0] == "Lead prioritário" and "Pizzaria Bella Napoli" in env.prompts[0]
 
 
+def test_ai_text_reaches_the_client_without_markdown():
+    from kiara_api.automation import plain
+
+    assert plain("## Hoje\nO CRM retornou **\"Nenhum lead\"**. Use `follow-up` e *priorize* a Clínica.\n- item * 2") == \
+        "Hoje\nO CRM retornou \"Nenhum lead\". Use follow-up e priorize a Clínica.\n- item * 2"
+
+
 def test_whatsapp_step_without_any_phone_fails_clearly():
     template = TEMPLATES["lead-welcome"]
     definition = definition_dict(FlowDefinition.model_validate({"nodes": template["nodes"], "edges": template["edges"]}))

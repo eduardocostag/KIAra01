@@ -184,6 +184,14 @@ class Waiting(Exception):
         self.seconds = seconds
 
 
+def plain(text: str) -> str:
+    """AI text as the client reads it in notices and WhatsApp: no markdown marks (**bold**, # titles, `code`)."""
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text, flags=re.DOTALL)
+    text = re.sub(r"(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])", r"\1", text)
+    return text.replace("`", "").strip()
+
+
 def fill(template: Any, value: str, lead: str = "") -> str:
     """{{entrada}} is the previous block's result; {{lead}} is the lead that started the flow (all along the flow)."""
     return str(template if template is not None else "").replace("{{entrada}}", value).replace("{{lead}}", lead or value)
@@ -241,7 +249,7 @@ async def execute_node(node: dict[str, Any], value: str, env: RunEnv, *, resumed
             raise RuntimeError("Ainda não há leads no CRM.")
         return latest, None
     if kind == "ai.generate":
-        return (await env.ask(fill(config.get("prompt"), value, lead)))[:MAX_TEXT], None
+        return plain(await env.ask(fill(config.get("prompt"), value, lead)))[:MAX_TEXT], None
     if kind == "ai.classify":
         answer = await env.ask(f"{fill(config.get('question'), value, lead)}\n\nResponda apenas com SIM ou NÃO.")
         yes = re.search(r"\bsim\b", answer, re.IGNORECASE) and not re.search(r"\bn[ãa]o\b", answer, re.IGNORECASE)
@@ -336,7 +344,7 @@ def run_status(state: RunState) -> str:
 # ---------------------------------------------------------------- AI and web helpers
 
 AUTOMATION_CONTEXT = ("Você é a Kiara, executando uma automação de um cliente. Responda em português do Brasil, "
-                      "de forma direta, sem inventar dados. Os dados abaixo vêm do fluxo e do CRM do cliente.\n\n")
+                      "de forma direta, sem inventar dados, em texto simples (sem markdown, sem asteriscos). Os dados abaixo vêm do fluxo e do CRM do cliente.\n\n")
 
 
 def default_ask() -> Callable[[str], Awaitable[str]]:
